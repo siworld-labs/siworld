@@ -1,0 +1,9 @@
+# SP1 baseline (zkVM). Guest programs are compiled separately by sp1-build with the
+# succinct toolchain and are not members of this workspace.
+[workspace]
+resolver = "2"
+members = ["script"]
+exclude = ["program", "aggregate"]
+
+[profile.release]
+debug = false

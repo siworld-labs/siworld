@@ -1,0 +1,14 @@
+SIWORLD
+Copyright and licensing information
+
+The repository is licensed under GNU GPL version 3 only. See LICENSE.
+
+The midstate project (https://github.com/ciphernom/midstate), licensed under
+GNU GPL version 3, is a module-level reference for proof of work, integer
+difficulty adjustment, state validation, and regression counterexamples.
+SIWORLD is not a wholesale copy of that repository. Existing upstream
+copyright and license notices must be retained when incorporating code.
+
+Plonky3, Plonky3-recursion, libcrux, libp2p, redb, and other dependencies
+retain their respective licenses. Their exact versions and source revisions
+are recorded in Cargo.lock and the benchmark workspace lockfiles.

@@ -1,0 +1,20 @@
+[package]
+name = "siworld-bench-common"
+description = "Shared by the benchmarks: Poseidon2 (KoalaBear) reference implementation of a slot-relation subset and witness generation"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+p3-field.workspace = true
+p3-koala-bear.workspace = true
+p3-poseidon2.workspace = true
+p3-symmetric.workspace = true
+
+[dev-dependencies]
+# The native implementation in the main workspace; tests/native.rs checks this crate against it.
+siworld-poseidon2 = { path = "../../poseidon2" }
+# The protocol constants (MIN_PACKAGE_DEPOSIT, the fee tier) the relation subset copies.
+siworld-core = { path = "../../core" }

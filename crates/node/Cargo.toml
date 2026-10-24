@@ -1,0 +1,69 @@
+[package]
+name = "siworld-node"
+description = "Testnet node and single-machine devnet: mempool, wallets, block production, peer-to-peer relay"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "siworld-devnet"
+path = "src/main.rs"
+required-features = ["development"]
+
+[[bin]]
+name = "siworld-proof-pipeline"
+path = "src/bin/proof-pipeline.rs"
+required-features = ["diagnostics"]
+
+[[test]]
+name = "devnet"
+required-features = ["development"]
+
+[[test]]
+name = "mempool"
+required-features = ["development"]
+
+[dependencies]
+siworld-core.workspace = true
+siworld-crypto.workspace = true
+siworld-state.workspace = true
+siworld-circuits.workspace = true
+siworld-consensus.workspace = true
+siworld-storage.workspace = true
+siworld-prover = { workspace = true, optional = true }
+redb.workspace = true
+blake3.workspace = true
+argon2.workspace = true
+chacha20poly1305.workspace = true
+rpassword.workspace = true
+getrandom.workspace = true
+zeroize.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+libp2p.workspace = true
+tokio.workspace = true
+
+[features]
+default = ["plonky3"]
+# The Plonky3 proof system, for networks whose genesis says `"proofs": "plonky3"`.
+# Without it, real-proof networks cannot run. Mock networks additionally need
+# the explicit development feature.
+plonky3 = ["dep:siworld-prover"]
+# Public-seed devnet, deterministic constructors and mock-network CLI support.
+# Never use an all-features or development build as a production artifact.
+development = ["siworld-crypto/insecure-deterministic", "siworld-state/test-utils"]
+# Opt-in, synthetic loopback measurements; not a production node entry point.
+diagnostics = ["plonky3"]
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
+[dev-dependencies]
+siworld-state = { workspace = true, features = ["test-utils"] }
+
+[lints]
+workspace = true

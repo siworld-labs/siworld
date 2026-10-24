@@ -1,0 +1,41 @@
+# Build output
+target/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local environment and secrets
+.env
+.env.*
+*.pem
+*.key
+rpc-*.token
+
+# Profiling and coverage
+*.profraw
+*.profdata
+lcov.info
+
+# Private reference material and temporary document exports
+/.local/
+/tmp/
+
+# Material outside the technical publication boundary
+/brand/
+/website/
+/plans/
+/experiments/
+/docs/research/
+/docs/publication/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.mp4
+*.webm

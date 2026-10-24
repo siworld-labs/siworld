@@ -1,0 +1,36 @@
+[package]
+name = "siworld-bench-plonky3"
+description = "Plonky3 AIR for a subset of the slot relation, plus binary aggregation benchmarks"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+p3-air.workspace = true
+p3-field.workspace = true
+p3-koala-bear.workspace = true
+p3-matrix.workspace = true
+p3-poseidon2.workspace = true
+p3-poseidon2-air.workspace = true
+p3-symmetric.workspace = true
+p3-uni-stark.workspace = true
+p3-batch-stark.workspace = true
+p3-circuit-prover.workspace = true
+p3-recursion.workspace = true
+p3-circuit.workspace = true
+rand.workspace = true
+siworld-bench-common.workspace = true
+p3-maybe-rayon.workspace = true
+postcard.workspace = true
+serde_json = "1.0.149"
+p3-challenger.workspace = true
+p3-commit.workspace = true
+p3-dft.workspace = true
+p3-fri.workspace = true
+p3-merkle-tree.workspace = true
+
+[features]
+default = ["parallel"]
+parallel = ["p3-maybe-rayon/parallel", "p3-recursion/parallel", "p3-circuit-prover/parallel"]

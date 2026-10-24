@@ -1,0 +1,15 @@
+[package]
+name = "siworld-storage"
+description = "On-disk block store (redb)"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+redb.workspace = true
+siworld-core.workspace = true
+
+[lints]
+workspace = true

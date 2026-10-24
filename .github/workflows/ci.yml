@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  repository:
+    name: Repository content
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Publication manifest and documentation
+        run: python3 scripts/check-repository.py
+  workspace:
+    name: Workspace (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Default feature isolation
+        run: python3 scripts/check-node-features.py
+      - name: Default binaries
+        run: cargo check -p siworld-node --bins --locked
+      - name: Default proof selection
+        run: cargo test -p siworld-node --bin siworld-node --locked
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --all-features --locked
+  bench-plonky3:
+    name: STARK benchmark tests (Plonky3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: crates/bench-stark
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/bench-stark
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Tests
+        run: cargo test --release --locked -p siworld-bench-plonky3 -p siworld-bench-common

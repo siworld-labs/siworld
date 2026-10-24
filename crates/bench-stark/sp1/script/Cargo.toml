@@ -1,0 +1,17 @@
+[package]
+name = "siworld-bench-sp1"
+description = "SP1 baseline: single-slot proofs plus binary aggregation benchmarks"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-only"
+repository = "https://github.com/siworld-labs/siworld"
+
+[dependencies]
+sp1-sdk = "=6.9.0"
+tokio = { version = "1", features = ["full"] }
+bincode = "1.3"
+siworld-bench-common = { path = "../../common" }
+
+[build-dependencies]
+sp1-build = "=6.9.0"

@@ -1,0 +1,25 @@
+[package]
+name = "siworld-crypto"
+description = "Commitments, nullifiers, key derivation, and package encryption"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+# Tests and the devnet only: allows building a SecretSeed from a known value.
+insecure-deterministic = []
+
+[dependencies]
+blake3.workspace = true
+chacha20poly1305.workspace = true
+getrandom.workspace = true
+zeroize.workspace = true
+libcrux-ml-dsa.workspace = true
+libcrux-ml-kem.workspace = true
+siworld-core.workspace = true
+siworld-poseidon2.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,22 @@
+name: Protocol change
+description: A specified change to protocol behavior or implementation.
+labels: [design]
+body:
+  - type: input
+    id: section
+    attributes:
+      label: Document and section
+      description: For example, docs/protocol.md, block validity rules.
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: Specification and rationale
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Effects on privacy, consensus, economics, or performance.

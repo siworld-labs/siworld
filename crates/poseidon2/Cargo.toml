@@ -1,0 +1,16 @@
+[package]
+name = "siworld-poseidon2"
+description = "The in-circuit hash: Poseidon2 over KoalaBear (width 16) and the canonical encoding of its digests"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+p3-field.workspace = true
+p3-koala-bear.workspace = true
+p3-symmetric.workspace = true
+
+[lints]
+workspace = true

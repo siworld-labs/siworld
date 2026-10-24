@@ -1,0 +1,31 @@
+[package]
+name = "siworld-prover"
+description = "Plonky3 proof system: STARK leaf proofs and recursive container aggregation"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+siworld-core.workspace = true
+siworld-crypto.workspace = true
+siworld-poseidon2.workspace = true
+siworld-state.workspace = true
+siworld-circuits.workspace = true
+siworld-bench-common.workspace = true
+siworld-bench-plonky3.workspace = true
+p3-field.workspace = true
+p3-uni-stark.workspace = true
+p3-circuit-prover.workspace = true
+p3-recursion.workspace = true
+postcard.workspace = true
+rand.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+siworld-consensus.workspace = true
+siworld-state = { workspace = true, features = ["test-utils"] }
+
+[lints]
+workspace = true
