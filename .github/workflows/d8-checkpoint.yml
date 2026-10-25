@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Require EPYC 7763 baseline before building or proving
+      - name: Qualify baseline or control hardware for correctness tests
         run: |
           python3 - <<'PY_PROFILE'
           import json
@@ -44,11 +44,13 @@ jobs:
           measurement = runpy.run_path('scripts/measure-proof-cgroup.py')
           hardware, _ = measurement['qualify']()
           print(json.dumps({'hardware': hardware}, indent=2))
-          result = measurement['qualify_hardware_profile'](hardware, 'epyc7763-baseline')
+          profile = 'epyc7763-baseline' if 'EPYC 7763 ' in hardware['cpu_model'] else 'epyc9v45-control'
+          result = measurement['qualify_hardware_profile'](hardware, profile)
           from pathlib import Path
           mount = Path('/sys/fs/cgroup')
-          measurement['qualify_cpu_profile'](measurement['cpu_ancestry'](mount, mount), 'epyc7763-baseline')
-          print(json.dumps({'hardware_qualification': result}, indent=2))
+          measurement['qualify_cpu_profile'](measurement['cpu_ancestry'](mount, mount), profile)
+          print(json.dumps({'correctness_hardware_qualification': result,
+              'checkpoint_requires': 'epyc7763-baseline'}, indent=2))
           PY_PROFILE
       - name: Install pinned toolchain
         run: rustup toolchain install
