@@ -27,7 +27,7 @@ PUBLIC_ARTIFACTS = {
 }
 CRATES = {
     "core", "crypto", "poseidon2", "state", "circuits", "consensus",
-    "storage", "prover", "node", "bench-stark",
+    "storage", "prover", "node", "bench-stark", "bench-d8",
 }
 NON_ENGLISH = re.compile(
     "[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]"
@@ -40,7 +40,8 @@ def allowed(path):
         return name in ROOT_FILES
     if path.parts[0] == "docs":
         return len(path.parts) == 2 and path.name in DOCUMENTS
-    if name in {".cargo/config.toml", "scripts/prover-launcher.rs"}:
+    if name in {".cargo/config.toml", "scripts/prover-launcher.rs",
+                "crates/bench-stark/patches/recursion-d8-w24.patch"}:
         return True
     if path.parts[0] == "scripts":
         return path.suffix == ".py" and (len(path.parts) == 2 or (len(path.parts) == 3 and path.parts[1] == "tests"))

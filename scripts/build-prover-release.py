@@ -15,7 +15,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 V3_FLAGS = ['-C', 'target-cpu=x86-64-v3']
 NAMES = {'siworld-node', 'siworld-cli', 'siworld-devnet', 'siworld-proof-pipeline',
-         'siworld-aggregation-bench', 'siworld-bench-plonky3', 'composition-bench', 'leaf_params'}
+         'siworld-aggregation-bench', 'siworld-bench-plonky3', 'composition-bench', 'leaf_params', 'd8-checkpoint'}
 PROOF_WORKERS = NAMES - {'siworld-cli'}
 
 

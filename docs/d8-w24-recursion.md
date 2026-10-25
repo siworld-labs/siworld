@@ -1,38 +1,56 @@
 # D8 W24 Recursive Suite Implementation Plan
 
-Status: dependency assessment and proposed implementation sequence. The target
-is KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12-base-element digests.
+Status: isolated implementation with compiler validation; proof correctness,
+security review and performance measurement remain pending. The target is
+KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12-base-element digests.
 The N=16 proof-latency target is 180 seconds under the unchanged 5-GiB
 process-tree hard limit. This proving target does not change the consensus
-block interval.
-No working recursive suite or security approval is claimed. The baseline is
-Plonky3 `0.9.0-rc.2` and recursion revision
-`3a69ba61f713c8400b14eb3d8f0e52caa13512c7`.
+block interval. The baseline is Plonky3 `0.9.0-rc.2` and recursion revision
+`3a69ba61f713c8400b14eb3d8f0e52caa13512c7`, with the separately maintained
+experimental dependency patch. No verified D8 recursive proof, checkpoint
+pass or security approval is claimed.
 
-## Verified gaps
+## Upstream gaps and isolated implementation
 
-Native D8 arithmetic and circuit execution work in prerequisite probes. The
-suite registry has no D8/12-element entry. Existing W24 sponge mode works, but
-binary Merkle geometry is rejected. Native Merkle sibling conversion falls
-back to 12 lifted scalars, each with seven zero extension coefficients; the
-matching recursive circuit and transcript must be implemented. The existing
-D8/W32 prototype is reference material only, not the selected suite.
+The unmodified pinned dependency has no D8/12-element suite entry and rejects
+the packed W24 binary Merkle geometry. Its native Merkle siblings are 12 lifted
+scalars, each with seven zero extension coefficients. The isolated patch adds
+an experimental suite registry/configuration, scalar W24 binary compression,
+D8 backend dispatch, transcript handling and artifact encoding. It does not
+relax the old unsupported packed geometry or select the D8/W32 prototype.
+
+The dependency and the isolated application compile, including their test
+sources. Rejection, native/circuit-equivalence, opening-batch grinding and
+end-to-end eight-input proof tests still require execution. Compiler success
+is not evidence that those tests pass or that the security ledger describes
+a correct recursive verifier. The retained seven-node N=2 deployment and its
+dependencies remain unchanged.
 
 ## Scalar geometry
 
-A W24 permutation occupies three D8 state lanes. Its 12-element rate and
-12-element capacity split through the middle lane. Binary compression must
-bind all 24 base-field inputs and return exactly the designated 12 output
-scalars. A one-lane digest would drop four elements; a two-lane digest would
-silently change the format. Neither is permitted.
+A W24 permutation contains 24 base-field state elements, with rate 12 and
+capacity 12. Packing those elements into three D8 lanes would split the
+rate/capacity boundary through the middle lane. The isolated implementation
+instead keeps 24 scalar circuit values and lifts the scalar D1 W24 permutation
+AIR into a D8 circuit. Its witness bus binds all eight extension coefficients,
+including the canonical zero coefficients of scalar values. Binary compression
+binds all 24 scalar inputs and returns exactly the designated 12 scalar outputs.
+A one-D8-element digest would drop four base elements; a two-D8-element external
+digest would change the format. Neither is permitted.
 
-Add an explicit scalar-digest geometry and compression role instead of
-bypassing existing checks. The permutation may produce all three D8 output
-lanes; extract the first 12 scalar coefficients. Any internal repacking uses
-separately constrained canonical zero padding. Do not constrain unused actual
-permutation outputs to zero. Keep the external digest at 12 scalars throughout
-MMCS proofs, caps, artifacts, serialization and transcripts. Native lifted
-siblings and circuit coefficients must match exactly.
+The challenger uses a dedicated W24 table with constraints for its initial
+capacity and squeeze chain. Ordinary MMCS permutations use a separate table,
+so interleaving them cannot supply a different challenger capacity. This
+scalar AIR is an initial implementation, not a claim of optimal table width
+or proving cost. Native/circuit transcript and interleaving tests are present
+but their execution remains a correctness prerequisite.
+
+The earlier `d8-geometry` scaffold retains explicit three-lane packing and
+canonical internal padding as a separate correctness tool. It is not the
+checkpoint permutation representation. Keep the external digest at 12 scalars
+throughout MMCS proofs, caps, artifacts, serialization and transcripts. Do not
+force unused actual permutation outputs to zero. Native lifted siblings and
+circuit coefficients must match exactly.
 
 ## Work packages and estimates
 
@@ -47,7 +65,7 @@ the early performance checkpoint permitting further work.
 | Scalar W24 geometry | 3–5 days | Typed geometry, coefficient extraction/recomposition, standard permutation tables, native/circuit binary compression; mutations of all 24 inputs, 12 digest limbs and eight extension coefficients, wrong padding and malformed geometry |
 | Recursive suite and FRI | 3–5 days | D8 AIR/table/recomposition dispatch, registry/config codec, transcript observation/squeezing, cap/MMCS targets and canonical artifacts; native/circuit transcript equivalence, wrong suite/key/cap and noncanonical proof rejection |
 | Opening-batch grinding | 2–4 days | Native nonce generation and recursive verification with identical transcript order; configuration/shape/key binding, serialization, positive-difficulty and zero-difficulty rejection tests; required before checkpoint |
-| SI relation port | 4–7 days | Consistent leaf/anchor/note/nullifier/hash/codecs, eight-input and root circuits, reviewed additive-set/output layouts; run the early performance checkpoint after the first verified eight-input merge with opening-batch grinding and the final checkpoint configuration, before completing the root; independent native oracle, all public-field mutations and complete N=16 proof verification |
+| SI relation port | 4–7 days | Consistent leaf/anchor/note/nullifier/hash/codecs, eight-input and root circuits, reviewed additive-set/output layouts; trigger the early performance checkpoint at the first verified eight-input merge with opening-batch grinding and the final checkpoint configuration; independent native oracle, all public-field mutations and complete N=16 proof verification |
 | Security screening and measurements | 2–4 days | Actual shape extraction, pinned conjectured and Johnson reports, composition/quantum screening, only passing profiles receive three full N=16 acceptance runs under 5 GiB |
 | Production integration and freeze | 3–6 days | Shared transition/verification interfaces, worker/network binding, resource admission, isolated engineering-network fixtures, reproducible complete sources/artifacts/keys for audit |
 
@@ -77,10 +95,12 @@ A wider digest does not automatically port these interfaces. Preserve domain
 separation and canonical encodings in native and circuit code.
 
 The old 48-element set accumulator and 70-element root layout are D4 prototype
-facts. Keeping six digest-width squeezes would suggest 72 set elements and a
-102-element root, but this is a layout hypothesis requiring set-hash analysis,
-not an adopted constant. Record the reviewed choice before implementation;
-never silently truncate to preserve the old layout.
+facts. The isolated D8 application implements six digest-width squeezes as a
+72-element set accumulator and a 102-element root layout, with native and
+circuit code using the same experimental geometry. It also constrains all 16
+ciphertext limbs and the zero-padded W24 absorption tail. These choices are
+experimental, require set-hash and encoding review, and are not adopted
+consensus constants. The live N=2 statement and keys are unchanged.
 
 The two-worker hiding kernel must retain independent fresh randomness and the
 same masking guarantees as serial execution. Pin every source delta in the
@@ -96,15 +116,19 @@ native verification checks it before redrawing `alpha`. This is opening-batch
 grinding, separate from per-fold commitment grinding and final query grinding;
 work at one site cannot be credited at another.
 
-The pinned recursive implementation deliberately supports only zero batch
-PoW bits. `NativeFriParams` rejects nonzero difficulty, its PCS transcript seed
-binds zero, target allocation and shape capture omit the batch witness, and
-challenge extraction samples `alpha` without a batch PoW check. These are
-identified implementation gaps, not evidence that the site is impossible.
-Existing recursive commit/query PoW checks provide a pattern to reuse, subject
-to D8/W24 transcript and scalar-geometry validation.
+The unmodified pinned recursive implementation supports only zero batch PoW
+bits. The isolated patch carries positive batch difficulty through native and
+recursive parameters, descriptor and prepared-shape identities, witness layouts
+and native/circuit challenge replay. The batch witness check precedes `alpha`;
+zero difficulty requires the canonical zero witness and does not absorb an
+extra element. Positive-difficulty descriptors are distinct from the retained
+zero-difficulty encoding. Prepared input layouts change, so prepared artifacts
+and keys must be regenerated even when a descriptor has zero difficulty.
 
-Complete the following before the first eight-input checkpoint:
+These paths and their targeted tests compile. Runtime validation has not yet
+established native/full/prepared equivalence or rejection behavior. Complete
+and verify the following before crediting the site or running the first
+eight-input checkpoint:
 
 1. Reuse native `PcsProverTranscript::batch_phase` for nonce generation at the
    configured difficulty. Preserve the native witness type, canonical encoding
@@ -160,11 +184,21 @@ No passing replacement means pause and report rather than weaken the target.
 
 Immediately after the first D8/W24 eight-input merge produces a proof that
 verifies with the opening-batch grinding prerequisite completed and checkpoint
-configuration frozen, run this checkpoint before continuing root implementation
-or production integration. Do not measure a configuration that still omits a
-planned grinding site. Do not wait for completion of the full recursive suite.
-This is an engineering feasibility measurement; it does not replace security
-screening or the later complete N=16 acceptance trials.
+configuration frozen, trigger this checkpoint before production integration.
+Do not measure a configuration that still omits a planned grinding site or
+delay the feasibility decision for unrelated integration work. This is an
+engineering measurement; it does not replace security review or production
+acceptance.
+
+The current checkpoint worker includes leaf, eight-input and root preparation
+code. If this complete setup fits the hard limit, prefer three measured full
+N=16 schedules in one resident process over a root-cost proxy. Startup first
+prepares the leaf and verifies bootstrap leaf and eight-input proofs, then
+prepares the root, extracts actual shapes and screens them before granting
+warm trials. A bootstrap proof is cold setup evidence, not one of the three
+measured trials. A failure, OOM or security-screen rejection during setup
+blocks warm trials and is itself a checkpoint failure to report. No such run
+has yet established correctness or a passing checkpoint.
 
 Run three trials on the same qualified target machine, using one proof job
 and two native workers per proof. Complete input-independent circuit/key
@@ -179,7 +213,10 @@ checkpoint. Real and padding leaves must use identical parameters.
 For each trial report time and peak memory with equal prominence. Record
 eight-input proving wall time, separate startup and standalone verification
 times, and complete process-tree charged-memory peaks, including resident
-preparation. Use the [Linux baseline profile](linux-proof-measurement.md#baseline-and-comparison-hardware)
+preparation. Distinguish sampled per-phase charged-memory peaks from the
+kernel's lifetime peak: samples are lower bounds, and the lifetime peak governs
+hard-limit compliance. Serialized proof sizes describe retained encodings,
+not allocator footprint. Use the [Linux baseline profile](linux-proof-measurement.md#baseline-and-comparison-hardware)
 on one live machine for all three trials; EPYC 9V45 remains a comparison.
 Start isolated merge timing with eight leaf
 proofs available; include their generation in the N=16 projection. Verify every
@@ -283,8 +320,8 @@ First obtain a working D8 hiding leaf and recursive verifier with complete
 limb/transcript rejection coverage and opening-batch grinding support. Freeze
 the final checkpoint configuration, run the early performance checkpoint at the
 first verified eight-input merge, and follow its continuation decision.
-Then complete actual leaf, eight-input and root shapes, and screen leaf
-profiles under all requirements in the
+Extract actual leaf, eight-input and root shapes before granting full warm
+trials, and screen profiles under all requirements in the
 [review scope](proof-security-review.md), including 16/2/1
 composition losses. A missing theorem or term cannot be treated as a pass.
 
@@ -313,26 +350,32 @@ height-activation design until before mainnet.
 The [planning parameter screen](d8-parameter-screen.md) uses explicit estimated
 shape envelopes. Three profiles per layer meet its conservative arithmetic
 requirements conditionally. Recursive profiles require an additional 16-bit
-opening-batch grinding site, absent from the pinned recursive suite although
-already supported natively. Implement and test the prerequisite above before
-crediting it or running the checkpoint. These are experimental candidates, not
-activation parameters. Actual-shape extraction and independent composition
-review remain mandatory.
+opening-batch grinding site, absent from the unmodified pinned recursive
+suite and implemented in the isolated patch with runtime validation pending.
+Verify the prerequisite above before crediting it or running the checkpoint.
+These are experimental candidates, not activation parameters. Actual-shape
+extraction and independent composition review remain mandatory.
 
-## Implemented scalar scaffold
+## Isolated checkpoint implementation
 
-The opt-in benchmark feature `d8-geometry` implements typed 12-scalar digests,
-24-scalar/three-D8-lane packing, standard native W24 binary compression and
-ALU constraints for canonical internal repacking. Scalar witnesses satisfy
-`x^p=x` before recomposition; recomposition alone would permit arbitrary D8
-coefficients masquerading as base elements. The two-lane digest representation
-is internal only and constrains its final four padding coefficients. Extraction
-from actual permutation outputs takes exactly the first 12 scalars and does
-not force the unused output coefficients to zero.
+The `bench-d8` workspace contains the D8 leaf relation, eight-input aggregation,
+root relation and resident checkpoint worker. It uses the experimental
+recursion patch with standard W24 constants, 12-element scalar digests and the
+72/102-element application layouts. Dependency and application test targets
+compile; no executed D8 proof or measured checkpoint is claimed by this status.
 
-Mutation tests cover every scalar, every extension coefficient, malformed
-geometry and noncanonical internal padding. This is a correctness scaffold,
-not an optimized hash AIR, registered suite, transcript, MMCS verifier or
-recursive proof. It changes no node dependency or live network configuration.
-Next work connects the scalar compression role to dependency tables and
-native/recursive transcript verification, retaining all 12 external elements.
+The worker freezes source/dependency and build identities, actual circuit
+shapes, parameter reports, preprocessing artifacts and verifying keys before
+three warm trials. Input-independent setup remains resident inside the same
+5-GiB cgroup for startup and all trials. Each trial regenerates hiding proofs
+with fresh randomness, executes all 16 leaves, two serial eight-input merges
+and the root, and verifies the resulting proof. It records startup, readiness,
+leaf, merge, root, verification and teardown phase boundaries. The controller
+must validate the frozen reports and runtime configuration before granting
+trials. Failed or incomplete setup cannot be relabeled a ready-service result.
+
+The native/circuit-equivalence, coefficient/capacity binding, ciphertext-padding,
+positive opening-batch grinding and end-to-end eight-input rejection tests are
+pre-measurement gates. Reduced-difficulty smoke proofs test correctness only;
+they are not security or performance acceptance. The isolated workspace and
+patch change no node dependency, retained network configuration or live key.

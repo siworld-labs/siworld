@@ -44,6 +44,7 @@ const EXECUTABLES: &[&str] = &[
     "siworld-aggregation-bench",
     "siworld-bench-plonky3",
     "composition-bench",
+    "d8-checkpoint",
     "leaf_params",
     "d8-security-screen",
     "quantum_prerequisites",

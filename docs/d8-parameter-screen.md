@@ -1,9 +1,11 @@
 # D8 Parameter Planning Screen
 
-Status: experimental candidates conditional on estimated shapes and proposed
-transcript work. These are not approved parameters, actual D8 circuit reports
-or an implemented recursive suite. Re-extract every shape and enforced grinding
-site after implementation. Do not deploy from this table.
+Status: experimental planning candidates conditional on estimated shapes and
+specified transcript sites. These tables are not approved parameters or actual
+D8 circuit reports. An isolated D8 suite and opening-batch grinding patch now
+compile, including test sources; proof correctness and runtime rejection tests
+remain pending. Re-extract every shape and checked grinding site from that
+implementation before measuring a profile. Do not deploy from this table.
 
 The calculator pins `p3-security = 0.9.0-rc.2`. Run:
 
@@ -39,11 +41,12 @@ The search covers log blowup 2/3/4, 96–256 queries in increments of four, bina
 and quaternary maximum folding, and Johnson m=3–32. Grinding is 16 bits before
 queries and zero before OOD and lookups. Leaves have zero commit grinding;
 recursive candidates use 16 bits before each FRI commit and another 16 bits
-immediately before opening batching. That additional site
-is **not implemented** by the pinned recursive suite although already supported
-natively. Native nonce generation, transcript ordering and every recursive
-verification path must be implemented and tested before the first eight-input
-performance checkpoint; see the [grinding prerequisite](d8-w24-recursion.md#opening-batch-grinding-prerequisite).
+immediately before opening batching. The unmodified pinned recursive suite
+lacks that additional site, although the native prover supports it. The
+isolated patch implements nonce/difficulty plumbing and native/full/prepared
+recursive transcript checks; runtime correctness and rejection tests remain
+mandatory before the first eight-input performance checkpoint. See the
+[grinding prerequisite](d8-w24-recursion.md#opening-batch-grinding-prerequisite).
 No security credit is permitted until all validators check it. If infeasible,
 re-screen aggregate and root parameters with zero batch difficulty and report
 actual circuit-shape changes before measuring a replacement. This is an
@@ -253,9 +256,23 @@ or a different justified argument/shape. No existing q92 inheritance is valid.
 
 After D8 correctness, record actual tables, constraints, degrees, quotient
 chunks, hiding extensions, preprocessing keys, opening powers, lookup shapes,
-FRI schedules and every checked grinding site. Repeat the full screen and
-composition analysis. Only then measure passing profiles under the hard limit.
-Opening-batch grinding is a mandatory pre-checkpoint task. Freeze and measure
+FRI schedules and every checked grinding site. The isolated checkpoint worker
+extracts these actual shapes after preparing leaf, merge and root circuits,
+then repeats the fixed-version screen and composition arithmetic before
+warm-trial admission. This extraction path compiles but has not produced
+validated runtime reports. It does not convert the planning envelopes above
+into actual-shape evidence or establish a quantum security theorem.
+
+The checkpoint selects experimental log-blowup 3, binary-folding profiles with
+148 leaf queries and 140 merge/root queries. Query grinding is 16 bits at all
+layers, commit grinding is zero for the leaf and 16 bits for merge/root, and
+batch grinding is 16 bits at all layers. The leaf's extra batch difficulty is
+stronger than its zero-batch planning row; every layer must still pass a new
+actual-shape report rather than inherit the planning totals. Freeze the final
+configuration and regenerated artifacts before the three trials.
+
+Only then measure passing profiles under the hard limit. Opening-batch
+grinding is a mandatory pre-checkpoint task. Freeze and measure
 the implemented final configuration on the qualified EPYC 7763 baseline rather
 than timing a reduced-difficulty substitute. Apply the joint checkpoint gates:
 at most 135 seconds and at most 5 GiB permits continuation; more than 135 and at
