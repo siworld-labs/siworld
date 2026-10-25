@@ -2172,7 +2172,7 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
 +    }
 +
 +    #[test]
-+    fn batch_witness_is_extracted_and_prepared_as_a_runtime_value() {
++    fn batch_pow_witness_is_extracted_and_prepared_as_a_runtime_value() {
 +        let proof = ordinary_opening(&[1]);
 +        let mut changed = proof.clone();
 +        changed.batch_pow_witness = F::ONE;
