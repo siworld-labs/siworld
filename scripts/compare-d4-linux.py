@@ -129,7 +129,7 @@ def main():
         receipt['builds'][mode]['provenance'] = build
         for trial in range(1 if mode == 'scalar' else 3):
             directory = evidence / ('trial-' + str(trial + 1))
-            command = ['sudo', '--preserve-env=RAYON_NUM_THREADS,SIWORLD_COMPOSITION_HIDING_WORKERS,SIWORLD_BENCH_PROFILE',
+            command = ['sudo', '--preserve-env=RAYON_NUM_THREADS,SIWORLD_COMPOSITION_HIDING_WORKERS,SIWORLD_BENCH_PROFILE,GITHUB_ACTIONS',
                 sys.executable, str(ROOT / 'scripts/measure-proof-cgroup.py'),
                 '--output', str(directory), '--uid', str(os.getuid()),
                 '--gid', str(os.getgid()), '--timeout', '900', '--',

@@ -77,7 +77,8 @@ def qualify():
         **topology_counts(topology), 'hypervisor_vendor': fields.get('Hypervisor vendor'),
         'virtualization_type': fields.get('Virtualization type'),
         'virtualization_detection': virtualization,
-        'github_actions_ci': os.environ.get('GITHUB_ACTIONS') == 'true',
+        'github_actions_ci': (os.environ['GITHUB_ACTIONS'] == 'true'
+                              if 'GITHUB_ACTIONS' in os.environ else None),
         'host_tenancy': 'unknown; virtual topology does not establish exclusive host access'}
     evidence = {'lscpu_text': full, 'lscpu_json': json.loads(structured),
                 'lscpu_topology': topology, 'affinity_cpu_ids': sorted(os.sched_getaffinity(0)),

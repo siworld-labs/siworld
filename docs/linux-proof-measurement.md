@@ -51,7 +51,9 @@ and disassembly.
 Record full `lscpu`, exposed core/socket/logical topology, affinity, VM detection,
 CPU model and AVX2/AVX-512 flags. VM-visible physical cores are not evidence of
 the physical host's core count or exclusive access. GitHub-hosted runners are
-virtual CI environments with unverified host tenancy.
+virtual CI environments with unverified host tenancy. Preserve the non-secret
+`GITHUB_ACTIONS` marker through the privileged supervisor. A missing marker is
+unknown, not evidence that a process ran outside CI.
 
 Record the owned cgroup and every visible ancestor's `cpu.max`, effective
 cpuset and `cpu.stat` before/after. The harness never changes CPU limits.
