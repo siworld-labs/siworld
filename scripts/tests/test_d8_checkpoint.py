@@ -474,6 +474,41 @@ class BuilderTests(unittest.TestCase):
         self.assertNotIn('private-owner', json.dumps(result))
         self.assertNotIn('private-proof-value', json.dumps(result))
 
+    def test_panic_diagnostics_keep_only_safe_source_and_last_fixed_phase(self):
+        output = ('D8_TEST_PHASE merge_setup\n'
+            "thread 'private-worker' panicked at /private-build/private-owner/project/src/agg/eight.rs:29:13:\n"
+            'private-proof-value and /private-build/private-owner/witness\n'
+            'D8_TEST_PHASE merge_proof\n')
+        result = self.builder.sanitized_diagnostics(output, 'app-test-8', 101)
+        self.assertEqual(result['source_locations'], [
+            {'source': 'src/agg/eight.rs', 'line': 29, 'column': 13}])
+        self.assertEqual(result['last_test_phase'], 'merge_proof')
+        for private in ('private-owner', 'private-worker', 'private-proof-value', 'witness'):
+            self.assertNotIn(private, json.dumps(result))
+
+    def test_untrusted_phase_lines_do_not_replace_last_fixed_phase(self):
+        output = ('D8_TEST_PHASE merge_setup\n'
+            'D8_TEST_PHASE private proof payload\n'
+            'D8_TEST_PHASE /private-build/private-owner/witness\n'
+            ' D8_TEST_PHASE private_payload\n'
+            'D8_TEST_PHASE private_payload \n'
+            'D8_TEST_PHASE private-payload\n'
+            'D8_TEST_PHASE private_payload\n'
+            'D8_TEST_PHASE ' + 'x' * 81 + '\n')
+        result = self.builder.sanitized_diagnostics(output, 'app-test-8', 101)
+        self.assertEqual(result['last_test_phase'], 'merge_setup')
+        for private in ('private proof payload', 'private-owner', 'private_payload', 'private-payload'):
+            self.assertNotIn(private, json.dumps(result))
+
+    def test_invalid_only_phase_and_unsafe_panic_paths_are_omitted(self):
+        output = ('D8_TEST_PHASE /private-build/private-owner/witness\n'
+            "thread 'worker' panicked at /private-build/private-owner/tests/binding.rs:7:3:\n"
+            "thread 'worker' panicked at /private-build/private-owner/src/../witness.rs:8:4:\n")
+        result = self.builder.sanitized_diagnostics(output, 'app-test-8', 101)
+        self.assertIsNone(result['last_test_phase'])
+        self.assertEqual(result['source_locations'], [])
+        self.assertNotIn('private-owner', json.dumps(result))
+
     def test_batch_grinding_gate_cannot_select_fewer_than_six_cases(self):
         from unittest.mock import patch
         import subprocess

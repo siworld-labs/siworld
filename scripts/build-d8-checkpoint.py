@@ -70,11 +70,14 @@ def rewrite_dependencies(text, upstream):
     return text
 
 
+TEST_PHASES = frozenset(('leaf_setup', 'leaf_proof', 'leaf_verification', 'merge_setup', 'merge_proof', 'merge_verification', 'public_digest_rejection', 'last_child_rejection', 'transcript.native_equivalence.begin', 'transcript.native_equivalence.complete', 'transcript.interleaving.begin', 'transcript.interleaving.complete', 'binary_compression.begin', 'binary_compression.complete', 'suite_geometry.begin', 'suite_geometry.complete', 'prepared_batch_work.begin', 'prepared_batch_work.native_prove', 'prepared_batch_work.native_verify', 'prepared_batch_work.prepare', 'prepared_batch_work.recursive_prove', 'prepared_batch_work.recursive_verify', 'prepared_batch_work.invalid_nonce', 'prepared_batch_work.invalid_opening_coefficients', 'prepared_batch_work.complete', 'scalar_witness_bus.begin', 'scalar_witness_bus.prepare', 'scalar_witness_bus.valid_runner', 'scalar_witness_bus.valid_prove', 'scalar_witness_bus.valid_verify', 'scalar_witness_bus.invalid_coefficients', 'scalar_witness_bus.complete'))
+
+
 def sanitized_diagnostics(output, step, exit_code):
     codes = sorted(set(re.findall(r'^error\[([A-Z][0-9]{4})\]', output, flags=re.M)))
     failed = re.findall(r'^test ([A-Za-z0-9_:]+) \.\.\. FAILED$', output, flags=re.M)
     locations = []
-    for path, line, column in re.findall(r'-->\s+(\S+\.rs):(\d+):(\d+)', output):
+    for path, line, column in re.findall(r'(?:-->|panicked at)\s+(\S+\.rs):(\d+):(\d+)', output):
         # Keep only a conventional relative Rust source suffix. Diagnostic
         # messages and source excerpts can contain proof values or host paths.
         suffix = path.rsplit('/src/', 1)[-1]
@@ -82,7 +85,8 @@ def sanitized_diagnostics(output, step, exit_code):
         if not relative.startswith('/') and re.fullmatch(r'[A-Za-z0-9_./-]+\.rs', relative) and '..' not in Path(relative).parts:
             locations.append({'source': relative, 'line': int(line), 'column': int(column)})
     return {'event': 'd8_build_failure', 'step': step, 'exit_code': exit_code,
-            'compiler_error_codes': codes, 'failed_tests': failed[:32], 'source_locations': locations[:32]}
+            'compiler_error_codes': codes, 'failed_tests': failed[:32], 'source_locations': locations[:32],
+            'last_test_phase': ([phase for phase in re.findall(r'^D8_TEST_PHASE ([a-z0-9_.]{1,80})$', output, flags=re.M) if phase in TEST_PHASES] or [None])[-1]}
 
 
 def run_logged(command, log, nonempty_tests=False, minimum_tests=1):
@@ -199,15 +203,12 @@ def build(args):
     subprocess.run(['rustc', str(ROOT / 'scripts/prover-launcher.rs'), '--edition=2021', '-O',
                     '-D', 'warnings', '-C', 'target-cpu=x86-64', '-o', str(guard)], check=True, cwd=ROOT)
     subprocess.run([str(guard), '--check-cpu'], check=True, cwd=ROOT, stdout=subprocess.DEVNULL)
-    base = ['cargo', 'test', '--release', '--manifest-path', str(manifest), '--features', FEATURES, '--lib']
-    for index, test in enumerate(APP_TESTS):
-        run_logged([*base, test], destination / ('app-test-' + str(index + 1) + '.log'), nonempty_tests=True)
     run_logged(['cargo', 'test', '--release', '--manifest-path', str(upstream / 'Cargo.toml'),
         '-p', 'p3-recursion', '--lib', 'batch_pow'],
         destination / 'opening-batch-grinding-rejection-tests.log', nonempty_tests=True, minimum_tests=6)
     run_logged(['cargo', 'test', '--release', '--manifest-path', str(upstream / 'Cargo.toml'),
         '-p', 'p3-recursion', '--test', 'd8_scalar_w24'],
-        destination / 'd8-transcript-and-codec-tests.log', nonempty_tests=True)
+        destination / 'd8-transcript-and-codec-tests.log', nonempty_tests=True, minimum_tests=6)
     run_logged(['cargo', 'test', '--release', '--manifest-path', str(upstream / 'Cargo.toml'),
         '-p', 'p3-poseidon2-circuit-air', '--lib',
         'scalar_w24_d8_challenger_air_binds_initial_capacity_and_squeeze_chain'],
@@ -216,6 +217,9 @@ def build(args):
         '-p', 'p3-recursion', '--test', 'prepared_recursion',
         'positive_opening_batch_grinding_full_and_prepared_recursion'],
         destination / 'opening-batch-grinding-test.log', nonempty_tests=True)
+    base = ['cargo', 'test', '--release', '--manifest-path', str(manifest), '--features', FEATURES, '--lib']
+    for index, test in enumerate(APP_TESTS):
+        run_logged([*base, test], destination / ('app-test-' + str(index + 1) + '.log'), nonempty_tests=True)
     run_logged(['cargo', 'build', '--release', '--manifest-path', str(manifest),
         '--features', FEATURES, '--bin', 'd8-checkpoint'], destination / 'build.log')
     if registry_pins((workspace / 'Cargo.lock').read_text()) != original_lock:

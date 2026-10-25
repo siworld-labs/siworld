@@ -2339,7 +2339,7 @@ diff --git a/recursion/tests/d8_scalar_w24.rs b/recursion/tests/d8_scalar_w24.rs
 new file mode 100644
 --- /dev/null
 +++ b/recursion/tests/d8_scalar_w24.rs
-@@ -0,0 +1,384 @@
+@@ -0,0 +1,412 @@
 +//! Scalar W24 transcript geometry for experimental D8 recursion.
 +
 +use p3_challenger::{CanObserve, CanSample, DuplexChallenger};
@@ -2358,6 +2358,10 @@ new file mode 100644
 +use p3_symmetric::Permutation;
 +
 +type E = BinomialExtensionField<KoalaBear, 8>;
++
++fn phase(label: &'static str) {
++    eprintln!("D8_TEST_PHASE {label}");
++}
 +
 +fn descriptor() -> FriConfigV1 {
 +    FriConfigV1::new(
@@ -2441,16 +2445,21 @@ new file mode 100644
 +
 +#[test]
 +fn scalar_w24_d8_transcript_matches_native() {
++    phase("transcript.native_equivalence.begin");
 +    transcript(false);
++    phase("transcript.native_equivalence.complete");
 +}
 +
 +#[test]
 +fn scalar_w24_challenger_is_not_changed_by_mmcs_table_interleaving() {
++    phase("transcript.interleaving.begin");
 +    transcript(true);
++    phase("transcript.interleaving.complete");
 +}
 +
 +#[test]
 +fn scalar_w24_d8_binary_compression_matches_native_for_both_directions() {
++    phase("binary_compression.begin");
 +    let config = experimental_koala_bear_d8_poseidon2_w24_random_codeword(
 +        &descriptor(),
 +        &VerifierLimits::default(),
@@ -2498,10 +2507,12 @@ new file mode 100644
 +    let mut runner = CircuitRunner::new(&circuit);
 +    runner.set_public_inputs(&public_values).unwrap();
 +    runner.run().unwrap();
++    phase("binary_compression.complete");
 +}
 +
 +#[test]
 +fn experimental_suite_keeps_native_d8_and_digest12() {
++    phase("suite_geometry.begin");
 +    let spec = descriptor().suite().spec();
 +    assert_eq!(
 +        (
@@ -2519,12 +2530,14 @@ new file mode 100644
 +    assert!(descriptor().validate(&VerifierLimits::default()).is_ok());
 +    let too_few_masks = FriConfigV1::new(descriptor().suite(), 1, 0, 1, 2, 0, 0, 0, 0, 7, 0);
 +    assert!(too_few_masks.validate(&VerifierLimits::default()).is_err());
++    phase("suite_geometry.complete");
 +}
 +
 +/// A real hiding D8 proof exercises positive opening-batch work through a
 +/// reusable recursive circuit. Mutations retain the exact accepted shape.
 +#[test]
 +fn d8_positive_batch_work_prepared_proof_rejects_nonce_and_opening_claim_mutations() {
++    phase("prepared_batch_work.begin");
 +    use p3_circuit::test_utils::{FibonacciAir, generate_trace_rows};
 +    use p3_circuit_prover::TablePacking;
 +    use p3_recursion::builtin_config::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordConfig;
@@ -2554,6 +2567,7 @@ new file mode 100644
 +    }
 +    let public = vec![KoalaBear::ZERO, KoalaBear::ONE, b];
 +    let air = FibonacciAir {};
++    phase("prepared_batch_work.native_prove");
 +    let mut proof = prove(
 +        &config,
 +        &air,
@@ -2561,7 +2575,9 @@ new file mode 100644
 +        &public,
 +    )
 +    .unwrap();
++    phase("prepared_batch_work.native_verify");
 +    verify(&config, &air, &proof, &public).unwrap();
++    phase("prepared_batch_work.prepare");
 +    let prepared = PreparedLayer::<Config, FibonacciAir, Backend, 8>::new(
 +        PreparedSource::UniStark {
 +            air: &air,
@@ -2577,6 +2593,7 @@ new file mode 100644
 +        },
 +    )
 +    .unwrap();
++    phase("prepared_batch_work.recursive_prove");
 +    let output = prepared
 +        .prove(PreparedInput::UniStark {
 +            proof: &proof,
@@ -2584,9 +2601,11 @@ new file mode 100644
 +            preprocessed_commit: None,
 +        })
 +        .unwrap();
++    phase("prepared_batch_work.recursive_verify");
 +    prepared.verifier().verify(&output.0, &[]).unwrap();
 +    let original_nonce = proof.opening_proof.1.batch_pow_witness;
 +    // A nonce is not unique: choose an actually rejected same-shape candidate.
++    phase("prepared_batch_work.invalid_nonce");
 +    let mut rejected_nonce = false;
 +    for _ in 0..256 {
 +        proof.opening_proof.1.batch_pow_witness += KoalaBear::ONE;
@@ -2607,6 +2626,7 @@ new file mode 100644
 +            .is_err()
 +    );
 +    proof.opening_proof.1.batch_pow_witness = original_nonce;
++    phase("prepared_batch_work.invalid_opening_coefficients");
 +    let original_claim = proof.opened_values.trace_local[0];
 +    for coefficient in 0..8 {
 +        let mut delta = [KoalaBear::ZERO; 8];
@@ -2628,6 +2648,7 @@ new file mode 100644
 +            "prepared opening coefficient {coefficient}"
 +        );
 +    }
++    phase("prepared_batch_work.complete");
 +}
 +
 +/// The host permutation intentionally reads constant coefficients. Full
@@ -2635,6 +2656,7 @@ new file mode 100644
 +/// including when the host runner accepts the unchanged scalar digest.
 +#[test]
 +fn scalar_w24_prepared_proof_rejects_nonconstant_d8_input_coefficients() {
++    phase("scalar_witness_bus.begin");
 +    use p3_circuit_prover::{BatchStarkProver, ConstraintProfile, TablePacking};
 +    use p3_recursion::builtin_config::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordConfig;
 +    use p3_recursion::{
@@ -2692,6 +2714,7 @@ new file mode 100644
 +    {
 +        prover.register_table_prover(table);
 +    }
++    phase("scalar_witness_bus.prepare");
 +    let prepared = prover
 +        .prepare_circuit::<E, 8>(
 +            &circuit,
@@ -2703,9 +2726,13 @@ new file mode 100644
 +    let public: Vec<_> = scalars.into_iter().map(E::from).collect();
 +    let mut runner = circuit.runner();
 +    runner.set_public_inputs(&public).unwrap();
++    phase("scalar_witness_bus.valid_runner");
 +    let traces = runner.run().unwrap();
++    phase("scalar_witness_bus.valid_prove");
 +    let (proof, _) = prepared.prove_with_legacy_data(&traces).unwrap();
++    phase("scalar_witness_bus.valid_verify");
 +    prepared.verifier().verify(&proof, &[]).unwrap();
++    phase("scalar_witness_bus.invalid_coefficients");
 +    for coefficient in 1..8 {
 +        let mut invalid = public.clone();
 +        let mut delta = [KoalaBear::ZERO; 8];
@@ -2723,6 +2750,7 @@ new file mode 100644
 +            );
 +        }
 +    }
++    phase("scalar_witness_bus.complete");
 +}
 diff --git a/recursion/tests/prepared_layer.rs b/recursion/tests/prepared_layer.rs
 --- a/recursion/tests/prepared_layer.rs

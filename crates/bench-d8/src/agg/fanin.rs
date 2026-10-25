@@ -190,26 +190,34 @@ mod tests {
             query_pow_bits: 4,
             ..FriParams::fast()
         };
+        eprintln!("D8_TEST_PHASE leaf_setup");
         let prover = Arc::new(SlotProver::new_acc(fri));
         let (witnesses, _) = acc_witnesses(vec![sample_slot(100, false)], 1000, FEE_BASE, 21);
+        eprintln!("D8_TEST_PHASE leaf_proof");
         let (proof, statement) = prover.prove_acc(&witnesses[0]);
+        eprintln!("D8_TEST_PHASE leaf_verification");
         prover.verify(&proof, &statement).unwrap();
         let input = Input::Uni(&proof, &statement, &witnesses[0].anchor_path);
         let params = ProveNextLayerParams {
             table_packing: TablePacking::new(4, 4).with_min_trace_height(128),
             ..Default::default()
         };
+        eprintln!("D8_TEST_PHASE merge_setup");
         let batch = EightLeafAggregation::new(prover, input, &fri.config(), &params).unwrap();
+        eprintln!("D8_TEST_PHASE merge_proof");
         let result = batch.prove(&[input; FAN_IN]).unwrap();
         let full = anchor_leaf(&statement, &witnesses[0].anchor_path);
         let expected = (1..FAN_IN).fold(full.clone(), |a, _| compose_acc(&a, &full));
         let public = node_digest(&expected);
+        eprintln!("D8_TEST_PHASE merge_verification");
         batch.verifier().verify(&result, &public).unwrap();
+        eprintln!("D8_TEST_PHASE public_digest_rejection");
         for i in [0, DIGEST - 1] {
             let mut changed = public.clone();
             changed[i] += F::ONE;
             assert!(batch.verifier().verify(&result, &changed).is_err());
         }
+        eprintln!("D8_TEST_PHASE last_child_rejection");
         let mut wrong = statement.clone();
         wrong[ACC_SET + SET_LEN - 1] += F::ONE;
         let mut inputs = [input; FAN_IN];
