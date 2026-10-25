@@ -231,4 +231,48 @@ mod tests {
         let t = SecurityTerm::new("commitment-collision", ErrorBits::from_log2(185.));
         assert_eq!(quantum(&t), 123.);
     }
+    #[test]
+    fn recursive_batching_grinding_cannot_be_assumed_at_an_unchecked_site() {
+        let shape = InstanceShape {
+            log_trace_length: 21,
+            modulus_bits: 247,
+            collision_resistance: 185,
+            num_batched_functions: 8192,
+        };
+        let air = StarkAirParams {
+            num_constraints: 65536,
+            max_constraint_degree: 7,
+            num_quotient_chunks: 128,
+            max_combo: 2,
+        };
+        let fri = FriRegime {
+            log_blowup: 2,
+            num_queries: 216,
+            log_final_poly_len: 0,
+            max_log_arity: 1,
+            commit_pow_bits: 0,
+            query_pow_bits: 16,
+        };
+        let lookup = LogUpAir {
+            num_interactions: 128,
+            max_message_width: 32,
+        };
+        for batch_pow in [0, 16] {
+            let sites = GrindingSites {
+                out_of_domain: 0,
+                lookup_challenge: 0,
+                batch_combination: batch_pow,
+            };
+            let extra: Vec<_> = security_term(&lookup, &shape, &sites).into_iter().collect();
+            let raw = proven_security_report(&FixedJohnson(fri, 8), &air, &shape, &extra, &sites)
+                .ldr
+                .unwrap();
+            let terms = split_johnson(&raw, &fri, &shape, 8);
+            let bits = union(terms.iter().map(quantum)) - 19f64.log2();
+            assert_eq!(bits >= 100., batch_pow == 16);
+            assert!(terms.iter().any(|t| t.label == "batch-combination"));
+            assert!(terms.iter().any(|t| t.label == "fri-folding"));
+            assert!(terms.iter().any(|t| t.label == "fri-query"));
+        }
+    }
 }

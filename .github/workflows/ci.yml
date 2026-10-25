@@ -79,6 +79,10 @@ jobs:
         run: |
           cargo test --release --locked -p siworld-bench-plonky3 --features experimental-fanin,phase-profile,security-report --lib
           cargo clippy --release --locked -p siworld-bench-plonky3 --features experimental-fanin,phase-profile,security-report --bin composition-bench -- -D warnings
+      - name: D8 scalar geometry rejection tests
+        run: |
+          cargo test --release --locked -p siworld-bench-plonky3 --features d8-geometry --lib d8_geometry::tests
+          cargo clippy --release --locked -p siworld-bench-plonky3 --features d8-geometry --lib -- -D warnings
       - name: Conditional D8 planning screen
         run: |
           cargo test --release --locked -p siworld-bench-plonky3 --features security-report --bin d8-security-screen

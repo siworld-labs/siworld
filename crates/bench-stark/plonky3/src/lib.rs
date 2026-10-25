@@ -8,6 +8,8 @@
 
 pub mod agg;
 pub mod air;
+#[cfg(feature = "d8-geometry")]
+pub mod d8_geometry;
 #[cfg(feature = "phase-profile")]
 pub mod profile;
 #[cfg(feature = "security-report")]

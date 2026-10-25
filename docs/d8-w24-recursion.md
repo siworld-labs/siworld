@@ -216,3 +216,21 @@ opening-batch grinding site, absent from the pinned suite. Design nonce
 placement and transcript ordering and test native/recursive rejection before
 crediting it. This is an unresolved experimental design item, not activation.
 Actual-shape extraction and independent composition review remain mandatory.
+
+## Implemented scalar scaffold
+
+The opt-in benchmark feature `d8-geometry` implements typed 12-scalar digests,
+24-scalar/three-D8-lane packing, standard native W24 binary compression and
+ALU constraints for canonical internal repacking. Scalar witnesses satisfy
+`x^p=x` before recomposition; recomposition alone would permit arbitrary D8
+coefficients masquerading as base elements. The two-lane digest representation
+is internal only and constrains its final four padding coefficients. Extraction
+from actual permutation outputs takes exactly the first 12 scalars and does
+not force the unused output coefficients to zero.
+
+Mutation tests cover every scalar, every extension coefficient, malformed
+geometry and noncanonical internal padding. This is a correctness scaffold,
+not an optimized hash AIR, registered suite, transcript, MMCS verifier or
+recursive proof. It changes no node dependency or live network configuration.
+Next work connects the scalar compression role to dependency tables and
+native/recursive transcript verification, retaining all 12 external elements.

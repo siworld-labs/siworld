@@ -42,6 +42,8 @@ experimental-fanin = []
 phase-profile = []
 # Offline instance-shape analysis; never enabled by the node.
 security-report = ["dep:p3-security", "dep:p3-lookup"]
+# Scalar packing scaffold only; no recursive suite activation.
+d8-geometry = []
 
 [[bin]]
 name = "composition-bench"

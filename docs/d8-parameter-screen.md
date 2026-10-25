@@ -58,7 +58,10 @@ counts; extension auxiliary columns and quotient commitments are charged via
 the envelope's opening/chunk counts. Leaf base rows allow hiding padding for
 the larger query counts. LDE domain log size must not exceed KoalaBear's
 24-bit two-adicity; the calculator rejects larger combinations. A log-21
-recursive commitment therefore excludes log blowup 4. Maximum folding arity
+recursive commitment therefore excludes log blowup 4. These conservative
+row/width allowances also leave the LogUp multiplicity bound
+`sum(interactions * base_rows) < p`: `128 * 2^20 < 2130706433`.
+Recompute that condition from actual per-table interaction multiplicities. Maximum folding arity
 means factor 2 or 4, with final polynomial log length zero and a potentially
 smaller terminal fold; it is not a new Merkle branching format.
 
