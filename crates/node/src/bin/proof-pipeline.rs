@@ -194,6 +194,7 @@ fn start(
             auth: RpcAuth::new(server, None, None)?,
         }),
         mine,
+        worker: None,
     };
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let thread = std::thread::spawn(move || {
@@ -243,12 +244,15 @@ fn measure() -> Result<(), String> {
             !["--slots", "--blocks", "--parallel", "--timeout-secs"].contains(&pair[0].as_str())
         })
     {
-        return Err("usage: siworld-proof-pipeline [--slots 32] [--blocks 3] [--parallel 4] [--timeout-secs 1800]".into());
+        return Err("usage: siworld-proof-pipeline [--slots 32] [--blocks 3] [--parallel 1|2] [--timeout-secs 1800]".into());
     }
     let slots = u32::try_from(number(&args, "--slots", 32)?).map_err(|_| "slots overflow")?;
     let blocks = number(&args, "--blocks", 3)?;
     let parallel =
-        usize::try_from(number(&args, "--parallel", 4)?).map_err(|_| "parallelism overflow")?;
+        usize::try_from(number(&args, "--parallel", 1)?).map_err(|_| "parallelism overflow")?;
+    if ![1, 2].contains(&parallel) {
+        return Err("parallelism must be 1 or 2".into());
+    }
     let timeout = Duration::from_secs(number(&args, "--timeout-secs", 1800)?);
     let seed = SecretSeed::from_os_rng().map_err(|e| e.to_string())?;
     let miner_key = SpendKey::from_digest(seed.derive("synthetic miner", 0));

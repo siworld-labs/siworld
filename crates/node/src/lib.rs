@@ -21,6 +21,7 @@ pub mod gate;
 pub mod genesis;
 pub mod keystore;
 pub mod mempool;
+pub mod miner_protocol;
 pub mod node;
 pub mod orders;
 pub mod p2p;
@@ -31,6 +32,7 @@ pub mod secrets;
 pub mod service;
 pub mod wallet;
 pub mod wire;
+pub mod worker_transport;
 
 pub use devfund::{DevFundSigner, PayoutRefused};
 #[cfg(feature = "development")]

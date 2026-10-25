@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "project": "siworld",
+  "audits": [
+    {
+      "id": "proof-composition",
+      "area": "proofs",
+      "status": "planned",
+      "scope": "Plonky3 leaf AIR, recursive aggregation, pinned verifier artifacts, packing, domain separation and additive set-hash binding.",
+      "excluded": [
+        "unmodified upstream Plonky3",
+        "unmodified upstream Plonky3-recursion"
+      ],
+      "implementation_paths": [
+        "crates/circuits",
+        "crates/prover",
+        "crates/bench-stark/plonky3"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    },
+    {
+      "id": "hash-and-consensus",
+      "area": "consensus",
+      "status": "planned",
+      "scope": "SIWORLD Poseidon2 instances, BLAKE3 consensus hashes, ASERT, proof-of-work and cumulative-work fork choice.",
+      "excluded": [
+        "unmodified upstream BLAKE3",
+        "unmodified upstream Poseidon2 reference code"
+      ],
+      "implementation_paths": [
+        "crates/poseidon2",
+        "crates/consensus",
+        "crates/state"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    },
+    {
+      "id": "post-quantum-integration",
+      "area": "cryptography",
+      "status": "planned",
+      "scope": "SIWORLD integration of ML-KEM-768, ML-DSA-65, key lifecycle, encoding, authorization and downgrade boundaries.",
+      "excluded": [
+        "unmodified upstream ML-KEM",
+        "unmodified upstream ML-DSA"
+      ],
+      "implementation_paths": [
+        "crates/crypto",
+        "crates/node",
+        "docs/protocol.md"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    },
+    {
+      "id": "transport-and-worker-boundary",
+      "area": "network",
+      "status": "in_progress",
+      "scope": "Versioned miner and trusted proof-worker handshake, peer authentication, downgrade resistance, retry classification and resource admission.",
+      "excluded": [
+        "unmodified libp2p transport implementation"
+      ],
+      "implementation_paths": [
+        "crates/node/src/miner_protocol.rs",
+        "crates/node/src/p2p.rs",
+        "docs/worker-control.md",
+        "crates/node/src/worker_transport.rs",
+        "crates/node/tests/worker_listener.rs"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    },
+    {
+      "id": "operations-and-memory",
+      "area": "operations",
+      "status": "in_progress",
+      "scope": "Memory measurement acceptance ceilings, missing-data rejection and process resource measurement.",
+      "excluded": [
+        "host kernel and Docker VM behavior"
+      ],
+      "implementation_paths": [
+        "tools/control-panel/memory_trend.py",
+        "docs/memory-budgets.md"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    }
+  ]
+}

@@ -34,3 +34,12 @@ p3-merkle-tree.workspace = true
 [features]
 default = ["parallel"]
 parallel = ["p3-maybe-rayon/parallel", "p3-recursion/parallel", "p3-circuit-prover/parallel"]
+# Isolated higher-fan-in circuit evaluation; never enabled by the node.
+experimental-fanin = []
+# Fixed-label phase events for isolated process profiling.
+phase-profile = []
+
+[[bin]]
+name = "composition-bench"
+path = "src/bin/composition_bench.rs"
+required-features = ["experimental-fanin", "phase-profile"]

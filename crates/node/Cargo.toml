@@ -17,6 +17,11 @@ name = "siworld-proof-pipeline"
 path = "src/bin/proof-pipeline.rs"
 required-features = ["diagnostics"]
 
+[[bin]]
+name = "siworld-aggregation-bench"
+path = "src/bin/aggregation-bench.rs"
+required-features = ["diagnostics"]
+
 [[test]]
 name = "devnet"
 required-features = ["development"]

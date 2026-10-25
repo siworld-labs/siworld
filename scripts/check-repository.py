@@ -16,6 +16,7 @@ DOCUMENTS = {
     "README.md", "whitepaper.md", "architecture.md", "protocol.md",
     "cryptography.md", "security-model.md", "node-operations.md", "rpc.md",
     "benchmarks.md", "testing.md", "development.md",
+    "proof-composition.md", "worker-control.md", "memory-budgets.md",
 }
 PUBLIC_ARTIFACTS = {
     *(f"crates/prover/keys/root-n{n}.bin" for n in (2, 4, 8, 16, 32, 64, 128)),
@@ -38,7 +39,11 @@ def allowed(path):
     if path.parts[0] == "docs":
         return len(path.parts) == 2 and path.name in DOCUMENTS
     if path.parts[0] == "scripts":
-        return len(path.parts) == 2 and path.suffix == ".py"
+        return path.suffix == ".py" and (len(path.parts) == 2 or (len(path.parts) == 3 and path.parts[1] == "tests"))
+    if path.parts[0] == "tools":
+        return name in {"tools/control-panel/memory_trend.py", "tools/control-panel/test_memory_trend.py"}
+    if name == ".github/audit-registry.json":
+        return True
     if path.parts[0] == ".github":
         return path.suffix in {".yml", ".yaml", ".md"} or path.name == "CODEOWNERS"
     if path.parts[0] == "crates" and path.parts[1] in CRATES:

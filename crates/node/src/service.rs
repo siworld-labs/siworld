@@ -61,6 +61,7 @@ use crate::p2p::{self, Codec, Request, Response, MAX_BATCH, MAX_RESPONSE};
 use crate::payments::{PaymentError, PaymentId, PaymentReceipt};
 use crate::wallet::PayError;
 use crate::wire::{decode_tx, encode_tx};
+use crate::worker_transport::{WorkerConfig, WorkerListener};
 
 pub struct Config {
     /// Addresses to accept peers on, e.g. `/ip4/0.0.0.0/tcp/30333`.
@@ -71,6 +72,8 @@ pub struct Config {
     /// Authenticated JSON-lines RPC, restricted to loopback.
     pub rpc: Option<RpcConfig>,
     pub mine: bool,
+    /// Optional authenticated local worker control listener. Disabled by default.
+    pub worker: Option<WorkerConfig>,
 }
 
 pub struct RpcConfig {
@@ -134,6 +137,17 @@ pub async fn run(
     config: Config,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Box<dyn Error>> {
+    if config
+        .worker
+        .as_ref()
+        .is_some_and(|worker| worker.expected.container_size != node.chain.params.container_size)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "worker container size differs from genesis",
+        )
+        .into());
+    }
     if let Some(rpc) = &config.rpc {
         check_rpc_address(rpc.address)?;
     }
@@ -172,6 +186,14 @@ pub async fn run(
             rpc_tx,
             Arc::new(rpc.auth),
         ))))
+    } else {
+        None
+    };
+
+    // The listener is independent of proof job admission and closes on shutdown.
+    let worker_server = if let Some(worker) = config.worker {
+        let listener = WorkerListener::bind(worker).await?;
+        Some(RpcServer(tokio::spawn(listener.serve())))
     } else {
         None
     };
@@ -228,6 +250,7 @@ pub async fn run(
     };
     // Close client tasks before waiting for the non-preemptible proof kernel.
     drop(_rpc_server);
+    drop(worker_server);
     drop(rpc_rx);
     drop(prepared_rx);
     service.node.lock_fund();

@@ -108,6 +108,7 @@ fn start_with_backlog(
 ) -> RunningNode {
     let rpc = format!("127.0.0.1:{}", free_port());
     let config = Config {
+        worker: None,
         listen: vec![format!("/ip4/127.0.0.1/tcp/{p2p}").parse().unwrap()],
         peers: peers
             .iter()

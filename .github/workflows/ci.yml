@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "codex/**"]
   pull_request:
 
 permissions:
@@ -26,6 +26,12 @@ jobs:
           persist-credentials: false
       - name: Publication manifest and documentation
         run: python3 scripts/check-repository.py
+      - name: Audit evidence and memory declarations
+        run: |
+          python3 scripts/check-audit-registry.py
+          python3 scripts/check-memory-budgets.py
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s tools/control-panel -p 'test_*.py' -v
   workspace:
     name: Workspace (fmt, clippy, test)
     runs-on: ubuntu-latest
@@ -69,3 +75,15 @@ jobs:
         run: cargo fmt --all --check
       - name: Tests
         run: cargo test --release --locked -p siworld-bench-plonky3 -p siworld-bench-common
+      - name: Isolated composition relation and profiler format
+        run: |
+          cargo test --release --locked -p siworld-bench-plonky3 --features experimental-fanin,phase-profile --lib agg::fanin::tests
+          cargo clippy --release --locked -p siworld-bench-plonky3 --features experimental-fanin,phase-profile --bin composition-bench -- -D warnings
+      - name: Bounded intra-proof parallel hiding experiment
+        working-directory: .
+        env:
+          RAYON_NUM_THREADS: 2
+          SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+        run: |
+          python3 scripts/build-composition-intra.py
+          cargo test --release --locked --manifest-path .local/composition-intra/benchmark/Cargo.toml -p siworld-bench-plonky3 --features experimental-fanin,phase-profile --lib agg::fanin::tests

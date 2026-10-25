@@ -8,6 +8,8 @@
 
 pub mod agg;
 pub mod air;
+#[cfg(feature = "phase-profile")]
+pub mod profile;
 pub mod trace;
 
 use p3_recursion::VerifierLimits;
