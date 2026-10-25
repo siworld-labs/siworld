@@ -527,6 +527,17 @@ diff --git a/circuit-prover/src/batch_stark_prover/recompose.rs b/circuit-prover
          }
          if let Some(prep) = preprocessed.downcast_mut::<PreprocessedColumns<F, 1>>() {
              return recompose_preprocess_impl::<F, _, 1>(prep, split);
+diff --git a/circuit-prover/src/batch_stark_prover/statement.rs b/circuit-prover/src/batch_stark_prover/statement.rs
+--- a/circuit-prover/src/batch_stark_prover/statement.rs
++++ b/circuit-prover/src/batch_stark_prover/statement.rs
+@@ -196,6 +196,7 @@
+     [
+         KoalaBear => 1,
+         BinomialExtensionField<KoalaBear, 4> => 4,
++        BinomialExtensionField<KoalaBear, 8> => 8,
+         QuinticTrinomialExtensionField<KoalaBear> => 5,
+     ]
+ );
 diff --git a/circuit/src/builder/circuit_builder.rs b/circuit/src/builder/circuit_builder.rs
 --- a/circuit/src/builder/circuit_builder.rs
 +++ b/circuit/src/builder/circuit_builder.rs
@@ -2497,14 +2508,14 @@ diff --git a/recursion/tests/d8_scalar_w24.rs b/recursion/tests/d8_scalar_w24.rs
 new file mode 100644
 --- /dev/null
 +++ b/recursion/tests/d8_scalar_w24.rs
-@@ -0,0 +1,471 @@
+@@ -0,0 +1,571 @@
 +//! Scalar W24 transcript geometry for experimental D8 recursion.
 +
 +use p3_challenger::{CanObserve, CanSample, DuplexChallenger};
 +use p3_circuit::ops::{Poseidon2Config, Poseidon2PermCall};
 +use p3_circuit::{CircuitBuilder, CircuitRunner};
 +use p3_field::extension::BinomialExtensionField;
-+use p3_field::{BasedVectorSpace, PrimeCharacteristicRing};
++use p3_field::{BasedVectorSpace, ExtensionField, PrimeCharacteristicRing, PrimeField64};
 +use p3_koala_bear::{KoalaBear, default_koalabear_poseidon2_24};
 +use p3_recursion::FriRecursionConfig;
 +use p3_recursion::builtin_config::{
@@ -2697,6 +2708,46 @@ new file mode 100644
 +    phase("suite_geometry.complete");
 +}
 +
++#[test]
++fn d8_statement_preprocessor_preserves_base_and_extension_exports() {
++    use p3_circuit::StatementExport;
++    use p3_circuit::ops::NpoTypeId;
++    use p3_circuit_prover::StatementPreprocessor;
++    use p3_circuit_prover::common::NpoPreprocessor;
++
++    phase("statement_preprocessor.begin");
++    let mut builder = CircuitBuilder::<E>::new();
++    builder.enable_recompose::<KoalaBear>(
++        p3_circuit::ops::recompose::generate_recompose_trace::<KoalaBear, E>,
++    );
++    let base = builder.public_input();
++    let extension = builder.public_input();
++    let schema = builder
++        .set_statement_exports::<KoalaBear>(&[
++            StatementExport::Base(base),
++            StatementExport::Extension(extension),
++        ])
++        .unwrap();
++    assert_eq!(schema.base_len(), 9);
++    let circuit = builder.build().unwrap();
++    let mut preprocessed = circuit.generate_preprocessed_columns::<8>().unwrap();
++    let expected = preprocessed.non_primitive[&NpoTypeId::statement()]
++        .iter()
++        .map(|value| value.as_base().unwrap())
++        .collect::<Vec<_>>();
++    let columns = <StatementPreprocessor as NpoPreprocessor<KoalaBear>>::preprocess(
++        &StatementPreprocessor::new(schema),
++        &circuit,
++        &mut preprocessed,
++    )
++    .unwrap();
++    assert_eq!(columns.len(), 1);
++    assert_eq!(columns[&NpoTypeId::statement()], expected);
++    assert_eq!(expected.len(), 10);
++    assert_eq!(expected[0], KoalaBear::ONE);
++    phase("statement_preprocessor.complete");
++}
++
 +/// A real hiding D8 proof exercises positive opening-batch work through a
 +/// reusable recursive circuit. Mutations retain the exact accepted shape.
 +#[test]
@@ -2874,7 +2925,15 @@ new file mode 100644
 +#[test]
 +fn scalar_w24_prepared_proof_rejects_nonconstant_d8_input_coefficients() {
 +    phase("scalar_witness_bus.begin");
-+    use p3_circuit_prover::{BatchStarkProver, ConstraintProfile, TablePacking};
++    use p3_circuit::StatementExport;
++    use p3_circuit_prover::{
++        BatchStarkProver, ConstraintProfile, StatementAirBuilder, StatementPreprocessor,
++        StatementProver, TablePacking,
++    };
++    use p3_recursion::artifact::{
++        ArtifactLimits, CanonicalStatement, ExpectedVerifierArtifact, PortableArtifactExport,
++        PortableVerifier,
++    };
 +    use p3_recursion::builtin_config::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordConfig;
 +    use p3_recursion::{
 +        BatchOnly, FriRecursionBackend, FriRecursionBackendForExt, PcsRecursionBackend,
@@ -2911,19 +2970,34 @@ new file mode 100644
 +            absorb_len: 0,
 +        })
 +        .unwrap();
-+    for (output, scalar) in outputs.into_iter().zip(expected.into_iter().take(12)) {
++    let exported_outputs = outputs
++        .into_iter()
++        .take(12)
++        .map(Option::unwrap)
++        .collect::<Vec<_>>();
++    for (&output, scalar) in exported_outputs.iter().zip(expected.into_iter().take(12)) {
 +        let constant = builder.define_const(E::from(scalar));
-+        builder.connect(output.unwrap(), constant);
++        builder.connect(output, constant);
 +    }
++    let schema = builder
++        .set_statement_exports::<KoalaBear>(
++            &exported_outputs
++                .into_iter()
++                .map(StatementExport::Base)
++                .collect::<Vec<_>>(),
++        )
++        .unwrap();
 +    let circuit = builder.build().unwrap();
-+    let preprocessors =
++    let mut preprocessors =
 +        <Backend as PcsRecursionBackend<Config, BatchOnly, 8>>::non_primitive_preprocessors(
 +            &backend,
 +        );
-+    let air_builders =
++    let mut air_builders =
 +        <Backend as PcsRecursionBackend<Config, BatchOnly, 8>>::non_primitive_air_builders(
 +            &backend,
 +        );
++    preprocessors.push(Box::new(StatementPreprocessor::new(schema.clone())));
++    air_builders.push(Box::new(StatementAirBuilder::<8>::new(schema.clone())));
 +    let mut prover = BatchStarkProver::new(config)
 +        .with_table_packing(TablePacking::new(4, 4).with_min_trace_height(128));
 +    for table in
@@ -2931,6 +3005,7 @@ new file mode 100644
 +    {
 +        prover.register_table_prover(table);
 +    }
++    prover.register_table_prover(Box::new(StatementProver::<8>::new(schema)));
 +    phase("scalar_witness_bus.prepare");
 +    let prepared = prover
 +        .prepare_circuit::<E, 8>(
@@ -2948,7 +3023,43 @@ new file mode 100644
 +    phase("scalar_witness_bus.valid_prove");
 +    let (proof, _) = prepared.prove_with_legacy_data(&traces).unwrap();
 +    phase("scalar_witness_bus.valid_verify");
-+    prepared.verifier().verify(&proof, &[]).unwrap();
++    let verifier = prepared.verifier();
++    let expected_statement = &expected[..12];
++    verifier.verify(&proof, expected_statement).unwrap();
++    for index in [0, 11] {
++        let mut invalid_statement = expected_statement.to_vec();
++        invalid_statement[index] += KoalaBear::ONE;
++        assert!(verifier.verify(&proof, &invalid_statement).is_err());
++    }
++    phase("scalar_witness_bus.portable_roundtrip");
++    let limits = ArtifactLimits::default();
++    let verifier_bytes = verifier.encode_verifier_artifact(limits).unwrap();
++    let proof_bytes = verifier.encode_proof_artifact(&proof, limits).unwrap();
++    let imported = PortableVerifier::decode(
++        &verifier_bytes,
++        ExpectedVerifierArtifact::from_trusted_bytes(&verifier_bytes),
++        limits,
++    )
++    .unwrap();
++    let statement_bytes = expected_statement
++        .iter()
++        .flat_map(|value| (value.as_canonical_u64() as u32).to_le_bytes())
++        .collect::<Vec<_>>();
++    imported
++        .verify_encoded(&proof_bytes, CanonicalStatement::new(&statement_bytes, 12))
++        .unwrap();
++    let mut invalid_statement_bytes = statement_bytes.clone();
++    invalid_statement_bytes[..4].copy_from_slice(
++        &((expected_statement[0] + KoalaBear::ONE).as_canonical_u64() as u32).to_le_bytes(),
++    );
++    assert!(
++        imported
++            .verify_encoded(
++                &proof_bytes,
++                CanonicalStatement::new(&invalid_statement_bytes, 12),
++            )
++            .is_err()
++    );
 +    phase("scalar_witness_bus.invalid_coefficients");
 +    for coefficient in 1..8 {
 +        let mut invalid = public.clone();
@@ -2962,7 +3073,7 @@ new file mode 100644
 +            .expect("host execution ignores nonconstant scalar coefficients");
 +        if let Ok((proof, _)) = prepared.prove_with_legacy_data(&traces) {
 +            assert!(
-+                prepared.verifier().verify(&proof, &[]).is_err(),
++                verifier.verify(&proof, expected_statement).is_err(),
 +                "coefficient {coefficient}"
 +            );
 +        }

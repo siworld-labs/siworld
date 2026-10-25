@@ -1,14 +1,15 @@
 # D8 W24 Recursive Suite Implementation Plan
 
-Status: isolated implementation with compiler validation; proof correctness,
-security review and performance measurement remain pending. The target is
+Status: experimental implementation with passing primitive and reusable-recursion
+correctness tests. Application correctness, security review and performance
+measurement remain pending. The target is
 KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12-base-element digests.
 The N=16 proof-latency target is 180 seconds under the unchanged 5-GiB
 process-tree hard limit. This proving target does not change the consensus
 block interval. The baseline is Plonky3 `0.9.0-rc.2` and recursion revision
 `3a69ba61f713c8400b14eb3d8f0e52caa13512c7`, with the separately maintained
-experimental dependency patch. No verified D8 recursive proof, checkpoint
-pass or security approval is claimed.
+experimental dependency patch. No verified eight-input application proof,
+checkpoint pass or security approval is claimed.
 
 ## Upstream gaps and isolated implementation
 
@@ -19,12 +20,11 @@ an experimental suite registry/configuration, scalar W24 binary compression,
 D8 backend dispatch, transcript handling and artifact encoding. It does not
 relax the old unsupported packed geometry or select the D8/W32 prototype.
 
-The dependency and the isolated application compile, including their test
-sources. Rejection, native/circuit-equivalence, opening-batch grinding and
-end-to-end eight-input proof tests still require execution. Compiler success
-is not evidence that those tests pass or that the security ledger describes
-a correct recursive verifier. The retained seven-node N=2 deployment and its
-dependencies remain unchanged.
+Native/circuit transcript equivalence, opening-batch grinding, scalar-coefficient
+rejection and reusable D8 recursive-proof tests pass. End-to-end eight-input
+application verification remains a pre-measurement gate. These tests do not
+establish independent security approval or performance feasibility. The retained
+seven-node N=2 deployment and its dependencies remain unchanged.
 
 ## Scalar geometry
 
@@ -42,8 +42,8 @@ The challenger uses a dedicated W24 table with constraints for its initial
 capacity and squeeze chain. Ordinary MMCS permutations use a separate table,
 so interleaving them cannot supply a different challenger capacity. This
 scalar AIR is an initial implementation, not a claim of optimal table width
-or proving cost. Native/circuit transcript and interleaving tests are present
-but their execution remains a correctness prerequisite.
+or proving cost. Native/circuit transcript and interleaving tests pass for the
+covered fixtures; application composition still requires separate validation.
 
 The earlier `d8-geometry` scaffold retains explicit three-lane packing and
 canonical internal padding as a separate correctness tool. It is not the
@@ -125,10 +125,10 @@ extra element. Positive-difficulty descriptors are distinct from the retained
 zero-difficulty encoding. Prepared input layouts change, so prepared artifacts
 and keys must be regenerated even when a descriptor has zero difficulty.
 
-These paths and their targeted tests compile. Runtime validation has not yet
-established native/full/prepared equivalence or rejection behavior. Complete
-and verify the following before crediting the site or running the first
-eight-input checkpoint:
+Targeted native/full/prepared equivalence and rejection tests pass, including
+positive batch work, canonical zero witnesses, claim mutations and all eight
+opening coefficients. Retain the following requirements when freezing the site
+for the first eight-input checkpoint:
 
 1. Reuse native `PcsProverTranscript::batch_phase` for nonce generation at the
    configured difficulty. Preserve the native witness type, canonical encoding
@@ -351,8 +351,8 @@ The [planning parameter screen](d8-parameter-screen.md) uses explicit estimated
 shape envelopes. Three profiles per layer meet its conservative arithmetic
 requirements conditionally. Recursive profiles require an additional 16-bit
 opening-batch grinding site, absent from the unmodified pinned recursive
-suite and implemented in the isolated patch with runtime validation pending.
-Verify the prerequisite above before crediting it or running the checkpoint.
+suite and covered by native/full/prepared runtime tests in the isolated patch.
+The frozen actual configuration must retain every checked prerequisite above.
 These are experimental candidates, not activation parameters. Actual-shape
 extraction and independent composition review remain mandatory.
 
@@ -361,8 +361,9 @@ extraction and independent composition review remain mandatory.
 The `bench-d8` workspace contains the D8 leaf relation, eight-input aggregation,
 root relation and resident checkpoint worker. It uses the experimental
 recursion patch with standard W24 constants, 12-element scalar digests and the
-72/102-element application layouts. Dependency and application test targets
-compile; no executed D8 proof or measured checkpoint is claimed by this status.
+72/102-element application layouts. Primitive and reusable D8 recursive-proof
+tests pass; end-to-end eight-input application correctness and a measured
+checkpoint remain unestablished.
 
 The worker freezes source/dependency and build identities, actual circuit
 shapes, parameter reports, preprocessing artifacts and verifying keys before

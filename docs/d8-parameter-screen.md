@@ -2,9 +2,9 @@
 
 Status: experimental planning candidates conditional on estimated shapes and
 specified transcript sites. These tables are not approved parameters or actual
-D8 circuit reports. An isolated D8 suite and opening-batch grinding patch now
-compile, including test sources; proof correctness and runtime rejection tests
-remain pending. Re-extract every shape and checked grinding site from that
+D8 circuit reports. The isolated D8 suite has passing primitive, opening-batch
+grinding and reusable recursive-proof rejection tests. Application correctness
+and actual-shape reports remain prerequisites. Re-extract every shape and checked grinding site from that
 implementation before measuring a profile. Do not deploy from this table.
 
 The calculator pins `p3-security = 0.9.0-rc.2`. Run:

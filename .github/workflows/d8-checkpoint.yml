@@ -57,8 +57,9 @@ jobs:
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
-          workspaces: crates/bench-d8
+          workspaces: crates/bench-d8 -> ../../.local/d8-target
           cache-on-failure: true
+          cache-workspace-crates: true
       - name: Validate checkpoint collector contracts
         run: python3 -m unittest discover -s scripts/tests -p test_d8_checkpoint.py
       - name: Apply pinned patch, test D8 correctness, build and package v3 worker

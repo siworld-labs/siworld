@@ -70,7 +70,7 @@ def rewrite_dependencies(text, upstream):
     return text
 
 
-TEST_PHASES = frozenset(('leaf_setup', 'leaf_proof', 'leaf_verification', 'merge_setup', 'merge_proof', 'merge_verification', 'public_digest_rejection', 'last_child_rejection', 'transcript.native_equivalence.begin', 'transcript.native_equivalence.complete', 'transcript.interleaving.begin', 'transcript.interleaving.complete', 'binary_compression.begin', 'binary_compression.complete', 'suite_geometry.begin', 'suite_geometry.complete', 'prepared_batch_work.begin', 'prepared_batch_work.native_prove', 'prepared_batch_work.native_verify', 'prepared_batch_work.prepare', 'prepared_batch_work.recursive_prove', 'prepared_batch_work.recursive_verify', 'prepared_batch_work.invalid_nonce', 'prepared_batch_work.invalid_opening_coefficients', 'prepared_batch_work.generic_batch_capture', 'prepared_batch_work.generic_batch_replay', 'prepared_batch_work.complete', 'scalar_witness_bus.begin', 'scalar_witness_bus.prepare', 'scalar_witness_bus.valid_runner', 'scalar_witness_bus.valid_prove', 'scalar_witness_bus.valid_verify', 'scalar_witness_bus.invalid_coefficients', 'scalar_witness_bus.complete'))
+TEST_PHASES = frozenset(('leaf_setup', 'leaf_proof', 'leaf_verification', 'merge_setup', 'merge_proof', 'merge_verification', 'public_digest_rejection', 'last_child_rejection', 'transcript.native_equivalence.begin', 'transcript.native_equivalence.complete', 'transcript.interleaving.begin', 'transcript.interleaving.complete', 'binary_compression.begin', 'binary_compression.complete', 'suite_geometry.begin', 'suite_geometry.complete', 'prepared_batch_work.begin', 'prepared_batch_work.native_prove', 'prepared_batch_work.native_verify', 'prepared_batch_work.prepare', 'prepared_batch_work.recursive_prove', 'prepared_batch_work.recursive_verify', 'prepared_batch_work.invalid_nonce', 'prepared_batch_work.invalid_opening_coefficients', 'prepared_batch_work.generic_batch_capture', 'prepared_batch_work.generic_batch_replay', 'prepared_batch_work.complete', 'scalar_witness_bus.begin', 'scalar_witness_bus.prepare', 'scalar_witness_bus.valid_runner', 'scalar_witness_bus.valid_prove', 'scalar_witness_bus.valid_verify', 'scalar_witness_bus.invalid_coefficients', 'scalar_witness_bus.complete', 'statement_preprocessor.begin', 'statement_preprocessor.complete', 'scalar_witness_bus.portable_roundtrip'))
 
 
 ERROR_CATEGORIES = ('UnsupportedDegree', 'MissingWForExtension', 'Verify', 'MissingTableProver',
@@ -221,7 +221,7 @@ def build(args):
         destination / 'opening-batch-grinding-rejection-tests.log', nonempty_tests=True, minimum_tests=7)
     run_logged(['cargo', 'test', '--release', '--manifest-path', str(upstream / 'Cargo.toml'),
         '-p', 'p3-recursion', '--test', 'd8_scalar_w24'],
-        destination / 'd8-transcript-and-codec-tests.log', nonempty_tests=True, minimum_tests=6)
+        destination / 'd8-transcript-and-codec-tests.log', nonempty_tests=True, minimum_tests=7)
     run_logged(['cargo', 'test', '--release', '--manifest-path', str(upstream / 'Cargo.toml'),
         '-p', 'p3-poseidon2-circuit-air', '--lib',
         'scalar_w24_d8_challenger_air_binds_initial_capacity_and_squeeze_chain'],
