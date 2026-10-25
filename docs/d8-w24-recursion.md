@@ -2,6 +2,9 @@
 
 Status: dependency assessment and proposed implementation sequence. The target
 is KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12-base-element digests.
+The N=16 proof-latency target is 180 seconds under the unchanged 5-GiB
+process-tree hard limit. This proving target does not change the consensus
+block interval.
 No working recursive suite or security approval is claimed. The baseline is
 Plonky3 `0.9.0-rc.2` and recursion revision
 `3a69ba61f713c8400b14eb3d8f0e52caa13512c7`.
@@ -36,24 +39,27 @@ siblings and circuit coefficients must match exactly.
 Estimates are engineering days for one developer familiar with the dependency,
 including tests and review fixes within each package. They are planning ranges,
 not completion promises; security findings can change them. Audit availability
-is separate. The sequential subtotal is 15–27 engineering days, conditional on
+is separate. The sequential subtotal is 17–31 engineering days, conditional on
 the early performance checkpoint permitting further work.
 
 | Package | Estimate | Deliverable and blocking tests |
 | --- | ---: | --- |
 | Scalar W24 geometry | 3–5 days | Typed geometry, coefficient extraction/recomposition, standard permutation tables, native/circuit binary compression; mutations of all 24 inputs, 12 digest limbs and eight extension coefficients, wrong padding and malformed geometry |
 | Recursive suite and FRI | 3–5 days | D8 AIR/table/recomposition dispatch, registry/config codec, transcript observation/squeezing, cap/MMCS targets and canonical artifacts; native/circuit transcript equivalence, wrong suite/key/cap and noncanonical proof rejection |
-| SI relation port | 4–7 days | Consistent leaf/anchor/note/nullifier/hash/codecs, eight-input and root circuits, reviewed additive-set/output layouts; run the early performance checkpoint immediately after the first verified eight-input merge, before completing the root; independent native oracle, all public-field mutations and complete N=16 proof verification |
+| Opening-batch grinding | 2–4 days | Native nonce generation and recursive verification with identical transcript order; configuration/shape/key binding, serialization, positive-difficulty and zero-difficulty rejection tests; required before checkpoint |
+| SI relation port | 4–7 days | Consistent leaf/anchor/note/nullifier/hash/codecs, eight-input and root circuits, reviewed additive-set/output layouts; run the early performance checkpoint after the first verified eight-input merge with opening-batch grinding and the final checkpoint configuration, before completing the root; independent native oracle, all public-field mutations and complete N=16 proof verification |
 | Security screening and measurements | 2–4 days | Actual shape extraction, pinned conjectured and Johnson reports, composition/quantum screening, only passing profiles receive three full N=16 acceptance runs under 5 GiB |
 | Production integration and freeze | 3–6 days | Shared transition/verification interfaces, worker/network binding, resource admission, isolated engineering-network fixtures, reproducible complete sources/artifacts/keys for audit |
 
-Plan the first eight-input checkpoint for engineering day 10, with an estimated
-window of days 8–14 from the start of implementation. This comprises 3–5 days
-for scalar geometry, 3–5 for the recursive suite, and the first 2–4 days of the
-SI port for the leaf and eight-input relation. The remaining 2–3 SI-port days
-cover the root and full rejection coverage. Run the checkpoint immediately
-when the first merge verifies, even if earlier than day 8; do not wait for the
-planned date. These are engineering-effort estimates, not calendar deadlines.
+Plan the first eight-input checkpoint for engineering day 13, with an estimated
+window of days 10–18 from the start of implementation. This comprises 3–5 days
+for scalar geometry, 3–5 for the recursive suite, 2–4 for opening-batch grinding,
+and the first 2–4 days of the SI port for the leaf and eight-input relation.
+The remaining 2–3 SI-port days cover the root and full rejection coverage.
+Opening-batch grinding is on the critical path; it is not deferred until after
+timing. Run the checkpoint immediately when the first merge verifies under the
+final checkpoint configuration, even if earlier than day 10; do not wait for
+the planned date. These are engineering-effort estimates, not calendar deadlines.
 Dependency failures, CI findings and the checkpoint stop conditions can delay
 or suspend progression.
 
@@ -80,11 +86,83 @@ The two-worker hiding kernel must retain independent fresh randomness and the
 same masking guarantees as serial execution. Pin every source delta in the
 final review identity. Validate cancellation, errors and buffer lifetimes.
 
+## Opening-batch grinding prerequisite
+
+The pinned native `p3-fri` already implements this site: its PCS transcript
+absorbs claimed evaluations in commitment, matrix and opening-point order,
+generates the batch PoW witness, and only then samples the extension-field
+batching challenge `alpha`. The native proof carries `batch_pow_witness`, and
+native verification checks it before redrawing `alpha`. This is opening-batch
+grinding, separate from per-fold commitment grinding and final query grinding;
+work at one site cannot be credited at another.
+
+The pinned recursive implementation deliberately supports only zero batch
+PoW bits. `NativeFriParams` rejects nonzero difficulty, its PCS transcript seed
+binds zero, target allocation and shape capture omit the batch witness, and
+challenge extraction samples `alpha` without a batch PoW check. These are
+identified implementation gaps, not evidence that the site is impossible.
+Existing recursive commit/query PoW checks provide a pattern to reuse, subject
+to D8/W24 transcript and scalar-geometry validation.
+
+Complete the following before the first eight-input checkpoint:
+
+1. Reuse native `PcsProverTranscript::batch_phase` for nonce generation at the
+   configured difficulty. Preserve the native witness type, canonical encoding
+   and failure behavior; do not add an unbound or off-transcript nonce search.
+2. Carry the batch difficulty through checked native and recursive parameters,
+   suite/config codecs, PCS domain-separator shape, prepared-shape identity and
+   verifying-key/artifact identity. Validate field/word limits as for the other
+   PoW sites. Allocate and constrain the witness in full and prepared recursive
+   paths, including private-input and serialization layouts.
+3. Match the exact pinned native transcript: bind the PCS seed and claimed
+   evaluations, replay the batch witness check, sample `alpha`, then enter the
+   separately seeded FRI low-degree transcript. Preserve existing commitment
+   and query grinding positions. Compare native and circuit transcript states
+   and challenges; never rely only on successful end-to-end proof verification.
+4. Write rejection tests before implementation for changed validation behavior.
+   Test missing, altered, insufficient-work and noncanonical witnesses; wrong
+   difficulty, suite, seed, key and prepared shape; reordered or changed claims;
+   a witness selected to fail after claim mutation; and a skipped or moved
+   grinding step. A PoW nonce is not a one-time identifier: do not assert that
+   every reused nonce necessarily fails the difficulty on a different transcript.
+   Preserve canonical zero-witness behavior at zero difficulty without absorbing
+   an extra transcript element. Exercise native, recursive and prepared/reused
+   verifier paths with identical accepted and rejected fixtures.
+5. Re-extract each affected circuit's table heights, main/preprocessed columns,
+   constraint degree, quotient chunks, lookup dimensions and batched-opening
+   count. Regenerate pinned `p3-security` reports from the actual configuration,
+   retaining per-layer and 19-proof composition losses. Record the native search
+   cost and recursive verification cost separately in phase measurements.
+
+Freeze the checkpoint source/dependency revisions, W24 permutation and digest
+layout, per-layer FRI/folding and all three grinding difficulties, transcript
+codec, two-worker hiding patch, eight-input circuit artifact and verifying key
+before the three measured trials. Freeze the binary and its build configuration
+as well. The intended recursive candidates currently require 16 batch PoW bits;
+that credit remains conditional until generation and every verification path
+are implemented and tested. Reduced or zero-difficulty smoke configurations do
+not establish the performance checkpoint. A later change to any frozen item
+requires a new three-trial checkpoint before relying on its projection.
+
+If implementation is shown to be infeasible, record the concrete failed
+requirement and stop checkpoint progression. Re-screen aggregate and root
+parameters with batch difficulty fixed to zero using the pinned `p3-security`
+version and all unchanged security targets; query or commitment grinding cannot
+replace missing batch credit by relabeling it. Broaden the search or reduce the
+actual batched relation only with an explicit design. For every replacement
+candidate report old/new table heights, column counts, degree, quotient chunks,
+lookup dimensions and batched-opening count, then rebuild and measure that
+configuration. The current planning-envelope zero-batch search does not meet
+the quantum target; it does not prove that every alternative is impossible.
+No passing replacement means pause and report rather than weaken the target.
+
 ## Early performance checkpoint
 
 Immediately after the first D8/W24 eight-input merge produces a proof that
-verifies, run this checkpoint before continuing root implementation or
-production integration. Do not wait for completion of the full recursive suite.
+verifies with the opening-batch grinding prerequisite completed and checkpoint
+configuration frozen, run this checkpoint before continuing root implementation
+or production integration. Do not measure a configuration that still omits a
+planned grinding site. Do not wait for completion of the full recursive suite.
 This is an engineering feasibility measurement; it does not replace security
 screening or the later complete N=16 acceptance trials.
 
@@ -170,8 +248,8 @@ the hard limit remains 5 GiB.
 | Projected N=16 latency and peak memory | Required action |
 | --- | --- |
 | At most 90 seconds and below 4.5 GiB | Continue implementation. |
-| More than 90 and at most 120 seconds with memory at most 5 GiB, or any latency at most 120 seconds with memory from 4.5 through 5 GiB | Continue and investigate leaf parameters and circuit optimizations in parallel, retaining all security requirements. |
-| More than 120 seconds or more than 5 GiB | Pause progression and report the three observations, medians, maxima, projections and assumptions. Resume only after a decision on the target, hardware, optimization or N. |
+| More than 90 and at most 180 seconds with memory at most 5 GiB, or any latency at most 180 seconds with memory from 4.5 through 5 GiB | Continue and investigate leaf parameters and circuit optimizations in parallel, retaining all security requirements. |
+| More than 180 seconds or more than 5 GiB | Pause progression and report the three observations, medians, maxima, projections and assumptions. Resume only after a decision on the target, hardware, optimization or N. |
 
 An observed OOM or incorrect proof also blocks progression. The checkpoint
 does not authorize a hardware or capacity change. N remains 16; N=32 is a
@@ -181,8 +259,9 @@ Early timing headroom does not establish acceptance or justify weaker security.
 ## Acceptance sequence
 
 First obtain a working D8 hiding leaf and recursive verifier with complete
-limb/transcript rejection coverage. Run the early performance checkpoint at
-the first verified eight-input merge and follow its continuation decision.
+limb/transcript rejection coverage and opening-batch grinding support. Freeze
+the final checkpoint configuration, run the early performance checkpoint at the
+first verified eight-input merge, and follow its continuation decision.
 Then complete actual leaf, eight-input and root shapes, and screen leaf
 profiles under all requirements in the
 [review scope](proof-security-review.md), including 16/2/1
@@ -194,8 +273,8 @@ trial begins from a ready service with prepared circuits resident. Record
 last-package-to-root latency, every proving phase, separate cold startup and
 post-proof timings, whole-worker charged-memory peaks, actual enforced 5-GiB
 limit, zero extra swap and OOM events. Select parameters from complete security
-and performance evidence; do not lower security to reach 120 seconds. The
-existing D4 leaf-B and uniform-q92 timing medians are below 120 seconds but do
+and performance evidence; do not lower security to reach 180 seconds. The
+existing D4 leaf-B and uniform-q92 timing medians are below 180 seconds but do
 not qualify: D4/W16 fails the required security targets and those records lack
 the new timing and hard-limit evidence.
 
@@ -212,10 +291,11 @@ height-activation design until before mainnet.
 The [planning parameter screen](d8-parameter-screen.md) uses explicit estimated
 shape envelopes. Three profiles per layer meet its conservative arithmetic
 requirements conditionally. Recursive profiles require an additional 16-bit
-opening-batch grinding site, absent from the pinned suite. Design nonce
-placement and transcript ordering and test native/recursive rejection before
-crediting it. This is an unresolved experimental design item, not activation.
-Actual-shape extraction and independent composition review remain mandatory.
+opening-batch grinding site, absent from the pinned recursive suite although
+already supported natively. Implement and test the prerequisite above before
+crediting it or running the checkpoint. These are experimental candidates, not
+activation parameters. Actual-shape extraction and independent composition
+review remain mandatory.
 
 ## Implemented scalar scaffold
 

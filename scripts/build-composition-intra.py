@@ -31,7 +31,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, help="existing upstream clone; copied at its pinned commit")
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--verbose", action="store_true", help="retain compiler command lines")
     args = parser.parse_args()
+    if args.verbose and any(os.environ.get(name) for name in (
+            "CARGO_ENCODED_RUSTFLAGS", "CARGO_PROFILE_RELEASE_LTO",
+            "CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "CARGO_PROFILE_RELEASE_OPT_LEVEL")):
+        raise SystemExit("Verbose controlled build rejects flag/profile overrides")
     destination = ROOT / ".local" / "composition-intra"
     if destination.exists():
         raise SystemExit("Refusing to overwrite an existing experiment; retain its evidence")
@@ -88,7 +93,7 @@ def main():
     if args.prepare_only:
         print(benchmark / "Cargo.toml")
         return
-    command("cargo", "build", "--release", "--manifest-path", str(manifest),
+    command("cargo", "build", *(["-vv"] if args.verbose else []), "--release", "--manifest-path", str(manifest),
             "-p", "siworld-bench-plonky3", "--features", "experimental-fanin,phase-profile",
             "--bin", "composition-bench")
     # Cargo may change source identities for patched packages, but must retain
@@ -107,6 +112,11 @@ def main():
     target_dir = Path(os.environ.get("CARGO_TARGET_DIR", str(benchmark / "target"))).resolve()
     binary = target_dir / "release/composition-bench"
     receipt["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
+    receipt["rustc_version"] = subprocess.check_output(["rustc", "-vV"], text=True)
+    receipt["build_environment"] = {key: os.environ.get(key) for key in (
+        "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_PROFILE_RELEASE_LTO",
+        "CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "CARGO_PROFILE_RELEASE_OPT_LEVEL")}
+    receipt["manifest_sha256"] = hashlib.sha256(manifest.read_bytes()).hexdigest()
     (destination / "build-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(binary)
 

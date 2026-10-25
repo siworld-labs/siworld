@@ -96,7 +96,7 @@ the best unique-decoding score as the requested Johnson score.
 
 Only profiles passing the full screen proceed to three N=16 `16 -> 2 -> 1`
 acceptance runs on qualified target hardware, one proof at a time and two native
-workers. The latency target is at most 120 seconds from last-package arrival to
+workers. The latency target is at most 180 seconds from last-package arrival to
 root-proof completion, including leaf proving. Prepare all input-independent
 circuits at service startup and keep them resident; record cold startup
 separately and exclude its duration from latency. Startup and resident memory
@@ -106,7 +106,7 @@ both lifetime and interval memory peaks. Report every attempt. Uncapped
 characterization cannot pass that gate.
 
 Retained D4/W16 leaf-B and uniform-q92 setup-excluding timing medians are
-29.591 and 64.04 seconds, below 120 seconds numerically. D4/W16 fails the
+29.591 and 64.04 seconds, below 180 seconds numerically. D4/W16 fails the
 required security targets, so these are not acceptance results. N=32 is a
 pending assessment after the D8 early checkpoint and is excluded from this work.
 

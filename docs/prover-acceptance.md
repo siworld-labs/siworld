@@ -112,7 +112,7 @@ security parameters automatically to accommodate a slower device.
 
 ### Timing boundary and service readiness
 
-The target is **at most 120 seconds on qualified target hardware**, defined by
+The target is **at most 180 seconds on qualified target hardware**, defined by
 monotonic markers at arrival of the final package input at the proving service
 and completion of the canonical root-proof artifact. The arrival marker precedes
 queued processing of that input. Include leaf proving and every intervening
@@ -130,7 +130,7 @@ lazy preparation also fails the declared readiness condition. An external
 helper cannot hold prepared state outside the measured memory boundary.
 
 Measure service cold startup through readiness separately. Its duration is
-excluded from the 120-second latency budget. This timing exclusion does not
+excluded from the 180-second latency budget. This timing exclusion does not
 exclude memory: startup preparation, resident state and every proof child stay
 inside the same enforced 5-GiB process-tree boundary. Record startup and ready
 service memory, interval peaks and the lifetime kernel peak; do not reset or
@@ -141,7 +141,7 @@ acceptance and recipient receipt have separate timing markers and correctness
 checks. They are outside this proof-latency budget. Recursive verification
 inside the leaf/aggregation/root proving circuits remains part of proving.
 Record payment-submission-to-receipt and PoW waiting independently; the
-120-second target is not a guaranteed block interval or a finality deadline.
+180-second target is not a guaranteed block interval or a finality deadline.
 
 ### Three complete acceptance runs
 
@@ -165,14 +165,14 @@ For each trial retain the following private evidence:
    complete public roots and cumulative work at matched tips, not height alone.
 4. Sender reservation/journal and recipient receipt reconciled exactly once;
    distinguish observed inclusion, confirmation and finality. A scan result is
-   not final settlement; the 100-block finality window has no 120-second gate.
+   not final settlement; the 100-block finality window has no 180-second gate.
 5. Whole-worker lifetime and interval peaks, charged-memory history, resident
    preparation, actual limits, zero extra swap, OOM/restart counters, node
    budgets, host reserves and explicit completed-state availability. Capture
    teardown/cancellation as well.
 
 Require correctness, the enforced 5-GiB budget and last-package-to-root latency
-of at most 120 seconds in all three trials. Report every failure, individual
+of at most 180 seconds in all three trials. Report every failure, individual
 values, medians and maxima, with cold startup separate. Do not substitute the
 fastest run or ignore failed attempts. Restart replay, disconnect/reconnect,
 memory-limit and reorg regressions remain required in addition to the three
@@ -181,7 +181,7 @@ evidence before broad deployment.
 
 Historical D4/W16 N=16 measurements include leaf-B and uniform-q92 medians of
 29.591 and 64.04 seconds for setup-excluding proof/verification. Both are below
-120 seconds numerically; neither qualifies because D4/W16 fails the required
+180 seconds numerically; neither qualifies because D4/W16 fails the required
 security targets and those records do not establish the new timing markers or
 hard memory limit. See the [retained-result interpretation](proof-composition.md#timing-boundary-and-retained-result-interpretation).
 

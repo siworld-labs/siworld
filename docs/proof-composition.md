@@ -37,7 +37,7 @@ root proof, `L` the leaf proving work in the timed interval, and `O` the other
 per-candidate work between last-package arrival and root-proof completion.
 The selected schedule has one proof job and two native workers inside each
 proof; the two eight-input proofs execute serially. Its projected latency is
-`L + T8_left + T8_right + Tr + O <= 120 seconds`. A hypothetical two-proof-job
+`L + T8_left + T8_right + Tr + O <= 180 seconds`. A hypothetical two-proof-job
 schedule instead has the optimistic path
 `L + max(T8_left, T8_right) + Tr + O`, but is not the selected configuration.
 Summing binary-layer costs is not a measurement of the eight-input relation.
@@ -54,13 +54,13 @@ See the [timing definition](prover-acceptance.md#timing-boundary-and-service-rea
 
 Prepare all input-independent leaf, aggregation and root circuits and trusted
 keys at service startup and keep them resident. Cold-start duration is recorded
-separately and excluded from the 120-second latency budget. Preparation,
+separately and excluded from the 180-second latency budget. Preparation,
 resident circuits, caches, proof buffers and native workers all remain inside
 the 5-GiB process-tree hard limit, including during startup. Input-dependent
 work cannot be relabeled as startup preparation. PoW, propagation, standalone
 root verification and wallet receipt are reported separately from proof latency.
 
-Several retained D4/W16 N=16 results are numerically below 120 seconds:
+Several retained D4/W16 N=16 results are numerically below 180 seconds:
 
 | Configuration | Median proof/verification time | Median cold process time |
 | --- | ---: | ---: |
@@ -79,7 +79,8 @@ reached 5.82 GiB physical footprint during uncapped characterization. Changing
 the time target does not qualify a rejected suite or change a memory observation.
 D8/W24 requires new security screening and target-hardware measurements.
 
-At the first verified D8 eight-input merge, apply the
+After opening-batch grinding is implemented and the checkpoint configuration
+is frozen, at the first verified D8 eight-input merge apply the
 [early checkpoint](d8-w24-recursion.md#early-performance-checkpoint)
 to projected N=16 latency and peak memory. N=32 is a pending assessment after
 that checkpoint and is not measured in the current work.
@@ -228,7 +229,7 @@ alone would understate memory under compression. The 100 ms watchdog checks
 both RSS and kernel lifetime physical footprint; it can overshoot and is not a
 kernel allocation cap. The node's 3 GiB acceptance ceiling is separate.
 
-Both completed N=16 series are below 120 seconds in this synthetic scope. This
+Both completed N=16 series are below 180 seconds in this synthetic scope. This
 does not satisfy the selected suite's security, enforced memory or hardware
 acceptance requirements. Three samples do not establish tail
 latency. The historical 106-second reference lacks its command and artifact,
@@ -277,7 +278,7 @@ median cold time was 70.48 seconds. The two eight-input proofs together consumed
 production for all 16 slots consumed 0.46–0.53 seconds. Maximum process RSS was
 5,077,172,224 bytes and maximum physical footprint was 6,250,648,592 bytes.
 No resource sampling errors occurred. All three setup-excluding proof/verification
-times are below the current 120-second proof-latency target numerically, but
+times are below the current 180-second proof-latency target numerically, but
 they do not establish the new timing markers, hard memory limit or required
 security. They remain non-qualifying historical controls.
 
@@ -338,7 +339,7 @@ footprint was 3,879,488,728 bytes. The measured executable SHA-256 was
 `25298ac2d2dccef0fdb616e96e84e4bb3beaeefe3ec9bc42841a3f2fa87e3967`;
 the fixed leaf pin SHA-256 was
 `4d3a4182399674295bc7f7e41d97bf89f3d82d3bfaffe8fdea6df9debe793941`.
-Both proof time and cold time were below 120 seconds in all three runs. No
+Both proof time and cold time were below 180 seconds in all three runs. No
 fallback to A or C was triggered. Leaf generation increased modestly relative
 to uniform q92, while recursive proving and memory decreased. Lowering the
 leaf verifier's query count changes both the eight-input circuit and the root

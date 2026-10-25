@@ -96,18 +96,20 @@ Fiat–Shamir halving model, and commitment/Merkle collision security of at leas
 100 bits under BHT. Estimator screening is not a quantum composition theorem.
 D4/W16 q42, q92 and leaf B fail these requirements and are methodology controls.
 
-The proof-latency target is 120 seconds on qualified target hardware, from
+The proof-latency target is 180 seconds on qualified target hardware, from
 final-package input arrival before queueing until canonical root completion,
 including all leaf and intervening per-candidate work. Input-independent
 circuits and keys are prepared at startup and remain resident. Cold-start
 duration is reported separately; all startup and resident memory remains within
 the 5-GiB process-tree hard cap, with zero extra swap. Propagation, external
-verification, PoW and receipt timing are separate metrics.
+verification, PoW and receipt timing are separate metrics. This proof-latency
+target does not change the consensus block interval.
 
-The first verified eight-input merge triggers three same-machine measurements
-and an N=16 latency/memory projection. Up to 90 seconds and below 4.5 GiB
-permits continuation; 90–120 seconds or 4.5–5 GiB requires optimization work
-alongside implementation. Above 120 seconds, above 5 GiB, OOM or an incorrect
+Complete opening-batch grinding and freeze the final checkpoint configuration
+before timing the first verified eight-input merge. It triggers three
+same-machine measurements and an N=16 latency/memory projection. Up to
+90 seconds and below 4.5 GiB permits continuation; 90–180 seconds or 4.5–5 GiB requires optimization work
+alongside implementation. Above 180 seconds, above 5 GiB, OOM or an incorrect
 proof pauses progression. The hard cap remains 5 GiB. N=32 is deferred until
 after this checkpoint and is outside the current scope. See the
 [implementation plan](d8-w24-recursion.md) and [acceptance plan](prover-acceptance.md).

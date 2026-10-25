@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use p3_circuit_prover::{BatchStarkProof, TablePacking};
+use p3_field::{Field, PackedValue};
 use p3_maybe_rayon::prelude::join;
 use p3_recursion::ProveNextLayerParams;
 use serde_json::{Value, json};
@@ -14,16 +15,30 @@ use siworld_bench_plonky3::agg::fanin::EightLeafAggregation;
 use siworld_bench_plonky3::agg::{
     AccAggregation, Child, Input, MinerNote, anchor_leaf, compose_acc, node_digest, root_statement,
 };
-use siworld_bench_plonky3::profile::Span;
+use siworld_bench_plonky3::profile::{
+    ProcessCpuTicks, Span, clock_ticks_per_second, process_cpu_ticks,
+};
 use siworld_bench_plonky3::{Cfg, FriParams, SlotProver};
 
 fn measured<T>(name: &'static str, stages: &mut Vec<Value>, f: impl FnOnce() -> T) -> T {
     let phase = Span::new(name);
+    let cpu_start = process_cpu_ticks();
     let start = Instant::now();
     let result = f();
-    stages.push(json!({"phase": name, "wall_ns": start.elapsed().as_nanos()}));
+    let wall_ns = start.elapsed().as_nanos();
+    let cpu_ticks = process_cpu_ticks()
+        .zip(cpu_start)
+        .and_then(|(end, start)| end.elapsed_since(start));
+    stages.push(json!({"phase": name, "wall_ns": wall_ns, "cpu_ticks": cpu_json(cpu_ticks)}));
     drop(phase);
     result
+}
+
+fn cpu_json(ticks: Option<ProcessCpuTicks>) -> Value {
+    match ticks {
+        Some(ticks) => json!({"user": ticks.user, "system": ticks.system}),
+        None => Value::Null,
+    }
 }
 
 fn fold(rows: &[Vec<F>]) -> Vec<F> {
@@ -95,7 +110,22 @@ fn run() -> Result<(), String> {
     if export_leaf_pin.is_some() && leaf_pin_path.is_some() {
         return Err("export and verification of a leaf pin are separate operations".into());
     }
-    println!("{}", json!({"pid": std::process::id(), "event": "ready"}));
+    let clock_ticks = clock_ticks_per_second();
+    let runtime = json!({
+        "rayon_num_threads": std::env::var("RAYON_NUM_THREADS").ok(),
+        "composition_hiding_workers": std::env::var("SIWORLD_COMPOSITION_HIDING_WORKERS").ok(),
+        "global_rayon_threads": p3_maybe_rayon::prelude::current_num_threads(),
+        "packing_type": std::any::type_name::<<F as Field>::Packing>(),
+        "packing_width": <<F as Field>::Packing as PackedValue>::WIDTH,
+        "compiled_avx2": cfg!(target_feature = "avx2"),
+        "compiled_avx512f": cfg!(target_feature = "avx512f"),
+        "clock_ticks_per_second": clock_ticks,
+        "cpu_ticks_scope": "process including all threads; excluding child processes",
+    });
+    println!(
+        "{}",
+        json!({"pid": std::process::id(), "event": "ready", "runtime": runtime})
+    );
     let start = Instant::now();
     let mut stages = Vec::new();
     let layer = ProveNextLayerParams {
@@ -143,6 +173,7 @@ fn run() -> Result<(), String> {
         rseed: Rng::new(10).digest(),
     };
     let mut batch_node_wall_ns = Vec::new();
+    let mut batch_node_cpu_ticks = Vec::new();
     let (proof, statement, verifier) = if topology == "fanin8" {
         let batch = measured("batch_setup", &mut stages, || {
             EightLeafAggregation::new(prover.clone(), inputs[0], &cfg, &layer)
@@ -150,13 +181,19 @@ fn run() -> Result<(), String> {
         let statements = [fold(&full[..8]), fold(&full[8..])];
         let proofs = measured("batch_proofs", &mut stages, || {
             pairs(jobs, 2, |i| {
+                let cpu_start = process_cpu_ticks();
                 let start = Instant::now();
                 let result = batch.prove(&inputs[i * 8..(i + 1) * 8]);
-                (result, start.elapsed().as_nanos())
+                let wall_ns = start.elapsed().as_nanos();
+                let cpu_ticks = process_cpu_ticks()
+                    .zip(cpu_start)
+                    .and_then(|(end, start)| end.elapsed_since(start));
+                (result, wall_ns, cpu_ticks)
             })
             .into_iter()
-            .map(|(result, elapsed)| {
+            .map(|(result, elapsed, cpu_ticks)| {
                 batch_node_wall_ns.push(elapsed);
+                batch_node_cpu_ticks.push(cpu_json(cpu_ticks));
                 result
             })
             .collect::<Result<Vec<_>, _>>()
@@ -301,6 +338,9 @@ fn run() -> Result<(), String> {
             "parameters": {"suite": "D4-W16", "log_blowup": fri.log_blowup, "queries": fri.num_queries, "grinding": fri.query_pow_bits},
             "leaf_profile": leaf_profile, "leaf_parameters": leaf_pin["parameters"],
             "leaf_pin": leaf_pin, "batch_node_wall_ns": batch_node_wall_ns,
+            "batch_node_cpu_ticks": batch_node_cpu_ticks,
+            "batch_node_cpu_ticks_overlap": jobs > 1,
+            "runtime": runtime,
             "rayon_threads": std::env::var("RAYON_NUM_THREADS").unwrap_or_default(),
             "cold_wall_ns": start.elapsed().as_nanos(), "proof_and_verify_ns": proof_ns,
             "root_proof_bytes": proof_bytes, "stages": stages,

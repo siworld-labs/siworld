@@ -5,6 +5,10 @@ on:
     paths:
       - "scripts/measure-proof-cgroup.py"
       - "scripts/validate-d4-cgroup.py"
+      - "scripts/compare-d4-linux.py"
+      - "scripts/build-composition-intra.py"
+      - "crates/bench-stark/plonky3/src/profile.rs"
+      - "crates/bench-stark/plonky3/src/bin/composition_bench.rs"
       - ".github/workflows/d8-linux-controls.yml"
   workflow_dispatch:
 permissions:
@@ -15,10 +19,11 @@ concurrency:
 jobs:
   d4-control:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       RAYON_NUM_THREADS: 2
       SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+      SIWORLD_BENCH_PROFILE: 1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -28,17 +33,45 @@ jobs:
       - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: crates/bench-stark
-      - name: Build isolated two-worker control
-        run: python3 scripts/build-composition-intra.py
-      - name: One D4-B run with 5-GiB cgroup and zero swap
+      - name: Inspect runner CPU topology
+        run: |
+          lscpu
+          lscpu --parse=CPU,CORE,SOCKET,ONLINE
+          systemd-detect-virt --vm || test "$?" = 1
+      - name: Build explicit scalar two-worker control
+        env:
+          RUSTFLAGS: -C target-cpu=x86-64 -C target-feature=-avx2,-avx512f
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.local/d4-target-scalar
         shell: bash
         run: |
-          sudo --preserve-env=RAYON_NUM_THREADS,SIWORLD_COMPOSITION_HIDING_WORKERS \
-            python3 scripts/measure-proof-cgroup.py --output .local/linux-cgroup-control \
-            --uid "$(id -u)" --gid "$(id -g)" --timeout 900 -- \
-            /usr/bin/python3 scripts/validate-d4-cgroup.py \
-            --binary .local/composition-intra/benchmark/target/release/composition-bench
-      - name: Verify synthetic control and phase records
-        if: always()
+          mkdir -p .local/d4-build-evidence
+          python3 scripts/build-composition-intra.py --verbose > .local/d4-build-evidence/scalar.log 2>&1
+          cp .local/composition-intra/build-receipt.json .local/d4-build-evidence/scalar-receipt.json
+          rustc -vV > .local/d4-build-evidence/compiler.txt
+          rustc -C target-cpu=x86-64 -C target-feature=-avx2,-avx512f --print cfg > .local/d4-build-evidence/scalar-cfg.txt
+      - name: Build AVX2-only control from the same patched sources
+        env:
+          RUSTFLAGS: -C target-cpu=x86-64 -C target-feature=+avx2,-avx512f
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.local/d4-target-avx2
+        shell: bash
         run: |
-          sudo python3 scripts/summarize-d4-control.py --directory .local/linux-cgroup-control
+          cargo build -vv --release --locked --manifest-path .local/composition-intra/benchmark/Cargo.toml \
+            -p siworld-bench-plonky3 --features experimental-fanin,phase-profile \
+            --bin composition-bench > .local/d4-build-evidence/avx2.log 2>&1
+          rustc -C target-cpu=x86-64 -C target-feature=+avx2,-avx512f --print cfg > .local/d4-build-evidence/avx2-cfg.txt
+          python3 - <<'PY_RECEIPT'
+          import hashlib, json, os
+          from pathlib import Path
+          receipt = json.loads(Path('.local/d4-build-evidence/scalar-receipt.json').read_text())
+          receipt['binary_sha256'] = hashlib.sha256(Path('.local/d4-target-avx2/release/composition-bench').read_bytes()).hexdigest()
+          receipt['build_environment']['RUSTFLAGS'] = os.environ['RUSTFLAGS']
+          Path('.local/d4-build-evidence/avx2-receipt.json').write_text(json.dumps(receipt, indent=2))
+          PY_RECEIPT
+          grep 'target_feature="avx2"' .local/d4-build-evidence/avx2-cfg.txt
+          if grep 'target_feature="avx512f"' .local/d4-build-evidence/avx2-cfg.txt; then exit 1; fi
+      - name: Same live runner scalar control and three AVX2 trials
+        run: |
+          python3 scripts/compare-d4-linux.py \
+            --scalar .local/d4-target-scalar/release/composition-bench \
+            --avx2 .local/d4-target-avx2/release/composition-bench \
+            --output .local/linux-d4-comparison

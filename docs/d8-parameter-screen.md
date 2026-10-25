@@ -40,10 +40,14 @@ and quaternary maximum folding, and Johnson m=3–32. Grinding is 16 bits before
 queries and zero before OOD and lookups. Leaves have zero commit grinding;
 recursive candidates use 16 bits before each FRI commit and another 16 bits
 immediately before opening batching. That additional site
-is **not implemented** by the pinned recursive suite; its nonce, transcript
-order and recursive verification need design and tests. No security credit is
-permitted until all validators check it. This is an experimental dependency
-proposal, not a consensus decision.
+is **not implemented** by the pinned recursive suite although already supported
+natively. Native nonce generation, transcript ordering and every recursive
+verification path must be implemented and tested before the first eight-input
+performance checkpoint; see the [grinding prerequisite](d8-w24-recursion.md#opening-batch-grinding-prerequisite).
+No security credit is permitted until all validators check it. If infeasible,
+re-screen aggregate and root parameters with zero batch difficulty and report
+actual circuit-shape changes before measuring a replacement. This is an
+experimental dependency proposal, not a consensus decision.
 
 Estimated conservative envelopes use the D4 table inventory as an anchor and
 allow larger widths/heights for D8, wider digests and more verifier queries.
