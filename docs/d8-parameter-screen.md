@@ -30,10 +30,16 @@ for 16 leaves, two merges and one root. Thus any selection below passes this
 is assumed. All algebraic/query terms are quantum-halved, a stricter screen
 than halving only the named challenge rounds.
 
+The folding contribution is charged up to `log_trace_length + 1` times,
+covering binary/mixed folds and a terminal challenge. The loss is applied
+**after** halving in the quantum ledger. The tables show aggregate error bits
+after this multiplicity charge, not only the strongest or initial round.
+
 The search covers log blowup 2/3/4, 96–256 queries in increments of four, binary
 and quaternary maximum folding, and Johnson m=3–32. Grinding is 16 bits before
-queries, zero before FRI commits, OOD and lookups. Recursive alternatives below
-also require 16 bits immediately before opening batching. That additional site
+queries and zero before OOD and lookups. Leaves have zero commit grinding;
+recursive candidates use 16 bits before each FRI commit and another 16 bits
+immediately before opening batching. That additional site
 is **not implemented** by the pinned recursive suite; its nonce, transcript
 order and recursive verification need design and tests. No security credit is
 permitted until all validators check it. This is an experimental dependency
@@ -58,10 +64,9 @@ counts; extension auxiliary columns and quotient commitments are charged via
 the envelope's opening/chunk counts. Leaf base rows allow hiding padding for
 the larger query counts. LDE domain log size must not exceed KoalaBear's
 24-bit two-adicity; the calculator rejects larger combinations. A log-21
-recursive commitment therefore excludes log blowup 4. These conservative
-row/width allowances also leave the LogUp multiplicity bound
-`sum(interactions * base_rows) < p`: `128 * 2^20 < 2130706433`.
-Recompute that condition from actual per-table interaction multiplicities. Maximum folding arity
+recursive commitment therefore excludes log blowup 4. The estimated lookup
+multiplicity also obeys `128 * 2^20 < 2130706433`; recompute this condition
+from actual table interaction multiplicities. Maximum folding arity
 means factor 2 or 4, with final polynomial log length zero and a potentially
 smaller terminal fold; it is not a new Merkle branching format.
 
@@ -73,17 +78,17 @@ classical conjectured ≥128, Johnson ≥100, quantum-halved non-hash ≥100 and
 ≥100 **only under the declared envelope and proposed sites**. The narrow
 margins are not permission to round up, omit terms or tolerate larger shapes.
 
-| Layer/profile | log blowup | Queries | Query/batch grinding | Maximum fold | Johnson m | Conjectured union | Johnson union | Quantum after 19-proof union | BHT after 19-proof union |
+| Layer/profile | log blowup | Queries | Query/commit/batch grinding | Maximum fold | Johnson m | Conjectured union | Johnson union | Quantum after 19-proof union | BHT after 19-proof union |
 | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| leaf/1 | 2 | 216 | 16/0 | 2 | 8 | 185.0000 | 185.0000 | 100.0488 | 118.7521 |
-| leaf/2 | 2 | 216 | 16/0 | 4 | 8 | 185.0000 | 185.0000 | 100.0360 | 118.7521 |
-| leaf/3 | 3 | 148 | 16/0 | 2 | 4 | 185.0000 | 185.0000 | 100.3036 | 118.7521 |
-| eight_input/1 | 2 | 216 | 16/16 | 2 | 8 | 185.0000 | 185.0000 | 100.0385 | 118.7521 |
-| eight_input/2 | 2 | 224 | 16/16 | 4 | 6 | 185.0000 | 185.0000 | 100.1284 | 118.7521 |
-| eight_input/3 | 3 | 148 | 16/16 | 2 | 4 | 185.0000 | 185.0000 | 100.2159 | 118.7521 |
-| root/1 | 2 | 216 | 16/16 | 2 | 8 | 185.0000 | 185.0000 | 100.0385 | 118.7521 |
-| root/2 | 2 | 224 | 16/16 | 4 | 6 | 185.0000 | 185.0000 | 100.1284 | 118.7521 |
-| root/3 | 3 | 148 | 16/16 | 2 | 4 | 185.0000 | 185.0000 | 100.2159 | 118.7521 |
+| leaf/1 | 2 | 220 | 16/0/0 | 2 | 7 | 185.0000 | 185.0000 | 100.1777 | 118.7521 |
+| leaf/2 | 2 | 220 | 16/0/0 | 4 | 7 | 185.0000 | 185.0000 | 100.0446 | 118.7521 |
+| leaf/3 | 3 | 148 | 16/0/0 | 2 | 4 | 185.0000 | 185.0000 | 100.1366 | 118.7521 |
+| eight_input/1 | 2 | 208 | 16/16/16 | 2 | 12 | 185.0000 | 185.0000 | 100.1444 | 118.7521 |
+| eight_input/2 | 2 | 208 | 16/16/16 | 4 | 12 | 185.0000 | 185.0000 | 100.0788 | 118.7521 |
+| eight_input/3 | 3 | 140 | 16/16/16 | 2 | 7 | 185.0000 | 185.0000 | 100.2516 | 118.7521 |
+| root/1 | 2 | 208 | 16/16/16 | 2 | 12 | 185.0000 | 185.0000 | 100.1444 | 118.7521 |
+| root/2 | 2 | 208 | 16/16/16 | 4 | 12 | 185.0000 | 185.0000 | 100.0788 | 118.7521 |
+| root/3 | 3 | 140 | 16/16/16 | 2 | 7 | 185.0000 | 185.0000 | 100.2516 | 118.7521 |
 
 ## Per-term ledger
 
@@ -96,14 +101,14 @@ and the weakest transformed term are distinguished below.
 
 | Error source | Conjectured | Johnson |
 | --- | ---: | ---: |
-| air-composition | 234.0000 / 117.0000 | 229.9125 / 114.9563 |
-| deep-ali | 231.9125 / 115.9562 | 227.8250 / 113.9125 |
-| ldt-query-phase | 443.6866 / 221.8433 | — |
-| ldt-commit-phase | 233.9998 / 116.9999 | — |
-| batch-combination | 222.0004 / 111.0002 | 209.3222 / 104.6611 |
+| air-composition | 234.0000 / 117.0000 | 230.0931 / 115.0466 |
+| deep-ali | 231.9125 / 115.9562 | 228.0056 / 114.0028 |
+| ldt-query-phase | 451.6067 / 225.8034 | — |
+| ldt-commit-phase | 230.4149 / 113.4149 | — |
+| batch-combination | 222.0004 / 111.0002 | 209.8639 / 104.9320 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 221.3219 / 110.6609 |
-| fri-query | — | 213.1080 / 106.5540 |
+| fri-folding | — | 218.2786 / 107.3468 |
+| fri-query | — | 214.1022 / 107.0511 |
 
 Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `batch-combination`.
 
@@ -111,14 +116,14 @@ Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-
 
 | Error source | Conjectured | Johnson |
 | --- | ---: | ---: |
-| air-composition | 234.0000 / 117.0000 | 229.9125 / 114.9563 |
-| deep-ali | 231.9125 / 115.9562 | 227.8250 / 113.9125 |
-| ldt-query-phase | 443.6866 / 221.8433 | — |
-| ldt-commit-phase | 232.4149 / 116.2074 | — |
-| batch-combination | 222.0004 / 111.0002 | 209.3222 / 104.6611 |
+| air-composition | 234.0000 / 117.0000 | 230.0931 / 115.0466 |
+| deep-ali | 231.9125 / 115.9562 | 228.0056 / 114.0028 |
+| ldt-query-phase | 451.6067 / 225.8034 | — |
+| ldt-commit-phase | 228.8299 / 112.6225 | — |
+| batch-combination | 222.0004 / 111.0002 | 209.8639 / 104.9320 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 219.7369 / 109.8685 |
-| fri-query | — | 213.1080 / 106.5540 |
+| fri-folding | — | 216.6937 / 106.5543 |
+| fri-query | — | 214.1022 / 107.0511 |
 
 Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `batch-combination`.
 
@@ -129,10 +134,10 @@ Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-
 | air-composition | 234.0000 / 117.0000 | 230.3301 / 115.1650 |
 | deep-ali | 231.9125 / 115.9562 | 228.2426 / 114.1213 |
 | ldt-query-phase | 456.1936 / 228.0968 | — |
-| ldt-commit-phase | 232.9999 / 116.5000 | — |
+| ldt-commit-phase | 229.4149 / 112.9150 | — |
 | batch-combination | 221.0004 / 110.5002 | 210.0748 / 105.0374 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 222.0745 / 111.0372 |
+| fri-folding | — | 218.4895 / 107.4523 |
 | fri-query | — | 212.8511 / 106.4255 |
 
 Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `batch-combination`.
@@ -141,102 +146,102 @@ Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-
 
 | Error source | Conjectured | Johnson |
 | --- | ---: | ---: |
-| air-composition | 231.0000 / 115.5000 | 226.9125 / 113.4563 |
-| deep-ali | 218.9888 / 109.4944 | 214.9013 / 107.4507 |
-| ldt-query-phase | 443.6866 / 221.8433 | — |
-| ldt-commit-phase | 224.0000 / 112.0000 | — |
-| batch-combination | 227.0002 / 113.5001 | 214.3227 / 107.1614 |
+| air-composition | 231.0000 / 115.5000 | 226.3561 / 113.1781 |
+| deep-ali | 218.9888 / 109.4944 | 214.3449 / 107.1725 |
+| ldt-query-phase | 427.8463 / 213.9232 | — |
+| ldt-commit-phase | 235.5406 / 115.5406 | — |
+| batch-combination | 227.0002 / 113.5001 | 212.6536 / 106.3268 |
 | logup-fingerprint | 213.9125 / 106.9563 | 213.9125 / 106.9563 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 211.3226 / 105.6613 |
-| fri-query | — | 213.1080 / 106.5540 |
+| fri-folding | — | 221.1940 / 108.3673 |
+| fri-query | — | 211.7501 / 105.8751 |
 
-Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-folding`.
+Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-query`.
 
 ### eight_input profile 2
 
 | Error source | Conjectured | Johnson |
 | --- | ---: | ---: |
-| air-composition | 231.0000 / 115.5000 | 227.2996 / 113.6498 |
-| deep-ali | 218.9888 / 109.4944 | 215.2883 / 107.6442 |
-| ldt-query-phase | 459.5268 / 229.7634 | — |
-| ldt-commit-phase | 222.4150 / 111.2075 | — |
-| batch-combination | 227.0002 / 113.5001 | 215.4838 / 107.7419 |
+| air-composition | 231.0000 / 115.5000 | 226.3561 / 113.1781 |
+| deep-ali | 218.9888 / 109.4944 | 214.3449 / 107.1725 |
+| ldt-query-phase | 427.8463 / 213.9232 | — |
+| ldt-commit-phase | 233.9556 / 114.7481 | — |
+| batch-combination | 227.0002 / 113.5001 | 212.6536 / 106.3268 |
 | logup-fingerprint | 213.9125 / 106.9563 | 213.9125 / 106.9563 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 210.8987 / 105.4493 |
-| fri-query | — | 214.1331 / 107.0666 |
+| fri-folding | — | 219.6090 / 107.5748 |
+| fri-query | — | 211.7501 / 105.8751 |
 
-Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-folding`.
+Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-query`.
 
 ### eight_input profile 3
 
 | Error source | Conjectured | Johnson |
 | --- | ---: | ---: |
-| air-composition | 231.0000 / 115.5000 | 227.3301 / 113.6650 |
-| deep-ali | 218.9888 / 109.4944 | 215.3188 / 107.6594 |
-| ldt-query-phase | 456.1936 / 228.0968 | — |
-| ldt-commit-phase | 223.0000 / 111.5000 | — |
-| batch-combination | 226.0002 / 113.0001 | 215.0754 / 107.5377 |
+| air-composition | 231.0000 / 115.5000 | 226.5931 / 113.2966 |
+| deep-ali | 218.9888 / 109.4944 | 214.5819 / 107.2909 |
+| ldt-query-phase | 432.3994 / 216.1997 | — |
+| ldt-commit-phase | 234.5406 / 115.0406 | — |
+| batch-combination | 226.0002 / 113.0001 | 212.8645 / 106.4322 |
 | logup-fingerprint | 213.9125 / 106.9563 | 213.9125 / 106.9563 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 212.0752 / 106.0376 |
-| fri-query | — | 212.8511 / 106.4255 |
+| fri-folding | — | 221.4049 / 108.4727 |
+| fri-query | — | 212.0650 / 106.0325 |
 
-Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-folding`.
+Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-query`.
 
 ### root profile 1
 
 | Error source | Conjectured | Johnson |
 | --- | ---: | ---: |
-| air-composition | 231.0000 / 115.5000 | 226.9125 / 113.4563 |
-| deep-ali | 218.9888 / 109.4944 | 214.9013 / 107.4507 |
-| ldt-query-phase | 443.6866 / 221.8433 | — |
-| ldt-commit-phase | 224.0000 / 112.0000 | — |
-| batch-combination | 227.0002 / 113.5001 | 214.3227 / 107.1614 |
+| air-composition | 231.0000 / 115.5000 | 226.3561 / 113.1781 |
+| deep-ali | 218.9888 / 109.4944 | 214.3449 / 107.1725 |
+| ldt-query-phase | 427.8463 / 213.9232 | — |
+| ldt-commit-phase | 235.5406 / 115.5406 | — |
+| batch-combination | 227.0002 / 113.5001 | 212.6536 / 106.3268 |
 | logup-fingerprint | 213.9125 / 106.9563 | 213.9125 / 106.9563 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 211.3226 / 105.6613 |
-| fri-query | — | 213.1080 / 106.5540 |
+| fri-folding | — | 221.1940 / 108.3673 |
+| fri-query | — | 211.7501 / 105.8751 |
 
-Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-folding`.
+Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-query`.
 
 ### root profile 2
 
 | Error source | Conjectured | Johnson |
 | --- | ---: | ---: |
-| air-composition | 231.0000 / 115.5000 | 227.2996 / 113.6498 |
-| deep-ali | 218.9888 / 109.4944 | 215.2883 / 107.6442 |
-| ldt-query-phase | 459.5268 / 229.7634 | — |
-| ldt-commit-phase | 222.4150 / 111.2075 | — |
-| batch-combination | 227.0002 / 113.5001 | 215.4838 / 107.7419 |
+| air-composition | 231.0000 / 115.5000 | 226.3561 / 113.1781 |
+| deep-ali | 218.9888 / 109.4944 | 214.3449 / 107.1725 |
+| ldt-query-phase | 427.8463 / 213.9232 | — |
+| ldt-commit-phase | 233.9556 / 114.7481 | — |
+| batch-combination | 227.0002 / 113.5001 | 212.6536 / 106.3268 |
 | logup-fingerprint | 213.9125 / 106.9563 | 213.9125 / 106.9563 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 210.8987 / 105.4493 |
-| fri-query | — | 214.1331 / 107.0666 |
+| fri-folding | — | 219.6090 / 107.5748 |
+| fri-query | — | 211.7501 / 105.8751 |
 
-Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-folding`.
+Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-query`.
 
 ### root profile 3
 
 | Error source | Conjectured | Johnson |
 | --- | ---: | ---: |
-| air-composition | 231.0000 / 115.5000 | 227.3301 / 113.6650 |
-| deep-ali | 218.9888 / 109.4944 | 215.3188 / 107.6594 |
-| ldt-query-phase | 456.1936 / 228.0968 | — |
-| ldt-commit-phase | 223.0000 / 111.5000 | — |
-| batch-combination | 226.0002 / 113.0001 | 215.0754 / 107.5377 |
+| air-composition | 231.0000 / 115.5000 | 226.5931 / 113.2966 |
+| deep-ali | 218.9888 / 109.4944 | 214.5819 / 107.2909 |
+| ldt-query-phase | 432.3994 / 216.1997 | — |
+| ldt-commit-phase | 234.5406 / 115.0406 | — |
+| batch-combination | 226.0002 / 113.0001 | 212.8645 / 106.4322 |
 | logup-fingerprint | 213.9125 / 106.9563 | 213.9125 / 106.9563 |
 | commitment-collision | 185.0000 / 123.0000 | 185.0000 / 123.0000 |
-| fri-folding | — | 212.0752 / 106.0376 |
-| fri-query | — | 212.8511 / 106.4255 |
+| fri-folding | — | 221.4049 / 108.4727 |
+| fri-query | — | 212.0650 / 106.0325 |
 
-Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-folding`.
+Weakest classical term: conjectured `commitment-collision`, Johnson `commitment-collision`. Weakest Johnson quantum term: `fri-query`.
 
 ## Blocking comparison and next extraction
 
 Without the proposed batch-grinding site, the strongest recursive comparison
-found in this search reaches only 96.7668 quantum bits after the complete
+found in this search reaches only 96.78 quantum bits after the complete
 envelope loss. It fails the selected target; increasing queries does not
 remove that batching bottleneck. Leaf profiles need no new batching grind in
 this screen. The recursive candidates require a reviewed, verified extra site
