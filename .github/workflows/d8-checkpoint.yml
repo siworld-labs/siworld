@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Qualify baseline or control hardware for correctness tests
+      - name: Qualify Linux correctness host with separate checkpoint admission
         run: |
           python3 - <<'PY_PROFILE'
           import json
@@ -44,7 +44,8 @@ jobs:
           measurement = runpy.run_path('scripts/measure-proof-cgroup.py')
           hardware, _ = measurement['qualify']()
           print(json.dumps({'hardware': hardware}, indent=2))
-          profile = 'epyc7763-baseline' if 'EPYC 7763 ' in hardware['cpu_model'] else 'epyc9v45-control'
+          profile = ('epyc7763-baseline' if 'EPYC 7763 ' in hardware['cpu_model']
+              else 'epyc9v45-control' if 'EPYC 9V45 ' in hardware['cpu_model'] else 'diagnostic')
           result = measurement['qualify_hardware_profile'](hardware, profile)
           from pathlib import Path
           mount = Path('/sys/fs/cgroup')

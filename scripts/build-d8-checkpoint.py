@@ -70,7 +70,14 @@ def rewrite_dependencies(text, upstream):
     return text
 
 
-TEST_PHASES = frozenset(('leaf_setup', 'leaf_proof', 'leaf_verification', 'merge_setup', 'merge_proof', 'merge_verification', 'public_digest_rejection', 'last_child_rejection', 'transcript.native_equivalence.begin', 'transcript.native_equivalence.complete', 'transcript.interleaving.begin', 'transcript.interleaving.complete', 'binary_compression.begin', 'binary_compression.complete', 'suite_geometry.begin', 'suite_geometry.complete', 'prepared_batch_work.begin', 'prepared_batch_work.native_prove', 'prepared_batch_work.native_verify', 'prepared_batch_work.prepare', 'prepared_batch_work.recursive_prove', 'prepared_batch_work.recursive_verify', 'prepared_batch_work.invalid_nonce', 'prepared_batch_work.invalid_opening_coefficients', 'prepared_batch_work.complete', 'scalar_witness_bus.begin', 'scalar_witness_bus.prepare', 'scalar_witness_bus.valid_runner', 'scalar_witness_bus.valid_prove', 'scalar_witness_bus.valid_verify', 'scalar_witness_bus.invalid_coefficients', 'scalar_witness_bus.complete'))
+TEST_PHASES = frozenset(('leaf_setup', 'leaf_proof', 'leaf_verification', 'merge_setup', 'merge_proof', 'merge_verification', 'public_digest_rejection', 'last_child_rejection', 'transcript.native_equivalence.begin', 'transcript.native_equivalence.complete', 'transcript.interleaving.begin', 'transcript.interleaving.complete', 'binary_compression.begin', 'binary_compression.complete', 'suite_geometry.begin', 'suite_geometry.complete', 'prepared_batch_work.begin', 'prepared_batch_work.native_prove', 'prepared_batch_work.native_verify', 'prepared_batch_work.prepare', 'prepared_batch_work.recursive_prove', 'prepared_batch_work.recursive_verify', 'prepared_batch_work.invalid_nonce', 'prepared_batch_work.invalid_opening_coefficients', 'prepared_batch_work.generic_batch_capture', 'prepared_batch_work.generic_batch_replay', 'prepared_batch_work.complete', 'scalar_witness_bus.begin', 'scalar_witness_bus.prepare', 'scalar_witness_bus.valid_runner', 'scalar_witness_bus.valid_prove', 'scalar_witness_bus.valid_verify', 'scalar_witness_bus.invalid_coefficients', 'scalar_witness_bus.complete'))
+
+
+ERROR_CATEGORIES = ('UnsupportedDegree', 'MissingWForExtension', 'Verify', 'MissingTableProver',
+    'DuplicateTableSource', 'InvalidMetadata', 'RelationMismatch', 'Prove',
+    'PrivateInputLengthMismatch', 'PublicInputLengthMismatch', 'UnclaimedPrivateInput',
+    'WitnessNotSet', 'WitnessConflict', 'BitDecompositionMismatch', 'CoefficientsNotBaseBound',
+    'RecomposeCoeffLookupsUnavailable', 'GlobalCumulativeSumMismatch', 'OodEvaluationMismatch')
 
 
 def sanitized_diagnostics(output, step, exit_code):
@@ -86,6 +93,8 @@ def sanitized_diagnostics(output, step, exit_code):
             locations.append({'source': relative, 'line': int(line), 'column': int(column)})
     return {'event': 'd8_build_failure', 'step': step, 'exit_code': exit_code,
             'compiler_error_codes': codes, 'failed_tests': failed[:32], 'source_locations': locations[:32],
+            'validation_error_categories': [label for label in ERROR_CATEGORIES
+                if re.search(r'\b' + label + r'(?:\(|\s*\{|\b)', output)],
             'last_test_phase': ([phase for phase in re.findall(r'^D8_TEST_PHASE ([a-z0-9_.]{1,80})$', output, flags=re.M) if phase in TEST_PHASES] or [None])[-1]}
 
 

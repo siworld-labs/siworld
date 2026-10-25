@@ -509,6 +509,13 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(result['source_locations'], [])
         self.assertNotIn('private-owner', json.dumps(result))
 
+    def test_error_categories_never_return_error_payloads(self):
+        output = 'called unwrap: Prove("private-proof-value") WitnessConflict { private_payload }'
+        result = self.builder.sanitized_diagnostics(output, 'app-test-8', 101)
+        self.assertEqual(result['validation_error_categories'], ['Prove', 'WitnessConflict'])
+        self.assertNotIn('private-proof-value', json.dumps(result))
+        self.assertNotIn('private_payload', json.dumps(result))
+
     def test_batch_grinding_gate_cannot_select_fewer_than_six_cases(self):
         from unittest.mock import patch
         import subprocess
