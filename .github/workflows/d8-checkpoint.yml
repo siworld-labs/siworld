@@ -78,7 +78,7 @@ jobs:
                   record = json.loads(line)
               except ValueError:
                   continue
-              if record.get('event') in ('d8_build_failure', 'd8_build_adapter_failure'):
+              if record.get('event') in ('d8_build_failure', 'd8_build_adapter_failure', 'd8_build_tests_passed'):
                   print(json.dumps(record))
           raise SystemExit(result.returncode)
           PY_BUILD

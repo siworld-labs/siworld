@@ -369,9 +369,18 @@ shapes, parameter reports, preprocessing artifacts and verifying keys before
 three warm trials. Input-independent setup remains resident inside the same
 5-GiB cgroup for startup and all trials. Each trial regenerates hiding proofs
 with fresh randomness, executes all 16 leaves, two serial eight-input merges
-and the root, and verifies the resulting proof. It records startup, readiness,
-leaf, merge, root, verification and teardown phase boundaries. The controller
-must validate the frozen reports and runtime configuration before granting
+and the root, and verifies the resulting proof. The root phase ends only after
+canonical proof-artifact export, including the proof check inherent in that
+API. The canonical byte buffer remains retained through standalone verification
+and trial-result handoff. Standalone verification is measured separately after
+the proof interval. Leaf/merge serialized-size diagnostics use temporary buffers
+after verification and do not measure simultaneous retained serialized buffers;
+native proof objects remain charged to the cgroup. Handoff-memory samples cover
+the complement of proving intervals inside the timed boundary, including
+adjacent phase readings. They report sampled total cgroup charge, not exact
+allocation ownership. The worker records startup, readiness, leaf, merge, root,
+verification and teardown phase boundaries. The controller must validate the
+frozen reports and runtime configuration before granting
 trials. Failed or incomplete setup cannot be relabeled a ready-service result.
 
 The native/circuit-equivalence, coefficient/capacity binding, ciphertext-padding,

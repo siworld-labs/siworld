@@ -29,8 +29,12 @@ The checkpoint prepares and retains the leaf, merge and root layers once,
 exports their artifacts and actual-shape security reports, and waits for a
 validated controller grant. It then proves three full synthetic N=16 schedules
 with fresh hiding randomness. Timing starts at final input arrival before
-leaf generation and ends at root proof completion. Cold preparation is timed
-separately; its memory remains inside the process-tree 5-GiB/no-swap limit.
+leaf generation and ends after the canonical root-proof artifact is encoded.
+The root phase includes proving, canonical export and the proof check inherent
+in the export API. Standalone verification follows in its own phase outside
+the proof-latency interval. The encoded root buffer remains live through that
+verification and the trial-result handoff. Cold preparation is timed separately;
+its memory remains inside the process-tree 5-GiB/no-swap limit.
 
 A fixed `p3-security` report screens each actual layer and the nineteen-proof
 composition before warm measurement. The selected halving/BHT ledger is an
@@ -41,5 +45,10 @@ At most 135 seconds and at most 5 GiB permits continuation. More than 135 and
 at most 180 seconds under the cap requires optimization. More than 180 seconds,
 a cap violation, OOM or an incorrect proof pauses progression. Per-stage charged
 peak samples are lower bounds; kernel lifetime `memory.peak` governs the hard
-limit and includes startup and every resident layer. Serialized retained-proof
-sizes are reported separately from allocator memory. N=32 is out of scope.
+limit and includes startup and every resident layer. Handoff-memory samples
+cover the gaps between proving phases, including their boundary readings;
+they measure total cgroup charge and do not isolate allocation ownership.
+Leaf and merge serialized sizes are diagnostics computed after standalone verification, using temporary
+buffers; they do not establish simultaneous buffer residency. The reported root
+size is the retained canonical artifact. None of these sizes includes allocator
+or native proof-object overhead. N=32 is out of scope.

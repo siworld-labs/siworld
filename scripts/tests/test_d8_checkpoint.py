@@ -265,6 +265,7 @@ class CheckpointTests(unittest.TestCase):
                 'swap_peak': 0, 'memory_peak': 500, 'phases': phases,
                 'timed_total_ns': 101_000_000_000 + index,
                 'handoff_overhead_ns': 1_000_000_000,
+                'handoff_memory': {'wall_ns': 1_000_000_000, 'sampled_memory_peak': 250},
                 'sampled_trial_memory_peak': 300 + index})
         return rows
 
@@ -328,6 +329,8 @@ class CheckpointTests(unittest.TestCase):
             'runtime': {'packing_width': 8, 'compiled_avx2': True, 'compiled_avx512f': False,
                 'global_rayon_threads': 2, 'rayon_num_threads': '2', 'composition_hiding_workers': '2'},
             'timed_start_ns': 400, 'timed_end_ns': 1100,
+            'canonical_root_output': {'encoding': 'plonky3-canonical-artifact',
+                'completed_ns': 1090, 'bytes': 100},
             'retained_serialized_bytes': {name: 100 for name in ('leaves', 'merge1', 'merge2', 'root')},
             'phases': phases}
         measurement = {'resource_control_pass': True,
@@ -344,6 +347,55 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(result['handoff_overhead_ns'], 300)
         self.assertEqual(result['sampled_trial_memory_peak'], 300)
         self.assertEqual(result['phases']['verification']['wall_ns'], 100)
+        self.assertEqual(result['handoff_memory']['wall_ns'], 300)
+        self.assertEqual(result['handoff_memory']['sampled_memory_peak'], 300)
+
+
+    def test_handoff_memory_attributes_only_gaps_and_boundary_charges(self):
+        phases = [{'phase': name, 'start_ns': first, 'end_ns': first + 100,
+                   'memory_start': 200, 'memory_end': 300}
+                  for name, first in zip(('leaf16', 'merge1', 'merge2', 'root'), (400, 600, 800, 1000))]
+        measurement = {'monotonic_started_ns': 100, 'memory_peak': 1000,
+            'samples': [{'elapsed_ns': 450, 'memory_current': 700},
+                        {'elapsed_ns': 550, 'memory_current': 900},
+                        {'elapsed_ns': 650, 'memory_current': 800},
+                        {'elapsed_ns': 1050, 'memory_current': 1000}]}
+        result = MODULE.attribute_handoff_gaps(phases, 400, 1100, measurement)
+        self.assertEqual(result['wall_ns'], 300)
+        self.assertEqual(result['sampled_memory_peak'], 800)
+        self.assertEqual(result['interval_sample_count'], 2)
+        self.assertEqual(result['boundary_sample_count'], 6)
+        self.assertEqual(result['memory_evidence_kind'], 'sampled-lower-bound')
+        self.assertEqual(result['kernel_lifetime_peak_upper_reference'], 1000)
+        self.assertEqual(result['gaps'], [{'start_ns': start, 'end_ns': start + 100}
+                                         for start in (500, 700, 900)])
+
+    def test_zero_handoff_interval_has_unknown_memory_not_zero(self):
+        phases = [{'phase': 'root', 'start_ns': 400, 'end_ns': 500,
+                   'memory_start': 200, 'memory_end': 300}]
+        result = MODULE.attribute_handoff_gaps(phases, 400, 500,
+            {'monotonic_started_ns': 100, 'memory_peak': 500, 'samples': []})
+        self.assertEqual(result['wall_ns'], 0)
+        self.assertIsNone(result['sampled_memory_peak'])
+        self.assertEqual(result['sample_count'], 0)
+
+    def test_canonical_root_output_must_be_complete_and_retained_before_timing_end(self):
+        phase = {'start_ns': 1000, 'end_ns': 1100}
+        row = {'canonical_root_output': {'encoding': 'plonky3-canonical-artifact',
+                   'completed_ns': 1090, 'bytes': 100},
+               'retained_serialized_bytes': {'root': 100}}
+        self.assertEqual(MODULE.validate_canonical_root_output(row, phase, 1110)['bytes'], 100)
+        for field, value in (('encoding', 'postcard'), ('completed_ns', 1101),
+                             ('completed_ns', 999), ('bytes', 0), ('bytes', 99)):
+            with self.subTest(field=field, value=value):
+                invalid = copy.deepcopy(row)
+                invalid['canonical_root_output'][field] = value
+                with self.assertRaises(ValueError):
+                    MODULE.validate_canonical_root_output(invalid, phase, 1110)
+        with self.assertRaisesRegex(ValueError, 'timing boundary'):
+            MODULE.validate_canonical_root_output(row, phase, 1099)
+        with self.assertRaisesRegex(ValueError, 'canonical root artifact'):
+            MODULE.validate_canonical_root_output({}, phase, 1110)
 
 
     def test_bootstrap_package_receipt_matches_current_isa_contract(self):
@@ -516,7 +568,27 @@ class BuilderTests(unittest.TestCase):
         self.assertNotIn('private-proof-value', json.dumps(result))
         self.assertNotIn('private_payload', json.dumps(result))
 
-    def test_batch_grinding_gate_cannot_select_fewer_than_six_cases(self):
+    def test_passing_gate_summary_excludes_test_payloads(self):
+        from unittest.mock import patch
+        import subprocess
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as temporary:
+            log = Path(temporary) / 'batch-pow.log'
+            output = ('running 1 test\ntest suite::batch_pow_binding ... ok\n'
+                'private-proof-value at /private-owner/project\n')
+            stream = io.StringIO()
+            with patch.object(self.builder.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                    [], 0, stdout=output)), contextlib.redirect_stdout(stream):
+                self.builder.run_logged(['cargo', 'test'], log, nonempty_tests=True)
+            result = json.loads(stream.getvalue())
+            self.assertEqual(result['event'], 'd8_build_tests_passed')
+            self.assertEqual(result['selected_tests'], 1)
+            self.assertEqual(result['passed_tests'], ['suite::batch_pow_binding'])
+            self.assertNotIn('private-proof-value', stream.getvalue())
+            self.assertNotIn('private-owner', stream.getvalue())
+
+    def test_batch_grinding_gate_cannot_select_fewer_than_seven_cases(self):
         from unittest.mock import patch
         import subprocess
         import contextlib
@@ -524,10 +596,10 @@ class BuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             log = Path(temporary) / 'batch-pow.log'
             with patch.object(self.builder.subprocess, 'run', return_value=subprocess.CompletedProcess(
-                    [], 0, stdout='running 5 tests\ntest result: ok. 5 passed')):
+                    [], 0, stdout='running 6 tests\ntest result: ok. 6 passed')):
                 with contextlib.redirect_stdout(io.StringIO()):
                     with self.assertRaisesRegex(ValueError, 'omitted required'):
-                        self.builder.run_logged(['cargo', 'test'], log, nonempty_tests=True, minimum_tests=6)
+                        self.builder.run_logged(['cargo', 'test'], log, nonempty_tests=True, minimum_tests=7)
 
 
 if __name__ == '__main__':

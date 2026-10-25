@@ -380,12 +380,19 @@ fn run() -> Result<(), String> {
         let statements = [fold(&full[..8]), fold(&full[8..])];
         let left = measured("merge1", &mut phases, || batch.prove(&inputs[..8]))?;
         let right = measured("merge2", &mut phases, || batch.prove(&inputs[8..]))?;
-        let proof = measured("root", &mut phases, || {
-            root.prove(
+        let (proof, root_bytes, root_output_ready_ns) = measured("root", &mut phases, || {
+            let proof = root.prove(
                 Input::Batch(&left, &statements[0]),
                 Input::Batch(&right, &statements[1]),
                 Some(&note),
-            )
+            )?;
+            // Canonical export performs its own proof check. It is part of
+            // artifact production, before the separately timed verification.
+            let encoded = root
+                .verifier()
+                .encode_proof_artifact(&proof, ArtifactLimits::default())
+                .map_err(|e| format!("{e:?}"))?;
+            Ok::<_, String>((proof, encoded, monotonic_ns()))
         })?;
         let timed_end_ns = monotonic_ns();
         measured("verification", &mut phases, || {
@@ -395,10 +402,11 @@ fn run() -> Result<(), String> {
             )
         })
         .map_err(|e| format!("{e:?}"))?;
-        let retained = json!({"leaves":leaves.iter().map(|(p,s)|bytes(&(p,s)).map(|b|b.len())).collect::<Result<Vec<_>,_>>()?.iter().sum::<usize>(),"merge1":bytes(&left)?.len(),"merge2":bytes(&right)?.len(),"root":bytes(&proof)?.len(),"basis":"serialized bytes only; not allocator footprint"});
+        let retained = json!({"leaves":leaves.iter().map(|(p,s)|bytes(&(p,s)).map(|b|b.len())).collect::<Result<Vec<_>,_>>()?.iter().sum::<usize>(),"merge1":bytes(&left)?.len(),"merge2":bytes(&right)?.len(),"root":root_bytes.len(),"basis":"leaf/merge serialized sizes are diagnostics; root is the retained canonical artifact; excludes allocator footprint"});
         output(
-            json!({"event":"d8_checkpoint_trial","trial":trial,"checkpoint_mode":"n16-full","suite":SUITE,"manifest_sha256":final_sha,"verified":true,"fresh_hiding_randomness":true,"parameters":manifest["parameters"],"execution":execution,"runtime":runtime,"leaf_proofs_at_merge_start":16,"batch_grinding_verified_paths":["native","recursive","prepared"],"timed_start_ns":timed_start_ns,"timed_end_ns":timed_end_ns,"phases":phases,"retained_serialized_bytes":retained}),
+            json!({"event":"d8_checkpoint_trial","trial":trial,"checkpoint_mode":"n16-full","suite":SUITE,"manifest_sha256":final_sha,"verified":true,"fresh_hiding_randomness":true,"parameters":manifest["parameters"],"execution":execution,"runtime":runtime,"leaf_proofs_at_merge_start":16,"batch_grinding_verified_paths":["native","recursive","prepared"],"timed_start_ns":timed_start_ns,"timed_end_ns":timed_end_ns,"canonical_root_output":{"encoding":"plonky3-canonical-artifact","completed_ns":root_output_ready_ns,"bytes":root_bytes.len()},"phases":phases,"retained_serialized_bytes":retained}),
         );
+        drop(root_bytes);
     }
     let mut teardown = Vec::new();
     measured("teardown", &mut teardown, || {

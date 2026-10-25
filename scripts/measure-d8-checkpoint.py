@@ -253,6 +253,48 @@ def attribute_phases(phases, measurement):
     return result
 
 
+def validate_canonical_root_output(row, root_phase, timed_end):
+    output = row.get('canonical_root_output', {})
+    if output.get('encoding') != 'plonky3-canonical-artifact':
+        raise ValueError('A canonical root artifact must complete inside the root phase')
+    completed = integer(output.get('completed_ns'), 'canonical_root_output.completed_ns')
+    size = integer(output.get('bytes'), 'canonical_root_output.bytes', 1)
+    if not root_phase['start_ns'] <= completed <= root_phase['end_ns'] <= timed_end:
+        raise ValueError('Canonical root output completed outside the proof timing boundary')
+    if row.get('retained_serialized_bytes', {}).get('root') != size:
+        raise ValueError('The retained root buffer must be the complete canonical artifact')
+    return output
+
+
+def attribute_handoff_gaps(proof_phases, first, last, measurement):
+    gaps, values, boundaries = [], [], []
+    cursor, previous_memory = first, None
+    for phase in proof_phases:
+        if cursor < phase['start_ns']:
+            gaps.append({'start_ns': cursor, 'end_ns': phase['start_ns']})
+            if previous_memory is not None:
+                boundaries.append(previous_memory)
+            boundaries.append(integer(phase.get('memory_start'), 'handoff.memory_start'))
+        cursor = phase['end_ns']
+        previous_memory = integer(phase.get('memory_end'), 'handoff.memory_end')
+    if cursor < last:
+        gaps.append({'start_ns': cursor, 'end_ns': last})
+        boundaries.append(previous_memory)
+    for sample in measurement['samples']:
+        at = measurement['monotonic_started_ns'] + sample['elapsed_ns']
+        if any(gap['start_ns'] <= at <= gap['end_ns'] for gap in gaps):
+            values.append(integer(sample['memory_current'], 'handoff.memory_current'))
+    observed = values + boundaries
+    return {'wall_ns': sum(gap['end_ns'] - gap['start_ns'] for gap in gaps),
+        'sample_count': len(observed), 'interval_sample_count': len(values),
+        'boundary_sample_count': len(boundaries),
+        'sampled_memory_peak': max(observed) if observed else None,
+        'memory_evidence_kind': 'sampled-lower-bound',
+        'kernel_lifetime_peak_upper_reference': measurement['memory_peak'],
+        'scope': 'Owned cgroup charge during gaps between proof phases; not component attribution',
+        'gaps': gaps}
+
+
 def read_trial(directory, manifest, frozen_sha, worker_row=None, setup_phases=None, teardown=None):
     measurement = json.loads((directory / 'measurement.json').read_text())
     if not measurement.get('resource_control_pass'):
@@ -311,10 +353,15 @@ def read_trial(directory, manifest, frozen_sha, worker_row=None, setup_phases=No
         if not (indexed['ready_resident']['end_ns'] <= first <= indexed['leaf16']['start_ns']
                 and indexed['root']['end_ns'] <= last <= indexed['verification']['start_ns']):
             raise ValueError('Full proof timing must cover every proof phase and exclude verification')
+        canonical_output = validate_canonical_root_output(row, indexed['root'], last)
         proof_phases = ('leaf16', 'merge1', 'merge2', 'root')
         overhead = last - first - sum(phases[name]['wall_ns'] for name in proof_phases)
         if overhead < 0:
             raise ValueError('Proof timing phases exceed the full interval')
+        handoff_memory = attribute_handoff_gaps([indexed[name] for name in proof_phases],
+            first, last, measurement)
+        if handoff_memory['wall_ns'] != overhead:
+            raise ValueError('Handoff gaps do not reconcile with timed overhead')
         retained = row.get('retained_serialized_bytes', {})
         for name in ('leaves', 'merge1', 'merge2', 'root'):
             integer(retained.get(name), 'retained_serialized_bytes.' + name)
@@ -322,7 +369,9 @@ def read_trial(directory, manifest, frozen_sha, worker_row=None, setup_phases=No
                   if first <= measurement['monotonic_started_ns'] + sample['elapsed_ns'] <= last]
         boundary_peaks = [phases[name]['sampled_memory_peak'] for name in proof_phases]
         extra = {'trial': row.get('trial'), 'timed_total_ns': last - first,
-            'handoff_overhead_ns': overhead, 'retained_serialized_bytes': retained,
+            'canonical_root_output': canonical_output,
+            'handoff_overhead_ns': overhead, 'handoff_memory': handoff_memory,
+            'retained_serialized_bytes': retained,
             'sampled_trial_memory_peak': max([*values, *boundary_peaks]),
             'memory_peak_scope': 'Shared kernel lifetime peak; a conservative per-trial upper reference'}
     return {**extra, 'resource_control_pass': True, 'verified': True, 'phases': phases,
@@ -359,6 +408,15 @@ def project_full(trials):
         'sampled_memory_peak_median': statistics.median(trial['phases'][name]['sampled_memory_peak'] for trial in trials),
         'sampled_memory_peak_max': max(trial['phases'][name]['sampled_memory_peak'] for trial in trials)}
         for name in FULL_PHASES}
+    handoffs = [trial['handoff_memory'] for trial in trials]
+    observed_handoffs = [phase['sampled_memory_peak'] for phase in handoffs
+        if phase['sampled_memory_peak'] is not None]
+    phases['handoffs'] = {'wall_ns': statistics.median(phase['wall_ns'] for phase in handoffs),
+        'wall_ns_max': max(phase['wall_ns'] for phase in handoffs),
+        'sampled_memory_peak_median': statistics.median(observed_handoffs) if observed_handoffs else None,
+        'sampled_memory_peak_max': max(observed_handoffs) if observed_handoffs else None,
+        'memory_evidence_kind': 'sampled-lower-bound',
+        'observed_trials': len(observed_handoffs)}
     return {'schema': 1, 'purpose': 'D8 N=16 full proof engineering checkpoint',
         'acceptance': False, 'trials': 3, 'projected_total_ns': total,
         'time_evidence_kind': 'measured complete last-package-to-root interval',
@@ -667,6 +725,7 @@ def public_summary(report):
         'time_evidence_kind', 'memory_evidence_kind', 'handoff_overhead_median_ns', 'timed_total_ns_max')
     result = {key: report[key] for key in keys if key in report}
     trial_keys = ('trial', 'timed_total_ns', 'handoff_overhead_ns', 'retained_serialized_bytes',
+                  'canonical_root_output', 'handoff_memory',
                   'sampled_trial_memory_peak', 'memory_peak', 'memory_peak_scope',
                   'swap_peak', 'verified')
     if report.get('failure'):

@@ -110,6 +110,10 @@ def run_logged(command, log, nonempty_tests=False, minimum_tests=1):
             'classification': 'required-tests-missing', 'selected_tests': count,
             'minimum_required_tests': minimum_tests}), flush=True)
         raise ValueError('A required correctness filter selected zero tests or omitted required cases')
+    if nonempty_tests:
+        passed = re.findall(r'^test ([A-Za-z0-9_:]+) \.\.\. ok$', result.stdout, flags=re.M)
+        print(json.dumps({'event': 'd8_build_tests_passed', 'step': log.stem,
+            'selected_tests': count, 'passed_tests': passed[:64]}), flush=True)
 
 
 def archive_sources(workspace, upstream, output):
@@ -214,7 +218,7 @@ def build(args):
     subprocess.run([str(guard), '--check-cpu'], check=True, cwd=ROOT, stdout=subprocess.DEVNULL)
     run_logged(['cargo', 'test', '--release', '--manifest-path', str(upstream / 'Cargo.toml'),
         '-p', 'p3-recursion', '--lib', 'batch_pow'],
-        destination / 'opening-batch-grinding-rejection-tests.log', nonempty_tests=True, minimum_tests=6)
+        destination / 'opening-batch-grinding-rejection-tests.log', nonempty_tests=True, minimum_tests=7)
     run_logged(['cargo', 'test', '--release', '--manifest-path', str(upstream / 'Cargo.toml'),
         '-p', 'p3-recursion', '--test', 'd8_scalar_w24'],
         destination / 'd8-transcript-and-codec-tests.log', nonempty_tests=True, minimum_tests=6)
