@@ -96,8 +96,25 @@ reserves. This illustration authorizes no VM or live-container change.
 
 ### Personal-machine qualification
 
-There is no single specified miner machine. Before each hardware-class run,
-record CPU/model/ISA and allocated workers, physical and available RAM,
+The Linux acceptance baseline is the EPYC 7763 Ubuntu 24.04 Microsoft VM
+profile exposing two cores and four vCPUs. EPYC 9V45 is the comparison profile.
+A newly allocated runner must match and record the baseline model and topology;
+a generic Ubuntu runner label does not establish equivalence to that profile.
+The original short-lived CI instance is unavailable. Different allocations are
+not the same machine, and VM-visible cores do not establish physical host core
+count, exclusive access or identical background contention. Run all three
+trials of each reported configuration on one live qualified machine. See the
+[Linux qualification method](linux-proof-measurement.md#baseline-and-comparison-hardware).
+
+On x86_64 the release build baseline is x86-64-v3 rather than a local-native
+CPU target. AVX2 is a minimum requirement; the full x86-64-v3 instruction and
+OS-state support must also be available. The packaged generic-baseline launcher rejects unsupported CPUs before it
+executes the internal v3 worker; direct worker startup is unsupported. It must
+never silently use scalar field arithmetic. See
+[miner hardware requirements](node-operations.md#miner-hardware-requirements).
+
+Before each hardware-class run, record CPU/model/ISA and allocated workers,
+physical and available RAM,
 OS/kernel, storage, virtualization, power/thermal mode, resource-controller
 support, compiler/dependency/image identities and background load policy.
 Record proof-worker and node placement, concurrency, actual hard limits and
@@ -168,7 +185,11 @@ For each trial retain the following private evidence:
    not final settlement; the 100-block finality window has no 180-second gate.
 5. Whole-worker lifetime and interval peaks, charged-memory history, resident
    preparation, actual limits, zero extra swap, OOM/restart counters, node
-   budgets, host reserves and explicit completed-state availability. Capture
+   budgets, host reserves and explicit completed-state availability. Give time
+   and memory equal prominence for startup, leaves, each merge, root and
+   handoffs: report prepared residency, incremental active workspaces, retained
+   proofs/buffers and allocator/cache overlap without double counting. Label
+   component estimates and reconcile them with charged-memory peaks. Capture
    teardown/cancellation as well.
 
 Require correctness, the enforced 5-GiB budget and last-package-to-root latency
@@ -188,8 +209,8 @@ hard memory limit. See the [retained-result interpretation](proof-composition.md
 ## Closure and remaining decisions
 
 Reserve measured timing margin for hardware, propagation and load variation.
-N=32 is a pending assessment after the D8 early checkpoint, excluded from the
-current work and subject to a separate proposal. No capacity increase or
+N=32 is the first separately scoped assessment after the D8 early checkpoint
+passes, excluded from the current work and subject to a separate proposal. No capacity increase or
 retained-network migration is part of this plan. Resolve the reviewed D8
 artifact/codec binding, actual supported hardware
 profiles and isolated network resource admission before launch. Preserve the

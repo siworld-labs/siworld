@@ -6,12 +6,14 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import time
 import uuid
 
 BUDGET = 5368709120
 SAMPLE_SECONDS = 0.1
+HARDWARE_PROFILES = ('diagnostic', 'epyc7763-baseline', 'epyc9v45-control')
 
 
 def read_numbers(path):
@@ -84,6 +86,41 @@ def qualify():
                 'lscpu_topology': topology, 'affinity_cpu_ids': sorted(os.sched_getaffinity(0)),
                 'self_cgroup': Path('/proc/self/cgroup').read_text()}
     return hardware, evidence
+
+
+def qualify_hardware_profile(hardware, profile):
+    """Match a declared reference profile without claiming a persistent host identity."""
+    if profile not in HARDWARE_PROFILES:
+        raise ValueError('Unknown hardware profile')
+    result = {'profile': profile, 'role': 'diagnostic', 'profile_qualified': False,
+        'same_physical_instance_established': False,
+        'identity_scope': 'Exposed CPU model, online topology and VM profile only; '
+                          'this does not identify the original ephemeral VM or its physical host.'}
+    if profile == 'diagnostic':
+        return result
+    model = '7763' if profile == 'epyc7763-baseline' else '9V45'
+    if not re.search(r'\bAMD EPYC ' + model + r'\b', hardware.get('cpu_model') or ''):
+        raise ValueError('CPU model does not match requested hardware profile: ' + profile)
+    expected = {'os': 'Ubuntu 24.04', 'architecture': 'x86_64', 'avx2': True,
+        'logical_cpus': 4, 'online_logical_cpus': 4, 'exposed_physical_cores': 2,
+        'affinity_cpus': 4}
+    if any(hardware.get(key) != value for key, value in expected.items()):
+        raise ValueError('OS, AVX2 or exposed 2-core/4-vCPU topology does not match: ' + profile)
+    detection = hardware.get('virtualization_detection', {})
+    if detection.get('exit_code') != 0 or detection.get('result') in (None, '', 'none', 'unavailable'):
+        raise ValueError('Reference hardware profile requires a detected virtual machine')
+    result.update(role='baseline' if model == '7763' else 'control', profile_qualified=True)
+    return result
+
+
+def qualify_cpu_profile(ancestry, profile):
+    """Reject visible inherited CPU quotas below the reference VM's four vCPUs."""
+    if profile not in HARDWARE_PROFILES:
+        raise ValueError('Unknown hardware profile')
+    if profile != 'diagnostic' and any(
+            row['cpu_limit'] and row['cpu_limit']['quota_cores'] is not None
+            and row['cpu_limit']['quota_cores'] < 4 for row in ancestry):
+        raise ValueError('Visible inherited CPU quota is below the 4-vCPU reference profile')
 
 
 def parse_cpu_max(value):
@@ -201,6 +238,7 @@ def assess(before, after, peak, swap_peak, exit_code, timed_out, remaining):
 
 def measure(args):
     hardware, hardware_evidence = qualify()
+    qualification = qualify_hardware_profile(hardware, args.hardware_profile)
     if os.geteuid() != 0:
         raise ValueError('Requires cgroup delegation or a privileged supervisor')
     if args.uid == 0 or args.gid == 0:
@@ -216,6 +254,7 @@ def measure(args):
     process = None
     report = {'schema': 2, 'purpose': 'measurement harness validation',
               'acceptance': False, 'hardware': hardware, 'hardware_evidence': hardware_evidence,
+              'hardware_qualification': qualification,
               'memory_max': BUDGET, 'memory_swap_max': 0, 'cgroup_id': group.name,
               'samples': [], 'command_executable_sha256': hashlib.sha256(
                   Path(args.command[0]).resolve(strict=True).read_bytes()).hexdigest()}
@@ -232,6 +271,7 @@ def measure(args):
         report['memory_events_before'] = before
         report['memory_stat_before'] = read_numbers(group / 'memory.stat')
         report['cpu_ancestry_before'] = cpu_ancestry(group, parent)
+        qualify_cpu_profile(report['cpu_ancestry_before'], args.hardware_profile)
         cpu_before = read_numbers(group / 'cpu.stat')
         tick_hz = os.sysconf('SC_CLK_TCK')
         report['cpu_stat_before'] = cpu_before
@@ -316,7 +356,7 @@ def public_summary(report):
     keys = ('schema', 'purpose', 'acceptance', 'hardware', 'memory_max', 'memory_swap_max',
             'elapsed_ns', 'exit_code', 'timed_out', 'remaining_descendants', 'memory_peak',
             'swap_peak', 'resource_control_pass', 'memory_events_delta', 'cpu_summary',
-            'command_executable_sha256', 'worker_environment')
+            'command_executable_sha256', 'worker_environment', 'hardware_qualification')
     return {key: report[key] for key in keys if key in report}
 
 
@@ -326,6 +366,8 @@ def main():
     parser.add_argument('--uid', type=int, required=True)
     parser.add_argument('--gid', type=int, required=True)
     parser.add_argument('--timeout', type=int, default=900)
+    parser.add_argument('--hardware-profile', choices=HARDWARE_PROFILES, default='diagnostic',
+        help='Require a reference CPU/VM profile; default collection is diagnostic only')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.command[:1] == ['--']:

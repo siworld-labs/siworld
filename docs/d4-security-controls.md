@@ -33,6 +33,6 @@ digest has ideal classical collision exponent 123.9547 and BHT exponent
 post-quantum target.** B is retained only to validate measurement methods.
 
 The historical B and uniform-q92 proof/verification medians, 29.591 and 64.04
-seconds, are below 120 seconds numerically but do not establish the new input
+seconds, are below 180 seconds numerically but do not establish the new input
 arrival markers, enforced memory limit or required security. No control is
 an acceptance result. See [proof composition](proof-composition.md).

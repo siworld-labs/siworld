@@ -102,13 +102,27 @@ circuits at service startup and keep them resident; record cold startup
 separately and exclude its duration from latency. Startup and resident memory
 remain inside the enforced 5-GiB process-tree cap with no extra swap. Record
 leaf, each eight-input node, root, standalone verification, cold startup and
-both lifetime and interval memory peaks. Report every attempt. Uncapped
-characterization cannot pass that gate.
+both lifetime and interval memory peaks. Give stage time and memory equal
+prominence: separate prepared residency, active workspaces, retained proofs and
+buffers, allocation overlap at handoffs and startup. Mark every projected term
+as measured or estimated and reconcile it with simultaneous charged memory.
+Report every attempt. Uncapped characterization cannot pass that gate.
+
+The early checkpoint uses three same-machine trials after opening-batch
+grinding is complete and the configuration is frozen. At most 135 seconds and
+at most 5 GiB permits continuation; more than 135 and at most 180 seconds under
+the cap requires parallel optimization; more than 180 seconds or more than
+5 GiB pauses progression. An OOM or incorrect proof also blocks progression.
+The EPYC 7763 Ubuntu 24.04 VM profile, exposing two cores and four vCPUs, is the
+Linux baseline; EPYC 9V45 is a comparison profile. The x86_64 release baseline
+is x86-64-v3, with mandatory AVX2 and no scalar fallback. See the
+[hardware qualification requirements](linux-proof-measurement.md#baseline-and-comparison-hardware).
 
 Retained D4/W16 leaf-B and uniform-q92 setup-excluding timing medians are
 29.591 and 64.04 seconds, below 180 seconds numerically. D4/W16 fails the
-required security targets, so these are not acceptance results. N=32 is a
-pending assessment after the D8 early checkpoint and is excluded from this work.
+required security targets, so these are not acceptance results. N=32 is the
+first separately scoped assessment after the D8 early checkpoint passes and is
+excluded from this work.
 
 Independent review covers the final D8 suite and profiles, not a prior D4
 measurement. After findings close, integrate and validate the full production

@@ -31,6 +31,55 @@ class CgroupAssessmentTests(unittest.TestCase):
             CG.assess({'oom': 1}, {'oom': 0}, 100, 0, 0, False, [])
 
 
+class HardwareProfileTests(unittest.TestCase):
+    def hardware(self, model='AMD EPYC 7763 64-Core Processor'):
+        return {'os': 'Ubuntu 24.04', 'architecture': 'x86_64', 'cpu_model': model,
+            'avx2': True, 'logical_cpus': 4, 'affinity_cpus': 4,
+            'online_logical_cpus': 4, 'exposed_physical_cores': 2,
+            'virtualization_detection': {'result': 'microsoft', 'exit_code': 0}}
+
+    def test_baseline_requires_model_topology_vm_and_avx2(self):
+        result = CG.qualify_hardware_profile(self.hardware(), 'epyc7763-baseline')
+        self.assertTrue(result['profile_qualified'])
+        self.assertEqual(result['role'], 'baseline')
+        self.assertFalse(result['same_physical_instance_established'])
+        for changed in (
+                {'cpu_model': 'AMD EPYC 9V45 96-Core Processor'},
+                {'cpu_model': 'Example 7763 CPU'}, {'exposed_physical_cores': 4},
+                {'logical_cpus': 8}, {'online_logical_cpus': 8}, {'affinity_cpus': 2},
+                {'virtualization_detection': {'result': 'none', 'exit_code': 1}},
+                {'avx2': False}, {'os': 'Ubuntu 22.04'}, {'architecture': 'aarch64'}):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                CG.qualify_hardware_profile({**self.hardware(), **changed}, 'epyc7763-baseline')
+
+    def test_control_identity_is_separate_from_baseline(self):
+        hardware = self.hardware('AMD EPYC 9V45 96-Core Processor')
+        result = CG.qualify_hardware_profile(hardware, 'epyc9v45-control')
+        self.assertEqual(result['role'], 'control')
+        self.assertTrue(result['profile_qualified'])
+        with self.assertRaises(ValueError):
+            CG.qualify_hardware_profile(hardware, 'epyc7763-baseline')
+        with self.assertRaises(ValueError):
+            CG.qualify_hardware_profile(self.hardware(), 'epyc9v45-control')
+
+    def test_diagnostic_default_cannot_claim_baseline(self):
+        result = CG.qualify_hardware_profile(self.hardware(), 'diagnostic')
+        self.assertFalse(result['profile_qualified'])
+        self.assertEqual(result['role'], 'diagnostic')
+        with self.assertRaises(ValueError):
+            CG.qualify_hardware_profile(self.hardware(), 'unknown')
+
+    def test_baseline_rejects_reduced_inherited_cpu_quota(self):
+        for profile in ('epyc7763-baseline', 'epyc9v45-control'):
+            ancestry = [{'cpu_limit': CG.parse_cpu_max('max 100000')},
+                        {'cpu_limit': CG.parse_cpu_max('300000 100000')}]
+            with self.subTest(profile=profile), self.assertRaises(ValueError):
+                CG.qualify_cpu_profile(ancestry, profile)
+        CG.qualify_cpu_profile(ancestry, 'diagnostic')
+        CG.qualify_cpu_profile([{'cpu_limit': CG.parse_cpu_max('max 100000')}],
+                               'epyc7763-baseline')
+
+
 class CpuMeasurementTests(unittest.TestCase):
     def test_nested_lscpu_preserves_model_and_hypervisor_fields(self):
         fields = CG.lscpu_fields([{'field': 'CPU(s):', 'data': '4', 'children': [

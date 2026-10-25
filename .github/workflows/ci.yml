@@ -14,7 +14,6 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 jobs:
   repository:
@@ -97,3 +96,67 @@ jobs:
         run: |
           python3 scripts/build-composition-intra.py
           cargo test --release --locked --manifest-path .local/composition-intra/benchmark/Cargo.toml -p siworld-bench-plonky3 --features experimental-fanin,phase-profile,security-report --lib
+
+  prover-release:
+    name: Linux proof release ISA and CPU admission
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - name: Compile baseline admission tests
+        run: |
+          rustfmt --check scripts/prover-launcher.rs
+          rustc scripts/prover-launcher.rs --edition=2021 --test -D warnings -C target-cpu=x86-64 -o /tmp/prover-launcher-tests
+          /tmp/prover-launcher-tests
+          if rustc scripts/prover-launcher.rs --edition=2021 -C target-cpu=x86-64-v3 -o /tmp/invalid-launcher > /tmp/launcher-build.log 2>&1; then
+            echo "Optimized bootstrap was incorrectly accepted"
+            exit 1
+          fi
+          python3 -c 'from pathlib import Path; assert "must use the generic x86-64 baseline" in Path("/tmp/launcher-build.log").read_text()'
+      - name: Build controlled production release
+        run: python3 scripts/build-prover-release.py --output .local/prover-release
+      - name: Inspect actual proof worker and supported CPU admission
+        run: |
+          python3 scripts/check-prover-isa.py --binary .local/prover-release/libexec/siworld-node
+          .local/prover-release/bin/siworld-node --check-cpu
+          .local/prover-release/bin/siworld-node --help
+      - name: Install CPU emulation
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y qemu-user
+      - name: Reject unsupported CPU before any optimized worker starts
+        run: |
+          python3 - <<'PY_CPU_TEST'
+          import json, os, shutil, subprocess, tempfile
+          from pathlib import Path
+          release = Path('.local/prover-release').resolve()
+          with tempfile.TemporaryDirectory() as directory:
+              root = Path(directory)
+              (root / 'bin').mkdir()
+              (root / 'libexec').mkdir()
+              launcher = root / 'bin/siworld-node'
+              shutil.copy2(release / 'bin/siworld-node', launcher)
+              sentinel = root / 'worker-started'
+              worker = root / 'libexec/siworld-node'
+              worker.write_text('#!/bin/sh\nprintf "%s" "$1" > "$PROVER_SENTINEL"\nexit 23\n')
+              worker.chmod(0o755)
+              for cpu in ('Nehalem', 'max,-xsave'):
+                  result = subprocess.run(['qemu-x86_64', '-cpu', cpu, str(launcher), '--help'],
+                      capture_output=True, text=True, env={**os.environ, 'PROVER_SENTINEL': str(sentinel)})
+                  assert result.returncode == 78, (cpu, result.returncode, result.stderr)
+                  assert 'including AVX2' in result.stderr and 'Scalar fallback is disabled' in result.stderr
+                  assert not sentinel.exists(), 'Unsupported CPU executed a worker'
+                  checked = subprocess.run(['qemu-x86_64', '-cpu', cpu, str(launcher), '--check-cpu'],
+                      capture_output=True, text=True)
+                  assert checked.returncode == 78
+                  assert not json.loads(checked.stdout)['supported']
+              forwarded = subprocess.run([str(launcher), 'argument-preserved'],
+                  env={**os.environ, 'PROVER_SENTINEL': str(sentinel)})
+              assert forwarded.returncode == 23
+              assert sentinel.read_text() == 'argument-preserved'
+          PY_CPU_TEST

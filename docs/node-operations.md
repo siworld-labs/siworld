@@ -2,18 +2,53 @@
 
 ## Build
 
+The controlled release packager below supports Linux x86_64. Other platform
+adapters require separate packaging and qualification.
+
 ```sh
-cargo build --release --locked -p siworld-node
+python3 scripts/build-prover-release.py --output .local/prover-release
 python3 scripts/check-node-features.py
+export PATH="$PWD/.local/prover-release/bin:$PATH"
 ```
 
-Default node binaries enable Plonky3 and reject mock networks. Explicit `development` builds support forgeable mock proofs. All-features builds are for verification, not deployment. Secret-file checks are implemented on Unix; unsupported adapters fail closed.
+The release package contains a generic-baseline launcher and a separate
+x86-64-v3 worker. Start the packaged `bin/siworld-node` entry point; do not start
+the internal worker directly. A Cargo build of the worker alone does not provide
+the portable startup check. Default node binaries enable Plonky3 and reject mock networks. Explicit `development` builds support forgeable mock proofs. All-features builds are for verification, not deployment. Secret-file checks are implemented on Unix; unsupported adapters fail closed.
+
+## Miner hardware requirements
+
+The x86_64 release baseline is **x86-64-v3**. AVX2 is a minimum requirement;
+AVX2 alone does not describe the entire v3 feature set. The CPU must also expose
+the remaining x86-64-v3 instructions, including FMA, BMI1/BMI2, F16C, LZCNT and
+MOVBE, with operating-system support for AVX register state. Virtual machines
+must expose the required features to the guest. The generic-baseline launcher checks the CPU and OS-state support before
+executing the internal worker and rejects an unsupported CPU with an explicit
+error. It has no environment override or scalar fallback. Directly starting
+the internal v3 worker is unsupported because it bypasses this admission check. The release build uses the fixed v3 target rather than
+`target-cpu=native`, and release verification checks the actual proof binary
+for AVX2 instructions.
+
+AArch64 has a separate build target and requires its own hardware/resource
+qualification. Historical M1 measurements do not qualify every AArch64 machine.
+The D8 proving budget is 5 GiB for the proof process and all children, with zero
+extra swap. Total host RAM must additionally cover the node, operating system,
+other admitted processes and reserves; a 5-GiB machine does not qualify merely
+because it matches the proof-process limit. Do not place a 5-GiB worker in an
+existing smaller node container or change retained-network resources to fit it.
+
+Linux D8 acceptance uses the EPYC 7763 Ubuntu 24.04 Microsoft VM profile with
+two exposed cores and four vCPUs as the baseline; EPYC 9V45 is a comparison.
+Record and validate the actual machine before each three-trial series. These
+profiles are measurement references, not a claim of dedicated host cores or
+acceptance of an unimplemented suite. See the [qualification procedure](linux-proof-measurement.md#baseline-and-comparison-hardware)
+and [production acceptance plan](prover-acceptance.md).
 
 ## Wallet initialization
 
 ```sh
-target/release/siworld-node init --datadir "$HOME/.siworld-test"
-target/release/siworld-node address --datadir "$HOME/.siworld-test"
+siworld-node init --datadir "$HOME/.siworld-test"
+siworld-node address --datadir "$HOME/.siworld-test"
 ```
 
 Initialization asks for a password through hidden terminal input. It creates an encrypted key and distinct role credentials, refuses key overwrite, and uses directory mode 0700 and secret-file mode 0600. Keep authenticated backups independently. Runtime files must remain outside the repository.

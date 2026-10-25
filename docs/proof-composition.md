@@ -82,8 +82,12 @@ D8/W24 requires new security screening and target-hardware measurements.
 After opening-batch grinding is implemented and the checkpoint configuration
 is frozen, at the first verified D8 eight-input merge apply the
 [early checkpoint](d8-w24-recursion.md#early-performance-checkpoint)
-to projected N=16 latency and peak memory. N=32 is a pending assessment after
-that checkpoint and is not measured in the current work.
+to projected N=16 latency and peak memory: at most 135 seconds and at most
+5 GiB permits continuation; more than 135 and at most 180 seconds under the cap
+requires parallel optimization; more than 180 seconds or more than 5 GiB pauses
+progression. Report per-stage memory components and peaks alongside times.
+N=32 is the first separately scoped assessment after that checkpoint passes
+and is not measured in the current work.
 
 ## Isolated prototype
 
@@ -389,6 +393,6 @@ before the [independent review](proof-security-review.md) and
 Preserve the current N=2 network. Use a separate resettable N=16 engineering
 network with independent genesis, keys and directories and no old-note/proof
 imports. Height-activated historical-verifier design is deferred until before
-mainnet. N=32 is a pending assessment after the D8 early checkpoint and is
-excluded from the current work. No existing key or validator is replaced by
+mainnet. N=32 is the first separately scoped assessment after a passing D8
+early checkpoint and is excluded from the current work. No existing key or validator is replaced by
 this experiment.

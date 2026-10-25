@@ -107,9 +107,15 @@ target does not change the consensus block interval.
 
 Complete opening-batch grinding and freeze the final checkpoint configuration
 before timing the first verified eight-input merge. It triggers three
-same-machine measurements and an N=16 latency/memory projection. Up to
-90 seconds and below 4.5 GiB permits continuation; 90–180 seconds or 4.5–5 GiB requires optimization work
+same-machine measurements and an N=16 latency/memory projection. At most
+135 seconds with peak memory at most 5 GiB permits continuation. More than
+135 and at most 180 seconds with peak memory at most 5 GiB requires optimization
 alongside implementation. Above 180 seconds, above 5 GiB, OOM or an incorrect
-proof pauses progression. The hard cap remains 5 GiB. N=32 is deferred until
-after this checkpoint and is outside the current scope. See the
+proof pauses progression. Report stage memory with the same prominence as stage
+time, including startup, prepared residency, active workspace, retained proofs
+and handoff overlap. Use the EPYC 7763 Ubuntu 24.04 VM profile with two exposed
+cores and four vCPUs as the Linux baseline; EPYC 9V45 is a comparison profile.
+The x86_64 release baseline is x86-64-v3, with AVX2 required and no scalar
+fallback. N=32 is the first separate assessment after a passing D8 checkpoint;
+no N=32 evaluation is part of the current scope. See the
 [implementation plan](d8-w24-recursion.md) and [acceptance plan](prover-acceptance.md).

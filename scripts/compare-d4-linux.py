@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare scalar and AVX2 D4-B controls on one live Linux runner."""
+"""Measure x86-64-v3 D4-B controls, optionally comparing a diagnostic scalar build."""
 import argparse
 import hashlib
 import json
@@ -13,8 +13,44 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 FLAGS = {
     'scalar': '-C target-cpu=x86-64 -C target-feature=-avx2,-avx512f',
-    'avx2': '-C target-cpu=x86-64 -C target-feature=+avx2,-avx512f',
+    'avx2': '-C target-cpu=x86-64-v3',
 }
+
+
+def proof_worker(binary, mode):
+    """Run a baseline launcher while inspecting its separately installed optimized worker."""
+    if mode == 'scalar':
+        return binary
+    if binary.parent.name != 'bin':
+        raise ValueError('Normal AVX2 controls require a CPU-check launcher in a release bin directory')
+    package = binary.parent.parent
+    worker = package / 'libexec' / binary.name
+    worker = worker.resolve(strict=True)
+    receipt = json.loads((package / 'build-receipt.json').read_text())
+    if receipt.get('worker_isa') != 'x86-64-v3' or receipt.get('bootstrap_isa') != 'x86-64':
+        raise ValueError('Release ISA metadata does not match the CPU-check launcher package')
+    entries = [entry for entry in receipt.get('workers', []) if entry.get('name') == binary.name]
+    if len(entries) != 1 or entries[0].get('worker_sha256') != hashlib.sha256(worker.read_bytes()).hexdigest():
+        raise ValueError('Release worker checksum does not match its package receipt')
+    if receipt.get('bootstrap_sha256') != hashlib.sha256(binary.read_bytes()).hexdigest():
+        raise ValueError('CPU-check launcher checksum does not match its package receipt')
+    if receipt.get('repository_config_sha256') != hashlib.sha256((ROOT / '.cargo/config.toml').read_bytes()).hexdigest():
+        raise ValueError('Release package target configuration differs from the repository')
+    return worker
+
+
+def verify_build_receipt(build, inspected, mode):
+    if build.get('binary_sha256') != inspected['binary_sha256']:
+        raise ValueError('Binary compiler receipt checksum mismatch')
+    if mode == 'avx2':
+        if (build.get('effective_rustflags') != FLAGS[mode]
+                or build.get('cargo_working_directory') != 'repository-root'
+                or build.get('diagnostic_only') is not False
+                or build.get('repository_config_sha256') != hashlib.sha256(
+                    (ROOT / '.cargo/config.toml').read_bytes()).hexdigest()):
+            raise ValueError('Optimized build must use the fixed repository x86-64-v3 configuration')
+    elif build.get('effective_rustflags', build.get('build_environment', {}).get('RUSTFLAGS')) != FLAGS[mode]:
+        raise ValueError('Scalar diagnostic compiler flag receipt mismatch')
 
 
 def inspect_binary(binary, output, mode):
@@ -74,7 +110,12 @@ def read_trial(directory, mode):
             or row.get('leaf_parameters') != {'suite': 'D4-W16', 'log_blowup': 4,
                                              'queries': 46, 'grinding': 16}):
         raise ValueError('D4-B configuration mismatch')
+    qualification = measurement.get('hardware_qualification', {
+        'profile': 'diagnostic', 'role': 'diagnostic', 'profile_qualified': False,
+        'same_physical_instance_established': False})
     return {'mode': mode, 'verified': True, 'runtime': row['runtime'],
+            'acceptance': False, 'hardware_qualification': qualification,
+            'diagnostic_only': mode == 'scalar' or not qualification['profile_qualified'],
             'stages': row['stages'], 'batch_node_wall_ns': row['batch_node_wall_ns'],
             'batch_node_cpu_ticks': row.get('batch_node_cpu_ticks'),
             'proof_and_verify_ns': row['proof_and_verify_ns'],
@@ -105,34 +146,52 @@ def aggregate(trials):
                                   for row in trials) for i in range(2)]}
 
 
-def main():
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scalar', type=Path, required=True)
+    parser.add_argument('--scalar', type=Path,
+        help='Explicit diagnostic-only scalar binary; omitted with --avx2-only')
     parser.add_argument('--avx2', type=Path, required=True)
+    parser.add_argument('--avx2-only', action='store_true',
+        help='Run only the three x86-64-v3 trials; do not run a scalar control')
+    parser.add_argument('--hardware-profile',
+        choices=('diagnostic', 'epyc7763-baseline', 'epyc9v45-control'), default='diagnostic')
     parser.add_argument('--output', type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.avx2_only and args.scalar is not None:
+        parser.error('--scalar conflicts with --avx2-only')
+    if not args.avx2_only and args.scalar is None:
+        parser.error('Provide --scalar for a diagnostic comparison or select --avx2-only')
+    return args
+
+
+def main():
+    args = parse_arguments()
     if os.geteuid() == 0:
         raise ValueError('Run orchestration as the unprivileged runner user')
     args.output.mkdir(parents=True, exist_ok=False)
     receipt = {'purpose': 'D4-B SIMD and resource-control comparison',
                'acceptance': False, 'same_live_runner': True,
-               'original_runner_reused': False, 'builds': {}, 'observations': []}
-    for mode, binary in [('scalar', args.scalar), ('avx2', args.avx2)]:
+               'original_runner_reused': False, 'hardware_profile': args.hardware_profile,
+               'scalar_diagnostic_requested': not args.avx2_only, 'builds': {}, 'observations': []}
+    builds = [('avx2', args.avx2)] if args.avx2_only else [('scalar', args.scalar), ('avx2', args.avx2)]
+    for mode, binary in builds:
         binary = binary.resolve(strict=True)
         evidence = args.output / mode
         evidence.mkdir()
-        receipt['builds'][mode] = inspect_binary(binary, evidence, mode)
+        worker = proof_worker(binary, mode)
+        receipt['builds'][mode] = inspect_binary(worker, evidence, mode)
+        receipt['builds'][mode]['cpu_check_launcher_sha256'] = (
+            hashlib.sha256(binary.read_bytes()).hexdigest() if mode == 'avx2' else None)
         build = json.loads((ROOT / '.local/d4-build-evidence' / (mode + '-receipt.json')).read_text())
-        if (build['binary_sha256'] != receipt['builds'][mode]['binary_sha256']
-                or build['build_environment']['RUSTFLAGS'] != FLAGS[mode]):
-            raise ValueError('Binary or compiler flag receipt mismatch')
+        verify_build_receipt(build, receipt['builds'][mode], mode)
         receipt['builds'][mode]['provenance'] = build
         for trial in range(1 if mode == 'scalar' else 3):
             directory = evidence / ('trial-' + str(trial + 1))
             command = ['sudo', '--preserve-env=RAYON_NUM_THREADS,SIWORLD_COMPOSITION_HIDING_WORKERS,SIWORLD_BENCH_PROFILE,GITHUB_ACTIONS',
                 sys.executable, str(ROOT / 'scripts/measure-proof-cgroup.py'),
                 '--output', str(directory), '--uid', str(os.getuid()),
-                '--gid', str(os.getgid()), '--timeout', '900', '--',
+                '--gid', str(os.getgid()), '--timeout', '900',
+                '--hardware-profile', args.hardware_profile, '--',
                 sys.executable, str(ROOT / 'scripts/validate-d4-cgroup.py'),
                 '--binary', str(binary)]
             subprocess.run(command, check=True)
@@ -141,8 +200,9 @@ def main():
             (args.output / 'comparison.json').write_text(json.dumps(receipt, indent=2) + '\n')
             print(json.dumps({'event': 'd4_trial', 'trial': trial + 1, **value}), flush=True)
     receipt['avx2_medians'] = aggregate([row for row in receipt['observations'] if row['mode'] == 'avx2'])
-    scalar = receipt['observations'][0]['proof_and_verify_ns']
-    receipt['same_runner_speedup'] = scalar / receipt['avx2_medians']['proof_and_verify_median_ns']
+    if not args.avx2_only:
+        scalar = receipt['observations'][0]['proof_and_verify_ns']
+        receipt['same_runner_speedup'] = scalar / receipt['avx2_medians']['proof_and_verify_median_ns']
     (args.output / 'comparison.json').write_text(json.dumps(receipt, indent=2) + '\n')
     print(json.dumps({'event': 'd4_comparison', **receipt}, indent=2))
 

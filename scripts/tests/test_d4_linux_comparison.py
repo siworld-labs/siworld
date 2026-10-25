@@ -1,6 +1,7 @@
 """Reject mismatched Linux controls and aggregate the corrected three-trial run."""
 import copy
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -37,6 +38,76 @@ class D4LinuxComparisonTests(unittest.TestCase):
             (directory / 'measurement.json').write_text(json.dumps(measurement))
             (directory / 'stdout.jsonl').write_text(json.dumps(row) + '\n')
             return COMPARISON.read_trial(directory, mode)
+
+    def test_optimized_worker_requires_generic_cpu_check_launcher_and_matching_receipts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary)
+            (package / 'bin').mkdir()
+            (package / 'libexec').mkdir()
+            launcher = package / 'bin/composition-bench'
+            worker = package / 'libexec/composition-bench'
+            launcher.write_bytes(b'generic launcher')
+            worker.write_bytes(b'optimized worker')
+            receipt = {'worker_isa': 'x86-64-v3', 'bootstrap_isa': 'x86-64',
+                'bootstrap_sha256': hashlib.sha256(launcher.read_bytes()).hexdigest(),
+                'repository_config_sha256': hashlib.sha256(
+                    (COMPARISON.ROOT / '.cargo/config.toml').read_bytes()).hexdigest(),
+                'workers': [{'name': 'composition-bench',
+                    'worker_sha256': hashlib.sha256(worker.read_bytes()).hexdigest()}]}
+            path = package / 'build-receipt.json'
+            path.write_text(json.dumps(receipt))
+            self.assertEqual(COMPARISON.proof_worker(launcher, 'avx2'), worker.resolve())
+            self.assertEqual(COMPARISON.proof_worker(worker, 'scalar'), worker)
+            with self.assertRaises(ValueError):
+                COMPARISON.proof_worker(worker, 'avx2')
+            for mutation in ({'bootstrap_sha256': 'wrong'}, {'worker_isa': 'x86-64'},
+                             {'repository_config_sha256': 'wrong'}, {'workers': []}):
+                path.write_text(json.dumps({**receipt, **mutation}))
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                    COMPARISON.proof_worker(launcher, 'avx2')
+
+    def test_build_receipt_requires_effective_flags_and_repository_configuration(self):
+        receipt = {'binary_sha256': 'digest', 'effective_rustflags': COMPARISON.FLAGS['avx2'],
+            'cargo_working_directory': 'repository-root', 'diagnostic_only': False,
+            'build_environment': {'RUSTFLAGS': None},
+            'repository_config_sha256': hashlib.sha256(
+                (COMPARISON.ROOT / '.cargo/config.toml').read_bytes()).hexdigest()}
+        inspected = {'binary_sha256': 'digest'}
+        COMPARISON.verify_build_receipt(receipt, inspected, 'avx2')
+        for mutation in ({'effective_rustflags': '-C target-cpu=native'},
+                         {'cargo_working_directory': 'other'}, {'binary_sha256': 'wrong'},
+                         {'diagnostic_only': True}, {'repository_config_sha256': 'wrong'}):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                COMPARISON.verify_build_receipt({**receipt, **mutation}, inspected, 'avx2')
+
+    def test_v3_only_mode_never_requires_scalar_binary(self):
+        args = COMPARISON.parse_arguments(['--avx2', 'prover', '--output', 'private',
+            '--avx2-only', '--hardware-profile', 'epyc7763-baseline'])
+        self.assertIsNone(args.scalar)
+        self.assertTrue(args.avx2_only)
+        self.assertEqual(args.hardware_profile, 'epyc7763-baseline')
+        with self.assertRaises(SystemExit):
+            COMPARISON.parse_arguments(['--avx2', 'prover', '--scalar', 'scalar',
+                '--output', 'private', '--avx2-only'])
+        with self.assertRaises(SystemExit):
+            COMPARISON.parse_arguments(['--avx2', 'prover', '--output', 'private'])
+
+    def test_optimized_flags_use_fixed_v3_baseline(self):
+        self.assertEqual(COMPARISON.FLAGS['avx2'], '-C target-cpu=x86-64-v3')
+        self.assertNotIn('native', COMPARISON.FLAGS['avx2'])
+
+    def test_trial_preserves_qualification_without_promoting_diagnostic(self):
+        row, measurement = self.fixture()
+        measurement['hardware_qualification'] = {'profile': 'epyc7763-baseline',
+            'role': 'baseline', 'profile_qualified': True,
+            'same_physical_instance_established': False}
+        result = self.read(row, measurement)
+        self.assertEqual(result['hardware_qualification'], measurement['hardware_qualification'])
+        self.assertFalse(result['diagnostic_only'])
+        row['runtime'].update(packing_width=1, compiled_avx2=False)
+        result = self.read(row, measurement, mode='scalar')
+        self.assertTrue(result['diagnostic_only'])
+        self.assertFalse(result['acceptance'])
 
     def test_rejects_wrong_packing_and_actual_worker_settings(self):
         row, _ = self.fixture()

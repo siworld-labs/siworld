@@ -255,6 +255,17 @@ After D8 correctness, record actual tables, constraints, degrees, quotient
 chunks, hiding extensions, preprocessing keys, opening powers, lookup shapes,
 FRI schedules and every checked grinding site. Repeat the full screen and
 composition analysis. Only then measure passing profiles under the hard limit.
+Opening-batch grinding is a mandatory pre-checkpoint task. Freeze and measure
+the implemented final configuration on the qualified EPYC 7763 baseline rather
+than timing a reduced-difficulty substitute. Apply the joint checkpoint gates:
+at most 135 seconds and at most 5 GiB permits continuation; more than 135 and at
+most 180 seconds under the cap requires parallel optimization; more than
+180 seconds or more than 5 GiB pauses progression. Give each stage's memory
+breakdown the same prominence as its time, with measured and estimated
+components distinguished. See the [checkpoint procedure](d8-w24-recursion.md#early-performance-checkpoint).
+N=32 is the first separately scoped assessment after that checkpoint passes;
+there is no N=32 screening in the current work.
+
 A single commitment-collision term is the estimator's ideal cap, not a complete
 count of adaptive hash oracle calls; multi-target hash/transcript and recursion
 composition losses remain independent review requirements.

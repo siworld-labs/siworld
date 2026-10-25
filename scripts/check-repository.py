@@ -40,6 +40,8 @@ def allowed(path):
         return name in ROOT_FILES
     if path.parts[0] == "docs":
         return len(path.parts) == 2 and path.name in DOCUMENTS
+    if name in {".cargo/config.toml", "scripts/prover-launcher.rs"}:
+        return True
     if path.parts[0] == "scripts":
         return path.suffix == ".py" and (len(path.parts) == 2 or (len(path.parts) == 3 and path.parts[1] == "tests"))
     if path.parts[0] == "tools":

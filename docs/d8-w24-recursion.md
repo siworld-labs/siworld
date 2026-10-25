@@ -176,9 +176,12 @@ source/dependency revisions, configuration and artifact identities. Preliminary
 parameters remain unapproved; reduced smoke parameters cannot establish this
 checkpoint. Real and padding leaves must use identical parameters.
 
-For each trial record eight-input proving wall time, separate startup and
-standalone verification times, and complete process-tree charged-memory peaks,
-including resident preparation. Start isolated merge timing with eight leaf
+For each trial report time and peak memory with equal prominence. Record
+eight-input proving wall time, separate startup and standalone verification
+times, and complete process-tree charged-memory peaks, including resident
+preparation. Use the [Linux baseline profile](linux-proof-measurement.md#baseline-and-comparison-hardware)
+on one live machine for all three trials; EPYC 9V45 remains a comparison.
+Start isolated merge timing with eight leaf
 proofs available; include their generation in the N=16 projection. Verify every
 resulting proof. Keep all three observations and report median proving time
 and median memory peak, together with observed maxima. Enforce the 5-GiB
@@ -230,6 +233,24 @@ the baseline must not have it added a second time. Use the three-trial medians
 for the projection and retain observed maxima and uncertainty separately. A
 maximum over the cap cannot be hidden by a passing median.
 
+Include the following breakdown for every trial and the projected N=16 service:
+
+| Phase | Time evidence | Memory evidence |
+| --- | --- | --- |
+| Cold startup and readiness | Preparation-to-ready duration, excluded from proving latency | Lifetime and startup charged-memory peaks; each prepared circuit/key allocation and ready resident baseline |
+| Sixteen leaves | All leaf proving time within the arrival-to-root boundary | Active leaf workspace, still-resident circuits/keys, retained input/proof buffers and phase charged peak |
+| First eight-input merge | First merge proving time | Active merge workspace, remaining leaf proofs, resident circuits/keys and phase charged peak |
+| Second eight-input merge | Second merge proving time | Active merge workspace, first merge proof and remaining leaf buffers, resident circuits/keys and phase charged peak |
+| Root | Measured root time or explicitly labeled proxy | Root workspace/residency, both child proofs, output buffers and charged peak; distinguish shape-based estimates |
+| Handoffs, serialization and cancellation | Timed overhead within the proving interval; separate teardown duration | Allocation overlap, allocator/cache retention and charged peaks, including releases after each handoff |
+
+For each memory component state whether it is measured or estimated, its scope,
+and whether the resident baseline is already included. Reconcile component
+estimates with simultaneous sampled charged memory and the kernel lifetime
+peak; do not claim exact component attribution from a process-wide peak alone.
+Report all three individual phase peaks, medians, maxima and unresolved
+attribution. An absent estimate or unmeasured phase cannot be replaced with zero.
+
 Estimate not-yet-built root residency and workspace from its explicit shape
 and memory model; eight-input timing alone does not establish root memory.
 `M_startup_peak_est` includes preparation of every circuit that must be resident
@@ -241,19 +262,19 @@ when available; this estimate is not a worst-case memory proof.
 ### Continuation thresholds
 
 Apply the decision to projected total N=16 proof latency and peak memory, not
-to the isolated merge. For an actionable near-cap warning, use **4.5 GiB**, or
-90% of the hard budget. The warning takes precedence over ordinary continuation;
-the hard limit remains 5 GiB.
+to the isolated merge. The memory limit is **5 GiB = 5,368,709,120 bytes**.
+Report remaining memory margin and uncertainty alongside timing margin.
 
 | Projected N=16 latency and peak memory | Required action |
 | --- | --- |
-| At most 90 seconds and below 4.5 GiB | Continue implementation. |
-| More than 90 and at most 180 seconds with memory at most 5 GiB, or any latency at most 180 seconds with memory from 4.5 through 5 GiB | Continue and investigate leaf parameters and circuit optimizations in parallel, retaining all security requirements. |
+| At most 135 seconds and at most 5 GiB | Continue implementation. |
+| More than 135 and at most 180 seconds, with peak memory at most 5 GiB | Continue and investigate leaf parameters and circuit optimizations in parallel, retaining all security requirements. |
 | More than 180 seconds or more than 5 GiB | Pause progression and report the three observations, medians, maxima, projections and assumptions. Resume only after a decision on the target, hardware, optimization or N. |
 
 An observed OOM or incorrect proof also blocks progression. The checkpoint
-does not authorize a hardware or capacity change. N remains 16; N=32 is a
-pending assessment after this checkpoint and is outside the current work.
+does not authorize a hardware or capacity change. N remains 16. N=32 is the
+first separately scoped assessment after this checkpoint passes; do not perform
+that assessment before the pass or increase network capacity as part of this work.
 Early timing headroom does not establish acceptance or justify weaker security.
 
 ## Acceptance sequence
@@ -282,8 +303,9 @@ Freeze a complete reproducible review bundle after correctness and screening.
 External review covers the final suite, parameters, composition and hiding
 kernel. Production-path trials on qualified miner hardware follow finding
 closure. A separate resettable N=16 network uses independent genesis, keys and
-directories; the retained seven-node N=2 network remains unchanged. Leave N=32
-assessment after the early checkpoint for a separate scope, and defer historical
+directories; the retained seven-node N=2 network remains unchanged. Make N=32
+the first separately scoped assessment after the early checkpoint passes, and
+defer historical
 height-activation design until before mainnet.
 
 ## Preliminary parameter work
