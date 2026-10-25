@@ -5,3 +5,12 @@ Start with [the technical overview](whitepaper.md), [architecture](architecture.
 Operational interfaces are in [node operations](node-operations.md) and [RPC and recovery](rpc.md). Validation is in [testing](testing.md), measurement in [benchmarks](benchmarks.md), and implementation invariants in [development](development.md).
 
 Experimental [proof composition](proof-composition.md), local [worker control](worker-control.md) and [memory measurement budgets](memory-budgets.md) describe the implemented boundaries and remaining acceptance work.
+
+The planned [D8/W24 recursive suite](d8-w24-recursion.md) separates
+[security screening](proof-security-review.md) from [hardware acceptance](prover-acceptance.md).
+[D4 control analysis](d4-security-controls.md) explains why legacy timings do
+not qualify the selected suite.
+
+[Conditional D8 parameter screening](d8-parameter-screen.md) lists estimated
+shapes and unimplemented grinding requirements. [Linux measurement](linux-proof-measurement.md)
+defines the process-tree resource-control method.

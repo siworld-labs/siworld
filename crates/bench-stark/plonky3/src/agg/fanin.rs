@@ -181,6 +181,7 @@ mod tests {
     use super::*;
     use crate::FriParams;
     use p3_circuit_prover::TablePacking;
+    use p3_recursion::artifact::{ArtifactLimits, PortableArtifactExport};
     use siworld_bench_common::{
         FEE_BASE, MINER_SHARE, Rng, acc_witnesses, sample_empty_slot, sample_priority_slot,
         sample_slot, with_unlock_heights,
@@ -188,13 +189,26 @@ mod tests {
 
     #[test]
     fn sixteen_leaves_form_two_eight_input_proofs_and_one_root() {
-        // Insecure parameters exercise the relation only, never the 60-second target.
-        let fri = FriParams::fast();
+        compare_topologies(FriParams::fast(), FriParams::fast());
+    }
+
+    #[test]
+    fn distinct_leaf_parameters_are_pinned_by_the_recursive_relation() {
+        let recursive = FriParams::fast();
+        let leaf = FriParams {
+            log_blowup: 4,
+            ..recursive
+        };
+        compare_topologies(leaf, recursive);
+    }
+
+    fn compare_topologies(leaf_fri: FriParams, fri: FriParams) {
+        // Insecure parameters exercise the relation only, never hardware acceptance.
         let params = ProveNextLayerParams {
             table_packing: TablePacking::new(4, 4).with_min_trace_height(64),
             ..ProveNextLayerParams::default()
         };
-        let prover = Arc::new(SlotProver::new_acc(fri));
+        let prover = Arc::new(SlotProver::new_acc(leaf_fri));
         let slots = (0..16)
             .map(|i| match i % 3 {
                 0 => sample_empty_slot(100 + i),
@@ -220,6 +234,14 @@ mod tests {
         let batch =
             EightLeafAggregation::new(prover.clone(), inputs[0], &fri.config(), &params).unwrap();
         assert!(batch.prove(&inputs[..7]).is_err());
+        if leaf_fri.log_blowup != fri.log_blowup {
+            let wrong_prover = SlotProver::new_acc(fri);
+            let wrong_leaf = wrong_prover.prove_acc(&witnesses[0]);
+            wrong_prover.verify(&wrong_leaf.0, &wrong_leaf.1).unwrap();
+            let mut wrong_inputs = inputs[..8].to_vec();
+            wrong_inputs[0] = Input::Uni(&wrong_leaf.0, &wrong_leaf.1, &witnesses[0].anchor_path);
+            assert!(batch.prove(&wrong_inputs).is_err());
+        }
         let pleft = batch.prove(&inputs[..8]).unwrap();
         let pright = batch.prove(&inputs[8..]).unwrap();
         let verifier = batch.verifier();
@@ -250,6 +272,58 @@ mod tests {
         let statement = root_statement(&left, &right, &note);
         root.verifier().verify(&proof, &statement).unwrap();
         assert_eq!(statement[ROOT_COUNT], F::from_u32(16));
+
+        // Prove the same leaves with the existing balanced binary topology.
+        // Equal public values do not imply compatible pinned verifiers.
+        let mut child = Child::Uni(prover.clone());
+        let mut binary_proofs = Vec::new();
+        let mut binary_statements = full.clone();
+        let (binary_proof, binary_statement, binary_verifier) = loop {
+            let count = binary_statements.len() / 2;
+            let is_root = count == 1;
+            let input = |i: usize| {
+                if binary_proofs.is_empty() {
+                    inputs[i]
+                } else {
+                    Input::Batch(&binary_proofs[i], &binary_statements[i])
+                }
+            };
+            let layer =
+                AccAggregation::new(child, input(0), &fri.config(), &params, is_root).unwrap();
+            let next: Vec<_> = (0..count)
+                .map(|i| {
+                    layer
+                        .prove(input(2 * i), input(2 * i + 1), is_root.then_some(&note))
+                        .unwrap()
+                })
+                .collect();
+            if is_root {
+                break (
+                    next.into_iter().next().unwrap(),
+                    root_statement(&binary_statements[0], &binary_statements[1], &note),
+                    layer.verifier(),
+                );
+            }
+            binary_statements = binary_statements
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| compose_acc(&pair[0], &pair[1]))
+                .collect();
+            binary_proofs = next;
+            child = Child::Batch(layer.verifier());
+        };
+        assert_eq!(statement, binary_statement);
+        binary_verifier.verify(&binary_proof, &statement).unwrap();
+        let limits = ArtifactLimits::default();
+        assert_ne!(
+            root.verifier().encode_verifier_artifact(limits).unwrap(),
+            binary_verifier.encode_verifier_artifact(limits).unwrap(),
+            "topology changes the pinned root verifier artifact"
+        );
+        assert!(binary_verifier.verify(&proof, &statement).is_err());
+        assert!(root.verifier().verify(&binary_proof, &statement).is_err());
+
         for k in 0..statement.len() {
             let mut changed = statement.clone();
             changed[k] += F::ONE;

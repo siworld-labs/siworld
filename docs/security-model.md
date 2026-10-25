@@ -18,7 +18,7 @@ Fixed block capacity obscures a direct public paid-slot count. It does not hide 
 
 ## Cryptographic boundaries
 
-The current KoalaBear degree-four proof configuration targets approximately 100 bits of conjectured classical soundness. It is not a reviewed quantum-sound configuration. ML-KEM output encryption and ML-DSA signatures do not make the full protocol post-quantum: proof soundness, hashing, transport and implementation security require separate analysis.
+The current KoalaBear degree-four proof configuration has a nominal query/grinding score of 100; complete instance-specific conjectured and Johnson bounds are lower. It is not a reviewed quantum-sound configuration. ML-KEM output encryption and ML-DSA signatures do not make the full protocol post-quantum: proof soundness, hashing, transport and implementation security require separate analysis.
 
 Ciphertext correctness is outside the slot relation. The root binds the ciphertext digest but does not establish decryptability. Leaf fee openings are visible to relays and producers. Zero-knowledge randomness must remain fresh and must never be restored or reused.
 
@@ -39,3 +39,8 @@ RPC read capability is not cryptographic watch-only recovery. Historical complet
 ## Production restrictions
 
 Independent cryptographic review, adversarial network testing, resource limits, cross-platform custody checks, measured recovery procedures, a compatible quantum-sound suite and explicit activation specifications are required before a production release can be considered. Passing repository CI establishes regression results for the tested configuration only.
+
+The legacy query/grinding score does not establish composite security. The
+selected launch requirements and planned D8 suite are specified in the
+[security review scope](proof-security-review.md); D4/W16 is not a qualifying
+post-quantum suite.

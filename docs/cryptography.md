@@ -13,7 +13,7 @@
 | Aggregation | Plonky3-recursion with pinned keys |
 | Keystore | Argon2id and XChaCha20-Poly1305 |
 
-Plonky3 is pinned to 0.9.0-rc.2 and recursion to revision `3a69ba61f713c8400b14eb3d8f0e52caa13512c7`. The degree-four proof suite uses log blowup 2, 42 queries and 16 grinding bits. Its approximately 100-bit classical target is conjectural and unaudited. There is no final SNARK wrapper.
+Plonky3 is pinned to 0.9.0-rc.2 and recursion to revision `3a69ba61f713c8400b14eb3d8f0e52caa13512c7`. The degree-four proof suite uses log blowup 2, 42 queries and 16 grinding bits. Its nominal query/grinding score of 100 is not a complete classical bound and fails the selected launch requirements. There is no final SNARK wrapper.
 
 ## Statement binding
 
@@ -34,3 +34,8 @@ Without the multiplicity bound, 49 vectors in 48 dimensions admit a linear depen
 `crates/prover/keys` contains public root verification artifacts for capacities 2 through 128. `crates/prover/tests/data` contains a public proof and statement fixture. These are not secret keys. Key generation is deterministic; proof hiding randomness must remain fresh. Miners compare rebuilt keys with pinned artifacts.
 
 Ciphertext correctness is outside the relation. Note encryption does not establish full-system quantum security, and buffer zeroization does not establish full-memory erasure. See [the security model](security-model.md).
+
+The legacy query/grinding score does not establish composite security. The
+selected launch requirements and planned D8 suite are specified in the
+[security review scope](proof-security-review.md); D4/W16 is not a qualifying
+post-quantum suite.

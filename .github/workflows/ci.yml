@@ -77,8 +77,14 @@ jobs:
         run: cargo test --release --locked -p siworld-bench-plonky3 -p siworld-bench-common
       - name: Isolated composition relation and profiler format
         run: |
-          cargo test --release --locked -p siworld-bench-plonky3 --features experimental-fanin,phase-profile --lib agg::fanin::tests
-          cargo clippy --release --locked -p siworld-bench-plonky3 --features experimental-fanin,phase-profile --bin composition-bench -- -D warnings
+          cargo test --release --locked -p siworld-bench-plonky3 --features experimental-fanin,phase-profile,security-report --lib
+          cargo clippy --release --locked -p siworld-bench-plonky3 --features experimental-fanin,phase-profile,security-report --bin composition-bench -- -D warnings
+      - name: Conditional D8 planning screen
+        run: |
+          cargo test --release --locked -p siworld-bench-plonky3 --features security-report --bin d8-security-screen
+          cargo clippy --release --locked -p siworld-bench-plonky3 --features security-report --bin d8-security-screen -- -D warnings
+          cargo run --release --locked -p siworld-bench-plonky3 --features security-report --bin d8-security-screen > /tmp/d8-screen.json
+          python3 -c 'import json; r=json.load(open("/tmp/d8-screen.json")); assert len(r["layers"]) == 3; assert all(len(x["candidates"]) == 3 and all(c["screen_pass_conditional_on_shape_and_sites"] and not c["approved"] for c in x["candidates"]) for x in r["layers"])'
       - name: Bounded intra-proof parallel hiding experiment
         working-directory: .
         env:
@@ -86,4 +92,4 @@ jobs:
           SIWORLD_COMPOSITION_HIDING_WORKERS: 2
         run: |
           python3 scripts/build-composition-intra.py
-          cargo test --release --locked --manifest-path .local/composition-intra/benchmark/Cargo.toml -p siworld-bench-plonky3 --features experimental-fanin,phase-profile --lib agg::fanin::tests
+          cargo test --release --locked --manifest-path .local/composition-intra/benchmark/Cargo.toml -p siworld-bench-plonky3 --features experimental-fanin,phase-profile,security-report --lib

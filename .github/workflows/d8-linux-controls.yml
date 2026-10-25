@@ -1,0 +1,44 @@
+name: Linux proof resource control
+on:
+  push:
+    branches: ["codex/d8-w24-security-and-latency"]
+    paths:
+      - "scripts/measure-proof-cgroup.py"
+      - "scripts/validate-d4-cgroup.py"
+      - ".github/workflows/d8-linux-controls.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: linux-proof-control-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  d4-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RAYON_NUM_THREADS: 2
+      SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/bench-stark
+      - name: Build isolated two-worker control
+        run: python3 scripts/build-composition-intra.py
+      - name: One D4-B run with 5-GiB cgroup and zero swap
+        shell: bash
+        run: |
+          sudo --preserve-env=RAYON_NUM_THREADS,SIWORLD_COMPOSITION_HIDING_WORKERS \
+            python3 scripts/measure-proof-cgroup.py --output .local/linux-cgroup-control \
+            --uid "$(id -u)" --gid "$(id -g)" --timeout 900 -- \
+            /usr/bin/python3 scripts/validate-d4-cgroup.py \
+            --binary .local/composition-intra/benchmark/target/release/composition-bench
+      - name: Verify synthetic control and phase records
+        if: always()
+        run: |
+          sudo python3 scripts/summarize-d4-control.py --directory .local/linux-cgroup-control

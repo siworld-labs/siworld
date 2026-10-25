@@ -79,3 +79,35 @@ Each hashed u64 is four little-endian 16-bit limbs. The first permutation receiv
 ## Wallet addresses
 
 Format v1 carries a 32-byte owner, a 1,184-byte ML-KEM encapsulation key and a five-byte BLAKE3-derived checksum. Prefixes are `si` and `tsi`; lowercase is canonical, uppercase accepted, mixed case rejected. A testnet address has 1,958 characters and is intended for copying or QR transport. A short recipient directory is not implemented.
+
+## Planned D8 engineering suite
+
+Status: implementation plan; no verifier or network activation. The selected
+target is KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12 base-element
+digests, N=16 with two eight-input proofs and one root. Keep the retained N=2
+network unchanged. A future engineering deployment uses independent genesis,
+directories and keys and imports no legacy notes or proofs. Historical
+height-based verifier activation is deferred until before mainnet.
+
+Each layer and the complete recursive composition must meet classical
+conjectured security of at least 128 bits, Johnson security of at least 100
+bits, challenge-domain security of at least 100 bits after the selected quantum
+Fiat–Shamir halving model, and commitment/Merkle collision security of at least
+100 bits under BHT. Estimator screening is not a quantum composition theorem.
+D4/W16 q42, q92 and leaf B fail these requirements and are methodology controls.
+
+The proof-latency target is 120 seconds on qualified target hardware, from
+final-package input arrival before queueing until canonical root completion,
+including all leaf and intervening per-candidate work. Input-independent
+circuits and keys are prepared at startup and remain resident. Cold-start
+duration is reported separately; all startup and resident memory remains within
+the 5-GiB process-tree hard cap, with zero extra swap. Propagation, external
+verification, PoW and receipt timing are separate metrics.
+
+The first verified eight-input merge triggers three same-machine measurements
+and an N=16 latency/memory projection. Up to 90 seconds and below 4.5 GiB
+permits continuation; 90–120 seconds or 4.5–5 GiB requires optimization work
+alongside implementation. Above 120 seconds, above 5 GiB, OOM or an incorrect
+proof pauses progression. The hard cap remains 5 GiB. N=32 is deferred until
+after this checkpoint and is outside the current scope. See the
+[implementation plan](d8-w24-recursion.md) and [acceptance plan](prover-acceptance.md).
