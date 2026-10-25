@@ -3,9 +3,15 @@
 Status: experimental planning candidates conditional on estimated shapes and
 specified transcript sites. These tables are not approved parameters or actual
 D8 circuit reports. The isolated D8 suite has passing primitive, opening-batch
-grinding and reusable recursive-proof rejection tests. Application correctness
-and actual-shape reports remain prerequisites. Re-extract every shape and checked grinding site from that
-implementation before measuring a profile. Do not deploy from this table.
+grinding, native/full/prepared recursive-proof and eight-input application
+correctness tests, including nonempty statement binding and canonical
+verifier/proof artifact round trips. This coverage uses lower-cost fixtures;
+it does not establish the final profile's actual-shape security bounds,
+5-GiB compliance or checkpoint performance. The final-profile checkpoint is
+paused by a cgroup OOM at the 5-GiB limit during eight-input verifier-circuit
+construction/preprocessing, before eight-input proving. Re-extract every shape
+and checked grinding site from the final implementation before measuring a profile. Do not
+deploy from this table.
 
 The calculator pins `p3-security = 0.9.0-rc.2`. Run:
 
@@ -44,8 +50,10 @@ recursive candidates use 16 bits before each FRI commit and another 16 bits
 immediately before opening batching. The unmodified pinned recursive suite
 lacks that additional site, although the native prover supports it. The
 isolated patch implements nonce/difficulty plumbing and native/full/prepared
-recursive transcript checks; runtime correctness and rejection tests remain
-mandatory before the first eight-input performance checkpoint. See the
+recursive transcript checks. Positive-difficulty runtime correctness and
+rejection tests pass at source baseline
+`fb9153de6cc3624a7b8c70a7551d0e8855b7f65a`; their lower-cost fixtures do not
+replace the final configuration's actual-shape screen or performance checkpoint. See the
 [grinding prerequisite](d8-w24-recursion.md#opening-batch-grinding-prerequisite).
 No security credit is permitted until all validators check it. If infeasible,
 re-screen aggregate and root parameters with zero batch difficulty and report
@@ -254,14 +262,20 @@ remove that batching bottleneck. Leaf profiles need no new batching grind in
 this screen. The recursive candidates require a reviewed, verified extra site
 or a different justified argument/shape. No existing q92 inheritance is valid.
 
-After D8 correctness, record actual tables, constraints, degrees, quotient
+The passing eight-input application smoke proof uses two queries and four
+batch/query grinding bits. It does not validate the final checkpoint's
+148/140-query, 16-bit grinding profile or its complete N=16 composition.
+
+For that final profile, record actual tables, constraints, degrees, quotient
 chunks, hiding extensions, preprocessing keys, opening powers, lookup shapes,
 FRI schedules and every checked grinding site. The isolated checkpoint worker
 extracts these actual shapes after preparing leaf, merge and root circuits,
 then repeats the fixed-version screen and composition arithmetic before
-warm-trial admission. This extraction path compiles but has not produced
-validated runtime reports. It does not convert the planning envelopes above
-into actual-shape evidence or establish a quantum security theorem.
+warm-trial admission. Final-profile startup is currently blocked by the
+preparation OOM before that extraction: no final actual-shape/security bundle,
+three-trial warm median, measured root cost or complete N=16 latency evidence
+is available. The planning envelopes above therefore remain assumptions,
+not actual-shape evidence or a quantum security theorem.
 
 The checkpoint selects experimental log-blowup 3, binary-folding profiles with
 148 leaf queries and 140 merge/root queries. Query grinding is 16 bits at all

@@ -1,15 +1,17 @@
 # D8 W24 Recursive Suite Implementation Plan
 
-Status: experimental implementation with passing primitive and reusable-recursion
-correctness tests. Application correctness, security review and performance
-measurement remain pending. The target is
+Status: experimental implementation with passing primitive, reusable-recursion
+and eight-input application correctness tests. The final-profile checkpoint
+is paused by a cgroup OOM at the 5-GiB limit during eight-input verifier-circuit
+construction/preprocessing, before eight-input proving. Actual-shape screening
+and performance measurement are blocked; security review remains pending. The target is
 KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12-base-element digests.
 The N=16 proof-latency target is 180 seconds under the unchanged 5-GiB
 process-tree hard limit. This proving target does not change the consensus
 block interval. The baseline is Plonky3 `0.9.0-rc.2` and recursion revision
 `3a69ba61f713c8400b14eb3d8f0e52caa13512c7`, with the separately maintained
-experimental dependency patch. No verified eight-input application proof,
-checkpoint pass or security approval is claimed.
+experimental dependency patch. Passing correctness fixtures do not establish
+a checkpoint pass or security approval.
 
 ## Upstream gaps and isolated implementation
 
@@ -21,9 +23,11 @@ D8 backend dispatch, transcript handling and artifact encoding. It does not
 relax the old unsupported packed geometry or select the D8/W32 prototype.
 
 Native/circuit transcript equivalence, opening-batch grinding, scalar-coefficient
-rejection and reusable D8 recursive-proof tests pass. End-to-end eight-input
-application verification remains a pre-measurement gate. These tests do not
-establish independent security approval or performance feasibility. The retained
+rejection and reusable D8 recursive-proof tests pass. An eight-input
+application proof also verifies under a lower-cost correctness configuration,
+including rejection of changed public digests and a changed last-child
+statement. The final-profile checkpoint remains a separate gate. These tests do
+not establish independent security approval or performance feasibility. The retained
 seven-node N=2 deployment and its dependencies remain unchanged.
 
 ## Scalar geometry
@@ -43,7 +47,8 @@ capacity and squeeze chain. Ordinary MMCS permutations use a separate table,
 so interleaving them cannot supply a different challenger capacity. This
 scalar AIR is an initial implementation, not a claim of optimal table width
 or proving cost. Native/circuit transcript and interleaving tests pass for the
-covered fixtures; application composition still requires separate validation.
+covered fixtures; complete N=16 composition under the final checkpoint
+profile still requires separate validation.
 
 The earlier `d8-geometry` scaffold retains explicit three-lane packing and
 canonical internal padding as a separate correctness tool. It is not the
@@ -163,8 +168,10 @@ layout, per-layer FRI/folding and all three grinding difficulties, transcript
 codec, two-worker hiding patch, eight-input circuit artifact and verifying key
 before the three measured trials. Freeze the binary and its build configuration
 as well. The intended recursive candidates currently require 16 batch PoW bits;
-that credit remains conditional until generation and every verification path
-are implemented and tested. Reduced or zero-difficulty smoke configurations do
+the final actual-shape screen must verify that credit against the frozen
+configuration and every checked verification path. Positive-difficulty
+correctness tests cover the implemented plumbing, not the final profile's
+performance or security margins. Reduced or zero-difficulty smoke configurations do
 not establish the performance checkpoint. A later change to any frozen item
 requires a new three-trial checkpoint before relying on its projection.
 
@@ -197,8 +204,13 @@ prepares the leaf and verifies bootstrap leaf and eight-input proofs, then
 prepares the root, extracts actual shapes and screens them before granting
 warm trials. A bootstrap proof is cold setup evidence, not one of the three
 measured trials. A failure, OOM or security-screen rejection during setup
-blocks warm trials and is itself a checkpoint failure to report. No such run
-has yet established correctness or a passing checkpoint.
+blocks warm trials and is itself a checkpoint failure to report. The current
+final profile reaches the 5-GiB cgroup limit and is OOM-terminated during
+eight-input verifier-circuit construction/preprocessing. Eight-input proving
+has not begun at that boundary. The phase includes circuit construction,
+relation/AIR preparation and preprocessing commitment; its evidence does not
+identify the individual allocation responsible. The checkpoint is paused.
+Lower-cost correctness proofs do not establish that this setup fits the limit.
 
 Run three trials on the same qualified target machine, using one proof job
 and two native workers per proof. Complete input-independent circuit/key
@@ -361,9 +373,25 @@ extraction and independent composition review remain mandatory.
 The `bench-d8` workspace contains the D8 leaf relation, eight-input aggregation,
 root relation and resident checkpoint worker. It uses the experimental
 recursion patch with standard W24 constants, 12-element scalar digests and the
-72/102-element application layouts. Primitive and reusable D8 recursive-proof
-tests pass; end-to-end eight-input application correctness and a measured
-checkpoint remain unestablished.
+72/102-element application layouts. The required correctness groups pass at
+source baseline `fb9153de6cc3624a7b8c70a7551d0e8855b7f65a`:
+
+| Test group | Passing coverage |
+| --- | --- |
+| Opening-batch grinding | Seven native/recursive parameter, transcript, witness and rejection tests |
+| D8 integration | Seven suite, transcript, compression, statement-preprocessor and reusable-proof tests, including nonempty statement binding and canonical verifier/proof artifact round trips |
+| Challenger AIR | Initial capacity and squeeze-chain constraints |
+| Full/prepared recursion | Positive opening-batch grinding through full and reusable prepared paths |
+| Application relations | Eleven selected checks, including an eight-input proof with public-digest mutation and last-child statement rejection, ciphertext limbs and padding |
+
+These tests use lower-cost correctness fixtures. The eight-input application
+fixture uses two queries and four batch/query grinding bits, rather than the
+final checkpoint's 148/140-query and 16-bit grinding configuration. They
+establish behavior only for the covered fixtures, not actual-shape security
+acceptance, 5-GiB compliance or performance feasibility. Final-profile startup
+is blocked by the preparation OOM before eight-input proving. No final
+actual-shape/security bundle, three-trial warm median, measured root cost or
+complete N=16 latency evidence is available. No continuation gate has passed.
 
 The worker freezes source/dependency and build identities, actual circuit
 shapes, parameter reports, preprocessing artifacts and verifying keys before
