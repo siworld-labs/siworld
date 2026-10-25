@@ -32,6 +32,7 @@ jobs:
       RAYON_NUM_THREADS: 2
       SIWORLD_COMPOSITION_HIDING_WORKERS: 2
       CARGO_TARGET_DIR: ${{ github.workspace }}/.local/d8-target
+      CHECKPOINT_REQUESTED: ${{ github.event_name == 'push' || inputs.run_checkpoint }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -40,16 +41,24 @@ jobs:
         run: |
           python3 - <<'PY_PROFILE'
           import json
+          import os
+          from pathlib import Path
           import runpy
           measurement = runpy.run_path('scripts/measure-proof-cgroup.py')
-          hardware, _ = measurement['qualify']()
-          print(json.dumps({'hardware': hardware}, indent=2))
-          profile = ('epyc7763-baseline' if 'EPYC 7763 ' in hardware['cpu_model']
-              else 'epyc9v45-control' if 'EPYC 9V45 ' in hardware['cpu_model'] else 'diagnostic')
-          result = measurement['qualify_hardware_profile'](hardware, profile)
-          from pathlib import Path
-          mount = Path('/sys/fs/cgroup')
-          measurement['qualify_cpu_profile'](measurement['cpu_ancestry'](mount, mount), profile)
+          checkpoint = os.environ['CHECKPOINT_REQUESTED'] == 'true'
+          try:
+              hardware, _ = measurement['qualify']()
+              print(json.dumps({'hardware': hardware}, indent=2))
+              profile = ('epyc7763-baseline' if checkpoint or 'EPYC 7763 ' in hardware['cpu_model']
+                  else 'epyc9v45-control' if 'EPYC 9V45 ' in hardware['cpu_model'] else 'diagnostic')
+              result = measurement['qualify_hardware_profile'](hardware, profile)
+              mount = Path('/sys/fs/cgroup')
+              measurement['qualify_cpu_profile'](measurement['cpu_ancestry'](mount, mount), profile)
+          except ValueError:
+              print(json.dumps({'event': 'd8_checkpoint_hardware_rejected',
+                  'checkpoint_requested': checkpoint, 'measurements_started': False,
+                  'required_profile': 'epyc7763-baseline' if checkpoint else 'supported-correctness-host'}))
+              raise SystemExit(78)
           print(json.dumps({'correctness_hardware_qualification': result,
               'checkpoint_requires': 'epyc7763-baseline'}, indent=2))
           PY_PROFILE
@@ -84,7 +93,7 @@ jobs:
           raise SystemExit(result.returncode)
           PY_BUILD
       - name: Three frozen trials in one resident 5-GiB process tree
-        if: ${{ github.event_name == 'push' || inputs.run_checkpoint }}
+        if: ${{ env.CHECKPOINT_REQUESTED == 'true' }}
         run: |
           python3 - <<'PY_CHECKPOINT'
           import json
