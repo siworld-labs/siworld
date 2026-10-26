@@ -18,7 +18,7 @@ DOCUMENTS = {
     "benchmarks.md", "testing.md", "development.md",
     "proof-composition.md", "worker-control.md", "memory-budgets.md",
     "proof-security-review.md", "prover-acceptance.md", "d8-w24-recursion.md",
-    "d4-security-controls.md", "d8-parameter-screen.md", "linux-proof-measurement.md",
+    "d4-security-controls.md", "d8-parameter-screen.md", "linux-proof-measurement.md", "route-a-v1.md",
 }
 PUBLIC_ARTIFACTS = {
     *(f"crates/prover/keys/root-n{n}.bin" for n in (2, 4, 8, 16, 32, 64, 128)),

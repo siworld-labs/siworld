@@ -14,3 +14,8 @@ not qualify the selected suite.
 [Conditional D8 parameter screening](d8-parameter-screen.md) lists estimated
 shapes and unimplemented grinding requirements. [Linux measurement](linux-proof-measurement.md)
 defines the process-tree resource-control method.
+
+The selected [native V1 transaction route](route-a-v1.md) defines the D8 native
+AIR, codec and parameter-scan gates, together with open fee-settlement,
+root-lifetime, encryption-binding and checkpoint trust questions. Recursive
+aggregation is deferred to V2 and its experiments are paused.

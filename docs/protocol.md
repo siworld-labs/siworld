@@ -80,45 +80,41 @@ Each hashed u64 is four little-endian 16-bit limbs. The first permutation receiv
 
 Format v1 carries a 32-byte owner, a 1,184-byte ML-KEM encapsulation key and a five-byte BLAKE3-derived checksum. Prefixes are `si` and `tsi`; lowercase is canonical, uppercase accepted, mixed case rejected. A testnet address has 1,958 characters and is intended for copying or QR transport. A short recipient directory is not implemented.
 
-## Planned D8 engineering suite
+## Planned native V1 transaction route
 
-Status: implementation plan; no verifier or network activation. The selected
-target is KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12 base-element
-digests, N=16 with two eight-input proofs and one root. Keep the retained N=2
-network unchanged. A future engineering deployment uses independent genesis,
-directories and keys and imports no legacy notes or proofs. Historical
-height-based verifier activation is deferred until before mainnet.
+Status: selected design direction; not implemented or activated. The retained
+seven-node N=2 network keeps its current verifier, history, parameters and keys.
+The new route uses independent genesis, network identity, directories and keys
+and imports no retained notes or proofs. See the
+[native transaction proof design](route-a-v1.md) for requirements and open gates.
 
-Each layer and the complete recursive composition must meet classical
-conjectured security of at least 128 bits, Johnson security of at least 100
-bits, challenge-domain security of at least 100 bits after the selected quantum
-Fiat–Shamir halving model, and commitment/Merkle collision security of at least
-100 bits under BHT. Estimator screening is not a quantum composition theorem.
-D4/W16 q42, q92 and leaf B fail these requirements and are methodology controls.
+| Requirement | New-route target |
+| --- | --- |
+| Transaction proof | Native STARK per fixed two-input/two-output transaction; no recursive aggregation in V1 |
+| Suite | KoalaBear D8, standard Plonky3 Poseidon2 W24, 12-base-element (48-byte) digests |
+| Security screening | Classical conjectured at least 128 bits; every Fiat–Shamir Johnson term, including queries and enforced grinding, at least 80 bits after quantum halving; challenge-domain terms at least 80 bits after halving; BHT commitment collision resistance at least 80 bits |
+| Anchor | Depth-12 recent-root membership checked inside the transaction AIR; only the recent-root tree root is public |
+| Fee tiers | Reward-linked standard and four-times-standard priority; confidential settlement and filler privacy remain unresolved |
+| Public-data encoding | Selected 1,742-byte layout with 208-byte padded note bodies; fee/proof/envelope ledger requires review |
+| Change encryption | ChaCha20-Poly1305 with a 256-bit key and domain-separated BLAKE3 derivation |
+| Blocks | Groups of 16; 64–576 positions; 300-second target; 20-Mbps minimum node link |
+| Reorganization bound | New-route local `MAX_REORG_DEPTH = 24`; existing implementation remains at 100 |
+| Proof retention | Four weeks after final confirmation, then online proof deletion; archive and checkpoint trust model required |
+| Production parameter choice | Smallest eligible proof with four-core generation at most two seconds, measured on the actual AIR |
 
-The proof-latency target is 180 seconds on qualified target hardware, from
-final-package input arrival before queueing until canonical root completion,
-including all leaf and intervening per-candidate work. Input-independent
-circuits and keys are prepared at startup and remain resident. Cold-start
-duration is reported separately; all startup and resident memory remains within
-the selected process-tree boundary, with zero swap. The next D8 experiment
-uses a 10-GiB (10,737,418,240-byte) hard ceiling; the production memory budget
-remains undecided until actual peaks are measured. The experimental ceiling
-is not production acceptance. Propagation, external
-verification, PoW and receipt timing are separate metrics. This proof-latency
-target does not change the consensus block interval.
+Nodes verify proofs on mempool admission. Blocks use compact references and
+public transaction data without duplicating proof bodies. Root-snapshot expiry,
+private fee collection, public-data substitution resistance versus encryption
+correctness, and the complete fee/proof/envelope byte ledger are blocking design
+questions. A keyless public node cannot authenticate an AEAD tag. None of these proposed
+properties may be described as implemented before their tests and gates pass.
 
-Complete opening-batch grinding and freeze the final checkpoint configuration
-before timing the first verified eight-input merge. It triggers three
-same-machine measurements and an N=16 latency/memory projection. At most
-135 seconds with peak memory within the 10-GiB experimental ceiling permits
-continued experiments. More than 135 and at most 180 seconds within that ceiling
-requires optimization alongside implementation. Above 180 seconds, above 10 GiB,
-OOM or an incorrect proof pauses progression. Report stage memory with the
-same prominence as stage time, including startup, prepared residency, active workspace, retained proofs
-and handoff overlap. Use the EPYC 7763 Ubuntu 24.04 VM profile with two exposed
-cores and four vCPUs as the Linux baseline; EPYC 9V45 is a comparison profile.
-The x86_64 release baseline is x86-64-v3, with AVX2 required and no scalar
-fallback. N=32 is the first separate assessment after a passing D8 checkpoint;
-no N=32 evaluation is part of the current scope. See the
-[implementation plan](d8-w24-recursion.md) and [acceptance plan](prover-acceptance.md).
+Recursive aggregation and historical proof compression are deferred to V2.
+The existing [recursive suite plan](d8-w24-recursion.md) and
+[prover acceptance plan](prover-acceptance.md) describe that experimental path;
+its development and checkpoints are paused while the native route is assessed.
+Its 180-second root-proof target and experimental memory ceiling do not apply
+to the native transaction generation gate. N=32 is outside the V1 scope.
+Transport privacy (X25519 + ML-KEM and Dandelion++ or a reviewed relay design)
+follows the production AIR and scan and must be complete before a new engineering
+network is launched.
