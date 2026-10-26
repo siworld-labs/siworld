@@ -26,6 +26,24 @@ an experimental suite registry/configuration, scalar W24 binary compression,
 D8 backend dispatch, transcript handling and artifact encoding. It does not
 relax the old unsupported packed geometry or select the D8/W32 prototype.
 
+The direct compile failure against the unmodified revision is understood and
+must remain explicit in review material. It reports six unresolved API
+references, grouped into four primary public surfaces:
+
+| Missing stock API | First application use | Required patch surface |
+| --- | --- | --- |
+| `ExperimentalKoalaBearD8Poseidon2W24RandomCodewordConfig` and `experimental_koala_bear_d8_poseidon2_w24_random_codeword` | `bench-d8/src/lib.rs` imports and `Cfg` construction | D8 degree-8 random-codeword factory, scalar W24 permutation lift, MMCS/prover/verifier dispatch and artifact assembly |
+| `Poseidon2Config::KOALA_BEAR_D1_W24` (and its challenger role) | `bench-d8/src/agg.rs` backend and Poseidon2 calls | Scalar W24 constants, circuit AIR variants, eight-coefficient witness bus and challenger/table registration |
+| `SuiteIdV1::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri` | `bench-d8/src/lib.rs` descriptor | Registry ID/spec metadata, suite decoding and descriptor/artifact dispatch |
+| `FriConfigV1::with_batch_pow_bits` (plus its batch-work accessor) and `FriVerifierParams::{try,with}_mmcs_and_batch` | `bench-d8/src/lib.rs` descriptor | Positive opening-batch grinding in native, recursive and prepared parameters, including canonical artifact encoding |
+
+The first two rows also require degree-8 branches in FRI planning and
+recursive verifier-circuit dispatch. The unmodified implementation has no
+equivalent path, so replacing the imports with an existing D4 suite would
+change extension degree, digest width and transcript geometry rather than
+provide a D8 implementation. The patch is therefore an isolated dependency
+adapter; it does not alter the retained node dependency graph.
+
 Native/circuit transcript equivalence, opening-batch grinding, scalar-coefficient
 rejection and reusable D8 recursive-proof tests pass. An eight-input
 application proof also verifies under a lower-cost correctness configuration,
@@ -351,11 +369,11 @@ trial begins from a ready service with prepared circuits resident. Record
 last-package-to-root latency, every proving phase, separate cold startup and
 post-proof timings, whole-worker charged-memory peaks, actual enforced 10-GiB
 experimental ceiling, zero swap and OOM events. The production memory budget
-remains undecided and requires actual peak measurements. Select parameters
-from complete security and performance evidence; do not lower security to reach 180 seconds. The
-existing D4 leaf-B and uniform-q92 timing medians are below 180 seconds but do
-not qualify: D4/W16 fails the required security targets and those records lack
-the new timing and hard-limit evidence.
+remains undecided and requires actual peak measurements. Select parameters from
+complete security and performance evidence; do not lower security to reach 180
+seconds. The existing D4 leaf-B and uniform-q92 timing medians are below 180
+seconds but do not qualify: D4/W16 fails the required security targets and
+those records lack the new timing and hard-limit evidence.
 
 Freeze a complete reproducible review bundle after correctness and screening.
 External review covers the final suite, parameters, composition and hiding
@@ -403,6 +421,23 @@ proving; the 10-GiB follow-up has no established result yet. No final
 actual-shape/security bundle, three-trial warm median, measured root cost or
 complete N=16 latency evidence is available. No continuation gate has passed.
 
+### Native D8 CI coverage boundary
+
+The `native-transaction` CI job prepares the isolated patched workspace and
+checks the CPU admission path, formatting, targeted transaction/codec/
+encryption/fee-settlement rejection tests, scanner unit tests, clippy, a
+release build and registry dependency-pin equality. Its scanner invocation is
+`--security-only --log-blowup 4 --queries 80 --grinding 16`, which extracts the
+transaction AIR shape and diagnostic report without setup or proving. The job
+also runs one low-cost native hiding proof test that generates and verifies a
+proof and rejects a modified batch-grinding witness. It does not run the
+`d8-checkpoint` worker, complete production-parameter security screening, a
+full production-parameter proof generation/verification pair, 4-worker timing,
+cgroup peak-memory collection, or the N=16 16-to-2-to-1 composition. The
+checkpoint helper separately runs low-cost recursion and application
+correctness fixtures before building the worker; those fixtures also do not
+constitute final-profile performance or acceptance evidence.
+
 The worker freezes source/dependency and build identities, actual circuit
 shapes, parameter reports, preprocessing artifacts and verifying keys before
 three warm trials. Input-independent setup remains resident inside the same
@@ -427,3 +462,31 @@ positive opening-batch grinding and end-to-end eight-input rejection tests are
 pre-measurement gates. Reduced-difficulty smoke proofs test correctness only;
 they are not security or performance acceptance. The isolated workspace and
 patch change no node dependency, retained network configuration or live key.
+
+### Native D8 transaction diagnostic
+
+The isolated patched workspace also now generates and verifies the native
+confidential transaction proof end to end. Eight transaction tests pass,
+including canonical public-field binding and rejection of a changed statement.
+The complete 15-row transaction-AIR scan passes the selected 80-bit screening
+conditions. This result is separate from the paused recursive N=16 checkpoint
+and does not change the retained network.
+
+The diagnostic candidate is `log_blowup = 8`, `queries = 36`,
+`grinding = 20`, `batch_pow_bits = 20`, `commit_pow_bits = 0`, and
+`max_log_arity = 1`. Its measured transaction shape is 128 base trace rows,
+1,007 main columns, 139 preprocessed columns, 2,000 constraints, eight
+quotient chunks and 97 public values. Three macOS trials with four native
+workers measured approximately 0.709--0.853 seconds for generation (median
+approximately 0.744 seconds), approximately 11.6 milliseconds for single-core
+verification, and approximately 415,000--419,000 proof bytes. Every observed
+proof is below the provisional 431,029-byte comparison threshold.
+
+The corresponding diagnostic report gives 185 conjectured bits, 163.8 Johnson
+bits, 81.9 bits for the quantum-halved Johnson challenge union, and 123.3 BHT
+bits. These values are estimator output for this actual transaction AIR and do
+not constitute cryptographic approval. macOS supplied no Linux cgroup peak
+memory evidence; the trials therefore do not establish a memory budget or
+production acceptance. `production_selection_allowed` remains `false` until
+the qualified Linux build, cgroup measurement, pinned artifact bundle and
+independent review gates pass.

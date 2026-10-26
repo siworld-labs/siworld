@@ -110,7 +110,7 @@ mod native {
             "dependencies_sha256":sha(include_bytes!("../../Cargo.lock")),
             "binary_sha256":sha(&binary),"machine_id":machine,
             "application_binding":application_binding(),
-            "production_blockers":["fee privacy and verifier statement policy are not frozen",
+            "production_blockers":["settlement proof and witness-delivery policy are not frozen",
                 "root freshness and output-encryption relation scope require review"],
             "cryptographic_approval":false,"network_activation":false}))
     }
@@ -327,10 +327,11 @@ mod native {
         let proof_body = postcard::to_allocvec(&proof).map_err(|e| e.to_string())?;
         let proof = postcard::from_bytes::<p3_uni_stark::Proof<Cfg>>(&proof_body)
             .map_err(|e| e.to_string())?;
+        let fields = witness.slot.public_inputs(&Hasher::new());
         if statement
             != decoded.statement(
                 &context,
-                witness.slot.fee,
+                &fields.fee_commit,
                 &witness.anchors_root(&Hasher::new()),
             )
         {
@@ -341,7 +342,7 @@ mod native {
             &prover,
             &proof,
             &context,
-            witness.slot.fee,
+            &fields.fee_commit,
             &witness.anchors_root(&Hasher::new()),
         )?;
         let verification_ns = started.elapsed().as_nanos();
@@ -506,7 +507,7 @@ mod native {
             .unwrap();
             assert_eq!(report["p3_security_version"], "0.9.0-rc.2");
             assert_eq!(report["shape"]["status"], "actual-extracted");
-            assert_eq!(report["shape"]["public_values"], 89);
+            assert_eq!(report["shape"]["public_values"], 97);
             assert!(report["shape"]["main_width"].as_u64().unwrap() > 100);
             assert_eq!(report["setup_performed"], false);
             assert_eq!(report["screen"]["proof_multiplicity"], 1);

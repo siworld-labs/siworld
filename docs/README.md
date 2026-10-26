@@ -16,7 +16,8 @@ shapes and unimplemented grinding requirements. [Linux measurement](linux-proof-
 defines the process-tree resource-control method.
 
 The selected [native V1 transaction route](route-a-v1.md) defines the D8 native
-AIR, codec and parameter-scan gates. The [fee-settlement research design](fee-settlement.md)
-is a candidate mechanism and does not close the fee, root-lifetime,
-encryption-binding or checkpoint-trust gates. Recursive aggregation is deferred
-to V2 and its experiments are paused.
+AIR, codec and parameter-scan gates. [Confidential fee settlement](fee-settlement.md)
+and its [evaluation gate](fee-settlement-evaluation.md) are selected for
+research, but do not close the fee, root-lifetime, encryption-binding or
+checkpoint-trust gates. Recursive aggregation is deferred to V2 and its
+experiments are paused.

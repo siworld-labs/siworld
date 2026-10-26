@@ -3,16 +3,17 @@
 //! The existing accumulator leaf relation is embedded as a sub-AIR. Its anchor
 //! entry is private in this proof; a second Poseidon2 trace proves that entry's
 //! depth-12 membership and binds its position to the private anchor height.
-//! Public values are `[E, fee limbs, 1, recent_roots_root]`. A verifier must
+//! Public values are `[E, fee commitment, 1, recent_roots_root]`. A verifier must
 //! recompute E from the canonical public transaction encoding before verifying.
 //! This module does not change the retained network's codec or proof system.
 
 use crate::air::{
-    ACC_ENTRY, ACC_HB, ACC_REG, LinearLayers, NUM_ACC_PUBLIC, OUT, P2, P2Air, SlotAir, p2_constants,
+    ACC_ENTRY_CONF, ACC_HB, ACC_REG, LinearLayers, NUM_ACC_CONF_PUBLIC, OUT, P2, P2Air, SlotAir,
+    p2_constants,
 };
 use crate::common::{
     ANCHOR_DEPTH, AccWitness, DCT_BYTES, DIGEST, Digest, F, Hasher, LIMB_BITS, PublicInputs, WIDTH,
-    digest_of, limbs, pack_dct,
+    digest_of, pack_dct,
 };
 use crate::{Cfg, FriParams, trace};
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
@@ -28,8 +29,8 @@ use std::ops::Range;
 
 /// The public statement retains the accumulator's layout but replaces its
 /// per-transaction anchor entry with the shared recent-root tree root.
-pub const NUM_TRANSACTION_PUBLIC: usize = NUM_ACC_PUBLIC;
-pub const TRANSACTION_ROOT: usize = ACC_ENTRY;
+pub const NUM_TRANSACTION_PUBLIC: usize = NUM_ACC_CONF_PUBLIC;
+pub const TRANSACTION_ROOT: usize = ACC_ENTRY_CONF;
 
 /// Recompute the proof statement from canonical decoded transaction fields.
 /// The caller supplies the current accepted recent-root tree root, never a
@@ -39,19 +40,19 @@ pub fn statement_for(
     nullifiers: &[Digest; 2],
     commitments: &[Digest; 2],
     ciphertext_digest: &[u8; DCT_BYTES],
-    fee: u64,
+    fee_commit: &Digest,
     recent_roots_root: &Digest,
 ) -> Vec<F> {
     let inputs = PublicInputs {
         nf: *nullifiers,
         cm_out: *commitments,
         anchor: [F::ZERO; DIGEST],
-        fee_commit: [F::ZERO; DIGEST],
+        fee_commit: *fee_commit,
     };
     let mut statement = inputs
         .set_element(&Hasher::new(), &pack_dct(ciphertext_digest))
         .to_vec();
-    statement.extend_from_slice(&limbs(fee));
+    statement.extend_from_slice(fee_commit);
     statement.push(F::ONE);
     statement.extend_from_slice(recent_roots_root);
     statement
@@ -75,7 +76,7 @@ impl Default for TransactionAir {
 impl TransactionAir {
     pub fn new() -> Self {
         Self {
-            slot: SlotAir::new_acc(),
+            slot: SlotAir::new_acc_confidential(),
             path_p2: P2Air::new(p2_constants()),
         }
     }
@@ -94,7 +95,7 @@ impl TransactionAir {
     }
 
     fn path(&self) -> usize {
-        self.statement() + NUM_ACC_PUBLIC
+        self.statement() + NUM_ACC_CONF_PUBLIC
     }
 
     fn bit(&self) -> usize {
@@ -113,7 +114,7 @@ impl TransactionAir {
     /// Constraint checking or proof verification remains the validity decision.
     pub fn generate(&self, w: &AccWitness) -> (RowMajorMatrix<F>, Vec<F>) {
         assert_eq!(w.anchor_path.len(), ANCHOR_DEPTH, "anchor path length");
-        let (leaf, private_statement) = trace::generate_acc(&self.slot, w);
+        let (leaf, private_statement) = trace::generate_acc_confidential(&self.slot, w);
         let mut public = private_statement.clone();
         public[TRANSACTION_ROOT..].copy_from_slice(&w.anchors_root(&Hasher::new()));
         let h = Hasher::new();
@@ -243,7 +244,7 @@ impl<AB: AirBuilder<F = F>> Air<AB> for TransactionAir {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let private_statement =
-            main.current_slice()[self.statement()..self.statement() + NUM_ACC_PUBLIC].to_vec();
+            main.current_slice()[self.statement()..self.statement() + NUM_ACC_CONF_PUBLIC].to_vec();
         let pre = builder.preprocessed().clone();
         let mut leaf_builder = PrivateStatementBuilder {
             main: Columns {
@@ -296,7 +297,7 @@ impl<AB: AirBuilder<F = F>> Air<AB> for TransactionAir {
                 * x(local[self.bit()])
                 + x(local[self.path() + element]);
             builder.assert_zero(
-                (current - x(local[self.statement() + ACC_ENTRY + element]))
+                (current - x(local[self.statement() + ACC_ENTRY_CONF + element]))
                     * x(selectors[self.selector()]),
             );
             let following = (x(next[self.path() + DIGEST + element])
@@ -359,7 +360,7 @@ impl TransactionProver {
         nullifiers: &[Digest; 2],
         commitments: &[Digest; 2],
         ciphertext_digest: &[u8; DCT_BYTES],
-        fee: u64,
+        fee_commit: &Digest,
         recent_roots_root: &Digest,
     ) -> Result<(), String> {
         self.verify(
@@ -368,7 +369,7 @@ impl TransactionProver {
                 nullifiers,
                 commitments,
                 ciphertext_digest,
-                fee,
+                fee_commit,
                 recent_roots_root,
             ),
         )
@@ -378,7 +379,7 @@ impl TransactionProver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::air::{ACC_COUNT, ACC_FEE, CHAIN_REG, pub_cm, pub_nf};
+    use crate::air::{ACC_COUNT_CONF, ACC_FEE_COMMIT, CHAIN_REG, pub_cm, pub_nf};
     use crate::common::{
         FEE_BASE, acc_witnesses, sample_empty_slot, sample_priority_slot, sample_slot,
     };
@@ -411,7 +412,7 @@ mod tests {
                 &fields.nf,
                 &fields.cm_out,
                 &w.d_ct,
-                w.slot.fee,
+                &fields.fee_commit,
                 &w.anchors_root(&Hasher::new())
             )
         );
@@ -502,9 +503,9 @@ mod tests {
             CHAIN_REG + pub_nf(1),
             CHAIN_REG + pub_cm(0),
             CHAIN_REG + pub_cm(1),
-            air.statement() + ACC_ENTRY,
-            air.statement() + ACC_FEE,
-            air.statement() + ACC_COUNT,
+            air.statement() + ACC_ENTRY_CONF,
+            air.statement() + ACC_FEE_COMMIT,
+            air.statement() + ACC_COUNT_CONF,
         ] {
             let (mut trace, public) = air.generate(&w);
             let width = trace.width;
@@ -524,8 +525,8 @@ mod tests {
         let air = TransactionAir::new();
         let w = witness();
         let attacks = [
-            (0, air.statement() + ACC_ENTRY),
-            (1, air.statement() + ACC_ENTRY),
+            (0, air.statement() + ACC_ENTRY_CONF),
+            (1, air.statement() + ACC_ENTRY_CONF),
             (ANCHOR_DEPTH - 1, air.path() + OUT),
             (ANCHOR_DEPTH, air.path()),
             (air.slot.height - 1, air.statement()),
@@ -610,7 +611,7 @@ mod tests {
                 &fields.nf,
                 &fields.cm_out,
                 &w.d_ct,
-                w.slot.fee,
+                &fields.fee_commit,
                 &root,
             )
             .expect("canonical field binding");
@@ -625,7 +626,7 @@ mod tests {
                 }
                 assert!(
                     prover
-                        .verify_fields(&proof, &nf, &cm, &w.d_ct, w.slot.fee, &root)
+                        .verify_fields(&proof, &nf, &cm, &w.d_ct, &fields.fee_commit, &root)
                         .is_err(),
                     "public field {field} element {element}"
                 );
@@ -641,7 +642,7 @@ mod tests {
                         &fields.nf,
                         &fields.cm_out,
                         &changed,
-                        w.slot.fee,
+                        &fields.fee_commit,
                         &root
                     )
                     .is_err(),
@@ -650,8 +651,8 @@ mod tests {
         }
         for index in [
             0,
-            ACC_FEE,
-            ACC_COUNT,
+            ACC_FEE_COMMIT,
+            ACC_COUNT_CONF,
             TRANSACTION_ROOT,
             NUM_TRANSACTION_PUBLIC - 1,
         ] {

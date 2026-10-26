@@ -40,10 +40,26 @@ pub fn generate_acc(air: &SlotAir, w: &AccWitness) -> (RowMajorMatrix<F>, Vec<F>
     build(air, &w.slot, Some(w), acc_stmt(w), None)
 }
 
+/// Native transaction mode: the fee limbs remain private and only the
+/// randomized fee commitment is public in the statement.
+pub fn generate_acc_confidential(air: &SlotAir, w: &AccWitness) -> (RowMajorMatrix<F>, Vec<F>) {
+    assert!(air.acc && air.confidential_fee);
+    build(air, &w.slot, Some(w), acc_stmt_confidential(w), None)
+}
+
 fn acc_stmt(w: &AccWitness) -> Vec<F> {
     let h = Hasher::new();
     let mut stmt = w.set_element(&h).to_vec();
     stmt.extend_from_slice(&limbs(w.slot.fee));
+    stmt.push(F::ONE);
+    stmt.extend_from_slice(&w.anchor_entry(&h));
+    stmt
+}
+
+fn acc_stmt_confidential(w: &AccWitness) -> Vec<F> {
+    let h = Hasher::new();
+    let mut stmt = w.set_element(&h).to_vec();
+    stmt.extend_from_slice(&w.slot.public_inputs(&h).fee_commit);
     stmt.push(F::ONE);
     stmt.extend_from_slice(&w.anchor_entry(&h));
     stmt

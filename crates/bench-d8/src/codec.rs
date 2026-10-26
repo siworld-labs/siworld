@@ -157,14 +157,19 @@ impl PublicTransaction {
         Ok(bound)
     }
 
-    /// Research statement: clear fee limbs are retained for relation testing.
-    /// Confidential fee settlement is required before production activation.
-    pub fn statement(&self, context: &ProofContext, fee: u64, accepted_root: &Digest) -> Vec<F> {
+    /// Build the production statement from the public transaction and its
+    /// fee commitment. The fee opening is never accepted as a public field.
+    pub fn statement(
+        &self,
+        context: &ProofContext,
+        fee_commit: &Digest,
+        accepted_root: &Digest,
+    ) -> Vec<F> {
         statement_for(
             &self.nf,
             &self.cm,
             &self.ciphertext_digest(context),
-            fee,
+            fee_commit,
             accepted_root,
         )
     }
@@ -176,13 +181,13 @@ impl PublicTransaction {
         prover: &TransactionProver,
         proof: &Proof<Cfg>,
         context: &ProofContext,
-        fee: u64,
+        fee_commit: &Digest,
         accepted_root: &Digest,
     ) -> Result<(), String> {
         if self.nf[0] == self.nf[1] {
             return Err("duplicate nullifier".into());
         }
-        prover.verify(proof, &self.statement(context, fee, accepted_root))
+        prover.verify(proof, &self.statement(context, fee_commit, accepted_root))
     }
 }
 
@@ -265,14 +270,15 @@ mod tests {
     #[test]
     fn every_wire_byte_and_context_is_bound_to_statement() {
         let (tx, w, ctx) = fixture();
-        let original = tx.statement(&ctx, w.slot.fee, &w.anchors_root(&Hasher::new()));
+        let fields = w.slot.public_inputs(&Hasher::new());
+        let original = tx.statement(&ctx, &fields.fee_commit, &w.anchors_root(&Hasher::new()));
         let wire = tx.encode();
         for i in 0..wire.len() {
             let mut changed = wire;
             changed[i] ^= 1;
             if let Ok(changed) = PublicTransaction::decode(&changed) {
                 assert_ne!(
-                    changed.statement(&ctx, w.slot.fee, &w.anchors_root(&Hasher::new())),
+                    changed.statement(&ctx, &fields.fee_commit, &w.anchors_root(&Hasher::new())),
                     original,
                     "wire byte {i}"
                 );
@@ -304,16 +310,30 @@ mod tests {
         let p = TransactionProver::new(crate::FriParams::fast());
         let (proof, public) = p.prove(&w);
         let root = w.anchors_root(&Hasher::new());
-        assert_eq!(public, tx.statement(&ctx, w.slot.fee, &root));
-        tx.verify(&p, &proof, &ctx, w.slot.fee, &root).unwrap();
+        let fields = w.slot.public_inputs(&Hasher::new());
+        assert_eq!(public, tx.statement(&ctx, &fields.fee_commit, &root));
+        tx.verify(&p, &proof, &ctx, &fields.fee_commit, &root)
+            .unwrap();
         let mut wire = tx.encode();
         wire[1501] ^= 1;
         let changed = PublicTransaction::decode(&wire).unwrap();
-        assert!(changed.verify(&p, &proof, &ctx, w.slot.fee, &root).is_err());
         assert!(
-            tx.verify(&p, &proof, &ProofContext::new([0; 32]), w.slot.fee, &root)
+            changed
+                .verify(&p, &proof, &ctx, &fields.fee_commit, &root)
                 .is_err()
         );
-        assert!(tx.verify(&p, &proof, &ctx, w.slot.fee + 1, &root).is_err());
+        assert!(
+            tx.verify(
+                &p,
+                &proof,
+                &ProofContext::new([0; 32]),
+                &fields.fee_commit,
+                &root
+            )
+            .is_err()
+        );
+        let mut changed_fee = fields.fee_commit;
+        changed_fee[0] += F::ONE;
+        assert!(tx.verify(&p, &proof, &ctx, &changed_fee, &root).is_err());
     }
 }

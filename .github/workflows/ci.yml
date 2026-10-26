@@ -24,7 +24,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Publication manifest and documentation
-        run: python3 scripts/check-repository.py
+        run: |
+          python3 scripts/check-repository.py
+          python3 scripts/check-fee-settlement-evaluation.py --schema >/tmp/fee-settlement-schema.json
       - name: Audit evidence and memory declarations
         run: |
           python3 scripts/check-audit-registry.py
@@ -190,7 +192,7 @@ jobs:
           build = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(build)
           command = ['cargo', 'test', '--release', '--manifest-path', '.local/native-transaction/application/Cargo.toml', '--features', 'security-report', '--lib']
-          for module, minimum in [('transaction', 8), ('codec', 5), ('encryption', 8)]:
+          for module, minimum in [('transaction', 8), ('codec', 5), ('encryption', 8), ('fee_settlement', 5)]:
               build.run_logged([*command, module + '::tests'], Path('.local/native-transaction') / (module + '-tests.log'), nonempty_tests=True, minimum_tests=minimum)
           build.run_logged([*command[:-1], '--bin', 'v1-transaction-scan'], Path('.local/native-transaction/diagnostic-tests.log'), nonempty_tests=True, minimum_tests=2)
           PY_NATIVE_TEST

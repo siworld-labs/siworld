@@ -140,6 +140,12 @@ pub const ACC_COUNT: usize = SET_LEN + LIMBS;
 pub const ACC_ENTRY: usize = ACC_COUNT + 1;
 pub const ACC_ROOT: usize = ACC_ENTRY;
 pub const NUM_ACC_PUBLIC: usize = ACC_ROOT + DIGEST;
+/// Confidential-fee accumulator statement: E, fee commitment, count, root.
+pub const ACC_FEE_COMMIT: usize = SET_LEN;
+pub const ACC_COUNT_CONF: usize = ACC_FEE_COMMIT + DIGEST;
+pub const ACC_ENTRY_CONF: usize = ACC_COUNT_CONF + 1;
+pub const ACC_ROOT_CONF: usize = ACC_ENTRY_CONF;
+pub const NUM_ACC_CONF_PUBLIC: usize = ACC_ROOT_CONF + DIGEST;
 /// Accumulator mode: registers after the slot public values.
 pub const ACC_REG: usize = CHAIN_REG + NUM_PUBLIC;
 /// Anchor height limbs ‖ base_fee limbs ‖ four zeros: second block of the 𝒜 entry.
@@ -203,7 +209,7 @@ fn row(kind: Kind) -> RowSpec {
     }
 }
 
-pub fn schedule(chain: bool, acc: bool) -> Vec<RowSpec> {
+pub fn schedule(chain: bool, acc: bool, confidential_fee: bool) -> Vec<RowSpec> {
     let mut rows = Vec::new();
     for i in 0..2 {
         let b = input(i);
@@ -273,7 +279,7 @@ pub fn schedule(chain: bool, acc: bool) -> Vec<RowSpec> {
             })
         });
     }
-    if !acc {
+    if !acc || confidential_fee {
         rows.push(RowSpec {
             out: Some(Src::Pub(PUB_FEE)),
             ..row(Kind::First {
@@ -305,7 +311,11 @@ pub fn schedule(chain: bool, acc: bool) -> Vec<RowSpec> {
             absorb: Src::Pub(PUB_ANCHOR),
         }));
         rows.push(RowSpec {
-            out: Some(Src::Stmt(ACC_ENTRY)),
+            out: Some(Src::Stmt(if confidential_fee {
+                ACC_ENTRY_CONF
+            } else {
+                ACC_ENTRY
+            })),
             ..row(Kind::Cont {
                 absorb: Src::Reg(ACC_REG + ACC_HB),
             })
@@ -353,6 +363,8 @@ pub struct SlotAir {
     p2: P2Air,
     pub chain: bool,
     pub acc: bool,
+    /// Accumulator mode with a private fee and a public fee commitment.
+    pub confidential_fee: bool,
     /// Trace height (a power of two).
     pub height: usize,
     pub rows: Vec<RowSpec>,
@@ -371,19 +383,23 @@ impl Default for SlotAir {
 
 impl SlotAir {
     pub fn new() -> Self {
-        Self::build(false, false)
+        Self::build(false, false, false)
     }
 
     pub fn new_chain() -> Self {
-        Self::build(true, false)
+        Self::build(true, false, false)
     }
 
     pub fn new_acc() -> Self {
-        Self::build(false, true)
+        Self::build(false, true, false)
     }
 
-    fn build(chain: bool, acc: bool) -> Self {
-        let rows = schedule(chain, acc);
+    pub fn new_acc_confidential() -> Self {
+        Self::build(false, true, true)
+    }
+
+    fn build(chain: bool, acc: bool, confidential_fee: bool) -> Self {
+        let rows = schedule(chain, acc, confidential_fee);
         let mut absorb = Vec::new();
         let mut outs = Vec::new();
         for r in &rows {
@@ -428,6 +444,7 @@ impl SlotAir {
             p2: P2Air::new(p2_constants()),
             chain,
             acc,
+            confidential_fee,
             height,
             rows,
             absorb,
@@ -466,7 +483,11 @@ impl SlotAir {
         if self.chain {
             NUM_CHAIN_PUBLIC
         } else if self.acc {
-            NUM_ACC_PUBLIC
+            if self.confidential_fee {
+                NUM_ACC_CONF_PUBLIC
+            } else {
+                NUM_ACC_PUBLIC
+            }
         } else {
             NUM_PUBLIC
         }
@@ -633,13 +654,19 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
             b.when_first_row()
                 .assert_eq(pis[STMT_COUNT].into(), one.clone());
         }
-        // Accumulator mode: the fee limbs in the statement are the fee register; count = 1.
+        // Accumulator mode: either expose fee limbs (legacy aggregation) or only
+        // the fee commitment (native transaction route); count = 1.
         if self.acc {
-            for k in 0..LIMBS {
-                b.assert_eq(pis[ACC_FEE + k].into(), x(l[FEE + FEE_VB + k]));
+            if self.confidential_fee {
+                b.when_first_row()
+                    .assert_eq(pis[ACC_COUNT_CONF].into(), one.clone());
+            } else {
+                for k in 0..LIMBS {
+                    b.assert_eq(pis[ACC_FEE + k].into(), x(l[FEE + FEE_VB + k]));
+                }
+                b.when_first_row()
+                    .assert_eq(pis[ACC_COUNT].into(), one.clone());
             }
-            b.when_first_row()
-                .assert_eq(pis[ACC_COUNT].into(), one.clone());
         }
 
         // Range check: RV = Σ bit·2^k; each row binds one limb to RV.

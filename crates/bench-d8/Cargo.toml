@@ -103,3 +103,8 @@ required-features = ["experimental-fanin", "phase-profile", "security-report"]
 name = "v1-transaction-scan"
 path = "src/bin/v1_transaction_scan.rs"
 required-features = ["security-report"]
+
+[[bin]]
+name = "fee-settlement-bench"
+path = "src/bin/fee-settlement-bench.rs"
+required-features = ["parallel"]

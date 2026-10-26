@@ -11,6 +11,8 @@ pub mod air;
 pub mod codec;
 pub mod common;
 pub mod encryption;
+pub mod fee_settlement;
+pub mod fee_settlement_air;
 #[cfg(feature = "phase-profile")]
 pub mod profile;
 #[cfg(feature = "security-report")]
@@ -68,6 +70,20 @@ impl FriParams {
             query_pow_bits: 0,
             commit_pow_bits: 0,
             batch_pow_bits: 0,
+            max_log_arity: 1,
+        }
+    }
+
+    /// Experimental native-transaction profile selected by the 80-bit scan.
+    /// This is a diagnostic candidate only: it is not cryptographically
+    /// approved and has not passed qualified Linux resource acceptance.
+    pub const fn transaction_candidate() -> Self {
+        Self {
+            log_blowup: 8,
+            num_queries: 36,
+            query_pow_bits: 20,
+            commit_pow_bits: 0,
+            batch_pow_bits: 20,
             max_log_arity: 1,
         }
     }

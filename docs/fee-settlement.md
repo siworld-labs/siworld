@@ -1,9 +1,10 @@
 # Confidential Fee Settlement for Route A V1
 
-Status: research design. This document specifies a candidate settlement
-mechanism for the native, non-recursive transaction route. It is not an
-activated consensus rule, and no implementation or parameter has been
-approved. The retained seven-node network is unchanged.
+Status: selected V1 design direction; research and measurement gate open. This
+document specifies Scheme B, a confidential settlement mechanism for the
+native, non-recursive transaction route. The direction is selected for V1, but
+it is not an activated consensus rule and no implementation parameter has
+been approved. The retained seven-node network is unchanged.
 
 ## Goals and boundaries
 
@@ -11,12 +12,16 @@ Route A broadcasts one native proof with each fixed-shape transaction. Nodes
 verify the proof before mempool admission, and a block carries compact
 references to those transactions. A transaction always has two inputs and two
 outputs. Real and padding transactions use the same public byte length and the
-same proof envelope shape. Padding is selected by the miner and has a zero fee.
+same proof envelope shape. A real transaction commits either the standard or
+priority fee; a padding transaction commits zero. The commitment, rather than
+the fee amount, is the only fee value exposed on chain, so the two cases remain
+indistinguishable from public data.
 
 The settlement mechanism must meet four requirements:
 
-1. The proof must establish the fee tier without publishing the tier or amount
-   for an individual transaction.
+1. The proof must establish the selected fee rule without publishing the tier
+   or amount for an individual transaction. The public statement contains only
+   a randomized fee commitment.
 2. A block must credit the miner with the exact issuance reward plus the fees
    of its included transactions, including zero-fee padding, exactly once.
 3. A node must reject omission, duplication, overflow, replay, and forged
@@ -24,10 +29,12 @@ The settlement mechanism must meet four requirements:
 4. No public field may classify a slot as real or padding, or make an
    individual fee identifiable through a deterministic value.
 
-This design uses a separate block-level settlement proof. It does not recurse
-over transaction proofs and does not replace transaction proof verification.
-The proof is a candidate way to make the private sum publicly checkable; its
-cost and security must be measured before Route A can be activated.
+This design uses a separate native block-level settlement proof. It does not
+recurse over transaction proofs and does not replace transaction proof
+verification. The proof is the selected V1 direction for making the private
+sum publicly checkable, but its circuit size, proof size, generation cost,
+memory cost, and security must be measured before it is included in the V1
+production scope.
 
 ## Private fee binding in a transaction proof
 
@@ -54,19 +61,33 @@ field-limb order, padding, and transcript framing are fixed before an AIR
 freeze. The chosen D8/W24/12-element suite is used for this relation; a
 separate hash circuit must not be introduced implicitly.
 
-The proof statement publishes `F` in a fixed-size statement slot and omits the
-fee limbs, tier bit, dummy bit, and `r`. The AIR proves all of the following:
+The proof statement publishes only `F` in a fixed-size statement slot and omits
+the fee limbs, tier bit, dummy bit, and `r`. With the D8/W24/12-element suite,
+the canonical commitment occupies 48 bytes (twelve little-endian 32-bit
+elements). This is an incremental proof-statement/relay-envelope field; it is
+not part of the 1,742-byte permanent transaction encoding. The 48-byte `F` field
+must nevertheless remain in the retained on-chain transaction statement after
+the proof body is pruned; absent an explicitly amortized block-context format,
+the public record is therefore 1,790 bytes before relay and settlement
+overhead. The AIR proves all of the following:
 
 - the two inputs and two outputs satisfy the transaction relation;
-- both input paths, nullifiers, ownership checks, and conservation are valid;
+- every positive-amount input proves ownership and commitment-tree membership;
+  a zero-amount dummy input uses the canonical dummy witness and skips that
+  membership check;
+- nullifiers are derived for every input, including zero-amount dummy inputs;
+  transaction-level uniqueness is checked in the relation, while mempool and
+  consensus admission check conflicts against the candidate and prior state;
 - `d` and `t` are boolean and the formula above holds with checked carries;
 - `F` is the Poseidon2 digest of the private values and the canonical public
   transaction binding;
 - the accepted anchor snapshot supplies `b` and the recent-root membership.
 
 The same relation is used for real and padding transactions. A padding witness
-uses dummy inputs, zero-valued outputs and `f = 0`; it does not carry a special
-public marker. A wallet samples `r` independently for every transaction,
+uses zero-amount dummy inputs, zero-valued outputs and `f = 0`; it does not
+carry a special public marker. Its nullifiers remain protocol values and must
+be unique just like real transaction nullifiers. A wallet samples `r`
+independently for every transaction,
 including any transaction that happens to use the same tier. Reusing `r` is a
 wallet error and must be rejected by the wallet; the protocol does not use the
 value of `F` as a fee identifier.
@@ -82,14 +103,20 @@ the public transaction bytes.
 
 A transaction proof deliberately does not reveal `f` or `r`. A miner therefore
 cannot create the block settlement proof from the public proof alone. This is a
-real protocol dependency, not an implementation detail. Before Route A is
-activated, one of the following witness-delivery mechanisms must be selected:
+real protocol dependency, not an implementation detail. Scheme B requires the
+wallet to place a fixed-size fee-opening witness alongside the transaction in
+the mempool. The witness is available to the block producer for fee ordering
+and settlement, while ordinary relays store and forward only an authenticated
+encrypted capsule; the clear opening must never be put in the block or public
+chain. The capsule binds `(f, r, transaction_binding, anchor_snapshot)` and
+uses the same length and encoding for real and padding transactions.
+
+Before Route A is activated, the authentication and key-rotation details of
+that mempool witness channel must be selected:
 
 * **Epoch settlement capsule (candidate):** an authenticated key schedule
-  publishes a rotating settlement public key. The wallet places a fixed-size,
-  semantically secure capsule in the proof/relay envelope containing
-  `(f, r, transaction_binding, anchor_snapshot)`. The capsule has the same
-  length and encoding for real and padding transactions. A winning miner uses
+  publishes a rotating settlement public key. The wallet places the capsule in
+  the bounded mempool sidecar and proof/relay envelope. A winning miner uses
   the corresponding private or threshold key to recover the witness and
   checks the context before proving settlement. Nodes see ciphertext only.
 * **Private miner channel:** the wallet delivers the same witness over an
@@ -97,7 +124,7 @@ activated, one of the following witness-delivery mechanisms must be selected:
   requires a deterministic rebroadcast and expiry protocol and must not make
   transaction inclusion depend on a miner-specific public fee.
 
-Neither mechanism is implemented or selected. An epoch key shared by every
+Neither mechanism is implemented or approved. An epoch key shared by every
 miner would let every miner learn individual fees, while a miner-specific key
 requires additional relay coordination. The privacy goal in this document is
 that the public chain and ordinary nodes cannot identify a fee tier; a stronger
@@ -105,7 +132,8 @@ goal covering all miners requires a threshold design. Capsule ciphertext,
 key identifiers, replay counters, and any recovery proof add fixed envelope
 bytes and must be included in the capacity and DoS ledger. If no approved
 witness-delivery mechanism exists, the settlement proof cannot be generated
-and the route remains blocked.
+and the route remains blocked. Until one is approved, the Scheme B direction
+is not part of the V1 production scope.
 
 ## Block settlement statement
 
@@ -135,6 +163,9 @@ miner_commitment = NoteCommit(miner_amount, miner_blind)
 the only settlement result. The proof binds them to the exact included
 transaction list and to the height-derived reward. The public block therefore
 does not expose a fee total, a paid-slot count, or a per-transaction fee.
+The phrase "sum of commitments" means that the proof opens each `F_i` to its
+private fee witness and proves the integer sum of those openings; the digest
+values themselves are not arithmetically added.
 
 The settlement proof is padded to the selected fixed capacity and has a fixed
 shape for that capacity. A 16-position group is the smallest unit; an empty
@@ -148,6 +179,27 @@ statements, but it must not accept a transaction merely because the settlement
 proof claims its fee. Each transaction proof is still verified independently
 and the settlement proof must bind to the resulting statement digest.
 
+### Required settlement evaluation
+
+Before Scheme B is admitted to the V1 scope, implement a fixed-capacity
+settlement circuit and measure capacities 64, 128, 256, 384, 512, and 576.
+The report must include the row and column shape, constraint count and degree,
+proof and envelope bytes, verifier time, peak charged memory, and generation
+time on the qualified machine. The 576-position case is the acceptance gate:
+run it three times with the same fixed configuration and report the median and
+each stage's peak memory. Include witness decoding, fee ordering, settlement
+proving, and payout construction in the generation measurement; one-time
+circuit preparation may be excluded only when it is performed at service
+startup and remains resident. A result that exceeds the V1 time or memory
+budget pauses the route and does not silently lower the privacy or proof
+requirements.
+
+The per-transaction accounting must list the 48-byte `F_i` commitment and the
+encrypted witness capsule separately from the 1,742-byte permanent public
+transaction encoding. The selected `MAX_LEAF_PROOF_LEN`, mempool byte caps,
+concurrent-verification limits, and relay capacity cannot be set until this
+ledger and the 576-position settlement result are available.
+
 ## Mempool and block validation flow
 
 1. Decode the fixed transaction bytes and proof envelope with bounded lengths.
@@ -159,7 +211,10 @@ and the settlement proof must bind to the resulting statement digest.
 3. Check duplicate nullifiers against the candidate state and the mempool's
    reservation table. Admission is atomic: a failure changes neither table.
 4. Retain the verified transaction binding, `F`, proof digest, and nullifier
-   reservations. The node does not attempt to decode `f` or classify the slot.
+   reservations. The miner's private mempool sidecar retains the authenticated
+   fee-opening capsule for ordering and settlement; ordinary relays retain
+   ciphertext only. The node does not attempt to decode `f` or classify the
+   slot.
 5. The miner obtains the private witness for every position through the
    selected settlement-capsule or private-channel protocol. It constructs a
    fixed-capacity block, recomputes the issuance reward from the candidate
@@ -192,6 +247,14 @@ The implementation test plan must reject each case below before state mutation:
   the block, in the mempool, or against confirmed state;
 - selecting a fee other than zero, `b`, or `4*b`, changing the anchor fee
   schedule, or setting a non-boolean tier/dummy witness;
+- producing a zero-amount input with a non-canonical dummy witness, or requiring
+  a commitment-tree path for that input; zero-amount dummy inputs must skip
+  membership while still producing a unique nullifier;
+- claiming a non-zero fee commitment for a padding transaction, or a zero fee
+  for a real transaction, including attempts to alter either opening after
+  mempool admission;
+- supplying a forged fee opening, a commitment that does not match its opening,
+  or a settlement sum that differs from the fee portion of the miner reward;
 - overflowing a fee limb, the per-position total, or `issuance_reward + T`,
   including carries at every boundary;
 - claiming a miner amount that is not exactly the issuance reward plus the
@@ -238,12 +301,16 @@ This design cannot be activated until the following are specified and tested:
   specification, including the 256-bit blinding representation;
 - a fixed-size settlement-proof construction and its cost at capacities 64
   through 576;
+- a 576-position three-trial evaluation covering circuit size, proof bytes,
+  generation time, verifier time, and per-stage peak memory;
 - p3-security reports for the transaction and settlement relations under the
   selected quantum target;
 - a proof/envelope byte ledger and DoS limits incorporating `F` and the
   settlement proof; and
 - independent tests for duplicate, omission, overflow, replay, forged payout,
-  capsule context/key failures, and state-atomicity failures.
+  forged openings, wrong commitment sums, non-zero padding fees, zero-fee real
+  transactions, zero-amount dummy-input membership skips, capsule context/key
+  failures, and state-atomicity failures.
 
 Until these gates pass, clear fee limbs in the research AIR and any existing
 recursive fee total are measurement fixtures only. They must not be presented

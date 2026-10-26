@@ -2,9 +2,12 @@
 
 Status: selected V1 direction; production AIR, codec, parameter selection and
 node integration are not complete. Requirements below do not describe an
-activated network. The confidential fee-settlement candidate is documented in
-[fee-settlement.md](fee-settlement.md), but is not implemented or selected.
-Open design issues explicitly block a production AIR freeze.
+activated network. V1 selects Scheme B confidential fee settlement as its
+direction; the mechanism is documented in [fee-settlement.md](fee-settlement.md)
+and has a research reference model and fixed-capacity AIR/prover, but it is not
+integrated into node or consensus paths. Witness delivery, security and
+qualified-host capacity evaluation remain open. Open design issues explicitly
+block a production AIR freeze and V1 inclusion.
 
 ## Scope and network boundary
 
@@ -71,12 +74,16 @@ milestones do not establish complete AIR coverage or production acceptance.
 ## Fixed transaction relation
 
 Each transaction has two inputs and two outputs. The relation must constrain
-both inputs independently, including ownership, nullifier derivation,
-commitment membership, value ranges and unlock conditions. It must enforce
-value conservation, output-seed derivation and standard/priority fee rules.
-Duplicate nullifiers within the transaction are invalid. Native mempool and
-consensus checks also reject conflicts across transactions and prior state;
-those stateful checks cannot be replaced by the transaction AIR.
+both inputs independently, including ownership, nullifier derivation, value
+ranges and unlock conditions. A positive-amount input must prove commitment-tree
+membership; a zero-amount input uses a canonical dummy witness and skips the
+membership check so a miner can construct padding without owning a note. The
+zero-amount input still derives a nullifier, and nullifier uniqueness is
+enforced within the transaction, across the block and against prior state. The
+relation must enforce value conservation, output-seed derivation and
+standard/priority fee rules. Native mempool and consensus checks also reject
+conflicts across transactions and prior state; those stateful checks cannot be
+replaced by the transaction AIR.
 
 The note commitment tree has depth 40. The recent-root tree has depth 12 and
 4,096 leaves. An anchor leaf commits to the commitment root, anchor height and
@@ -105,7 +112,7 @@ storage, fee-staleness and replay consequences that require explicit review.
 The final codec and capacity calculation must include any root-snapshot fields
 that are not amortized by block or proof context.
 
-### Fee settlement and padding privacy: research candidate
+### Fee settlement and padding privacy: Scheme B V1 direction
 
 The implemented recursive relation permits zero fees for all-dummy slots and
 standard or priority fees for other slots; the aggregate proof binds the
@@ -114,22 +121,32 @@ aggregate settlement mechanism. Publishing a zero/nonzero fee, individual fee
 amount, fee opening or independently recognizable fee claim identifies filler
 transactions or fee tiers. Equal byte lengths alone do not prevent this leak.
 
-V1 must define a confidential fee-settlement binding and hidden coinbase fee
-total that nodes can validate, that credits the producer exactly once, and
-that preserves the same public shape for paid and filler transactions. A
-research-only candidate is documented in [Confidential Fee Settlement for
-Route A V1](fee-settlement.md). It proposes a private per-transaction fee
-binding and a block-level settlement proof with a hidden coinbase fee total.
-The candidate is neither selected nor implemented and requires a reviewed
-witness-delivery mechanism, fixed AIR layout, security report and capacity
-measurement. A ciphertext or unbound private fee witness is insufficient. The
-1,742-byte target must not silently exclude fee-settlement fields or
-proof-envelope bytes.
+V1 selects Scheme B as its fee-settlement direction. Each transaction exposes
+only a randomized fee commitment `F_i`; a real transaction commits the private
+standard or priority fee and a padding transaction commits zero. Wallets place
+the fee opening in a bounded, authenticated mempool sidecar/encrypted relay
+envelope so a block producer can order transactions and build settlement; the
+opening is never written in clear to the block or chain. A separate native,
+non-recursive block proof binds every `F_i` to its opening and proves that the
+private sum equals the fee component of the miner reward note. Real and padding
+transactions share the same public shape, including dummy nullifiers.
+
+The direction is not yet included in the V1 production scope. The settlement
+design requires a reviewed witness-delivery mechanism, a reviewed and frozen
+AIR layout, a security report, and qualified-host 64--576 capacity measurements,
+with a three-trial 576-position result reporting proof bytes, generation and
+verification time, and per-stage peak memory. The four required rejection
+cases are explicit:
+wrong commitment sum versus the miner reward, forged fee opening, non-zero
+padding fee, and zero-fee real transaction. A ciphertext or unbound private
+fee witness is insufficient. The 1,742-byte target must not silently exclude
+the 48-byte commitment, witness capsule, proof statement, or relay-envelope
+bytes.
 Standard and priority amounts remain reward-linked: standard is
 `floor(reward / 1,000)` and priority is four times standard. Variable bids are
 outside scope. The production AIR cannot be frozen until collection,
 non-duplication and padding indistinguishability have a complete, reviewed
-design. The candidate research document does not close this gate.
+design. The research design does not close this gate.
 
 ## Encryption and ciphertext binding
 
@@ -173,6 +190,17 @@ auditing scope and proof-generation target.
 The selected wire layout is 1,742 public bytes per transaction, excluding the
 native proof and proof/relay-envelope context. The current implementation uses
 32-byte digests, two 1,344-byte ciphertexts and a 2,818-byte slot. It is not this codec.
+
+Under Scheme B, each transaction statement adds one canonical 48-byte `F_i`
+commitment (twelve D8 field elements). The commitment is public in the proof
+statement and relay envelope, while the fee opening remains in the private
+mempool sidecar/capsule. It is not part of the 1,742-byte base encoding, but it
+is retained in the on-chain transaction statement after the proof body is
+pruned; absent an explicitly amortized block-context format, the public record
+is 1,790 bytes before relay and settlement overhead. Capacity and
+denial-of-service accounting must include the 48-byte commitment, capsule,
+proof body, settlement proof, and retransmission reserve as separate ledger
+entries.
 
 Keeping the existing 240-byte encrypted plaintext padding while changing four
 public digests to 48 bytes and replacing the second KEM ciphertext with a
