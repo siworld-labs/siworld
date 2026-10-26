@@ -76,6 +76,11 @@ p3-lookup = { version = "=0.9.0-rc.2", optional = true }
 
 sha2 = "=0.10.9"
 serde = "=1.0.228"
+blake3 = { version = "1.8.3", features = ["zeroize"] }
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["zeroize"] }
+zeroize = "=1.9.1"
+getrandom = "0.4"
+libcrux-ml-kem = { version = "=0.0.11", default-features = false, features = ["mlkem768"] }
 
 [features]
 default = ["parallel"]
@@ -93,3 +98,8 @@ security-report = ["dep:p3-security", "dep:p3-lookup"]
 name = "d8-checkpoint"
 path = "src/bin/checkpoint.rs"
 required-features = ["experimental-fanin", "phase-profile", "security-report"]
+
+[[bin]]
+name = "v1-transaction-scan"
+path = "src/bin/v1_transaction_scan.rs"
+required-features = ["security-report"]

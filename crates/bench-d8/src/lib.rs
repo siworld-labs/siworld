@@ -8,12 +8,15 @@
 
 pub mod agg;
 pub mod air;
+pub mod codec;
 pub mod common;
+pub mod encryption;
 #[cfg(feature = "phase-profile")]
 pub mod profile;
 #[cfg(feature = "security-report")]
 pub mod security;
 pub mod trace;
+pub mod transaction;
 
 use crate::common::{AccWitness, Digest, F, SlotWitness};
 use p3_recursion::VerifierLimits;

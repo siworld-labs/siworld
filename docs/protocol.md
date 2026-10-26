@@ -94,7 +94,7 @@ and imports no retained notes or proofs. See the
 | Suite | KoalaBear D8, standard Plonky3 Poseidon2 W24, 12-base-element (48-byte) digests |
 | Security screening | Classical conjectured at least 128 bits; every Fiat–Shamir Johnson term, including queries and enforced grinding, at least 80 bits after quantum halving; challenge-domain terms at least 80 bits after halving; BHT commitment collision resistance at least 80 bits |
 | Anchor | Depth-12 recent-root membership checked inside the transaction AIR; only the recent-root tree root is public |
-| Fee tiers | Reward-linked standard and four-times-standard priority; confidential settlement and filler privacy remain unresolved |
+| Fee tiers | Reward-linked standard and four-times-standard priority; the [fee-settlement design](fee-settlement.md) is research-only and remains a production gate |
 | Public-data encoding | Selected 1,742-byte layout with 208-byte padded note bodies; fee/proof/envelope ledger requires review |
 | Change encryption | ChaCha20-Poly1305 with a 256-bit key and domain-separated BLAKE3 derivation |
 | Blocks | Groups of 16; 64–576 positions; 300-second target; 20-Mbps minimum node link |
@@ -106,8 +106,10 @@ Nodes verify proofs on mempool admission. Blocks use compact references and
 public transaction data without duplicating proof bodies. Root-snapshot expiry,
 private fee collection, public-data substitution resistance versus encryption
 correctness, and the complete fee/proof/envelope byte ledger are blocking design
-questions. A keyless public node cannot authenticate an AEAD tag. None of these proposed
-properties may be described as implemented before their tests and gates pass.
+questions. The [fee-settlement design](fee-settlement.md) is a candidate
+mechanism, not an activated rule. A keyless public node cannot authenticate an
+AEAD tag. None of these proposed properties may be described as implemented
+before their tests and gates pass.
 
 Recursive aggregation and historical proof compression are deferred to V2.
 The existing [recursive suite plan](d8-w24-recursion.md) and

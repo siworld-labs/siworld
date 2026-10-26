@@ -1,0 +1,250 @@
+# Confidential Fee Settlement for Route A V1
+
+Status: research design. This document specifies a candidate settlement
+mechanism for the native, non-recursive transaction route. It is not an
+activated consensus rule, and no implementation or parameter has been
+approved. The retained seven-node network is unchanged.
+
+## Goals and boundaries
+
+Route A broadcasts one native proof with each fixed-shape transaction. Nodes
+verify the proof before mempool admission, and a block carries compact
+references to those transactions. A transaction always has two inputs and two
+outputs. Real and padding transactions use the same public byte length and the
+same proof envelope shape. Padding is selected by the miner and has a zero fee.
+
+The settlement mechanism must meet four requirements:
+
+1. The proof must establish the fee tier without publishing the tier or amount
+   for an individual transaction.
+2. A block must credit the miner with the exact issuance reward plus the fees
+   of its included transactions, including zero-fee padding, exactly once.
+3. A node must reject omission, duplication, overflow, replay, and forged
+   settlement data before changing state.
+4. No public field may classify a slot as real or padding, or make an
+   individual fee identifiable through a deterministic value.
+
+This design uses a separate block-level settlement proof. It does not recurse
+over transaction proofs and does not replace transaction proof verification.
+The proof is a candidate way to make the private sum publicly checkable; its
+cost and security must be measured before Route A can be activated.
+
+## Private fee binding in a transaction proof
+
+Let `b` be the base fee committed by the accepted anchor snapshot. For a
+transaction with tier bit `t` and dummy bit `d`, the private fee is:
+
+```text
+f = 0                         if d = 1
+f = b * (1 + 3 * t)            if d = 0 and t is 0 or 1
+```
+
+The transaction AIR receives `f`, `d`, `t`, and a fresh 256-bit blinding value
+`r` as private witness data. It computes a fixed-width field digest:
+
+```text
+F = Poseidon2_fee_v1(
+      suite_id || network_id || transaction_binding || anchor_snapshot || f || r)
+```
+
+`transaction_binding` is the digest of the canonical 1,742-byte public
+transaction data and the fixed proof context. `anchor_snapshot` identifies
+the accepted recent-root snapshot and its fee schedule. The domain tag,
+field-limb order, padding, and transcript framing are fixed before an AIR
+freeze. The chosen D8/W24/12-element suite is used for this relation; a
+separate hash circuit must not be introduced implicitly.
+
+The proof statement publishes `F` in a fixed-size statement slot and omits the
+fee limbs, tier bit, dummy bit, and `r`. The AIR proves all of the following:
+
+- the two inputs and two outputs satisfy the transaction relation;
+- both input paths, nullifiers, ownership checks, and conservation are valid;
+- `d` and `t` are boolean and the formula above holds with checked carries;
+- `F` is the Poseidon2 digest of the private values and the canonical public
+  transaction binding;
+- the accepted anchor snapshot supplies `b` and the recent-root membership.
+
+The same relation is used for real and padding transactions. A padding witness
+uses dummy inputs, zero-valued outputs and `f = 0`; it does not carry a special
+public marker. A wallet samples `r` independently for every transaction,
+including any transaction that happens to use the same tier. Reusing `r` is a
+wallet error and must be rejected by the wallet; the protocol does not use the
+value of `F` as a fee identifier.
+
+`F` is bound to the transaction and network context, so a proof or fee witness
+cannot be moved to a different public transaction, network, suite, or anchor
+snapshot. The 1,742-byte public transaction encoding remains unchanged. `F`
+belongs to the fixed proof statement/envelope and must be included in the
+proof-size, relay, and denial-of-service ledger; it is not silently added to
+the public transaction bytes.
+
+### Supplying a settlement witness to the miner
+
+A transaction proof deliberately does not reveal `f` or `r`. A miner therefore
+cannot create the block settlement proof from the public proof alone. This is a
+real protocol dependency, not an implementation detail. Before Route A is
+activated, one of the following witness-delivery mechanisms must be selected:
+
+* **Epoch settlement capsule (candidate):** an authenticated key schedule
+  publishes a rotating settlement public key. The wallet places a fixed-size,
+  semantically secure capsule in the proof/relay envelope containing
+  `(f, r, transaction_binding, anchor_snapshot)`. The capsule has the same
+  length and encoding for real and padding transactions. A winning miner uses
+  the corresponding private or threshold key to recover the witness and
+  checks the context before proving settlement. Nodes see ciphertext only.
+* **Private miner channel:** the wallet delivers the same witness over an
+  authenticated private channel to a miner-selected settlement key. This
+  requires a deterministic rebroadcast and expiry protocol and must not make
+  transaction inclusion depend on a miner-specific public fee.
+
+Neither mechanism is implemented or selected. An epoch key shared by every
+miner would let every miner learn individual fees, while a miner-specific key
+requires additional relay coordination. The privacy goal in this document is
+that the public chain and ordinary nodes cannot identify a fee tier; a stronger
+goal covering all miners requires a threshold design. Capsule ciphertext,
+key identifiers, replay counters, and any recovery proof add fixed envelope
+bytes and must be included in the capacity and DoS ledger. If no approved
+witness-delivery mechanism exists, the settlement proof cannot be generated
+and the route remains blocked.
+
+## Block settlement statement
+
+For a block with `M` fixed positions, the miner constructs a private witness
+for every position, including generated padding. The settlement proof binds the
+following public values:
+
+- block header and network/suite identity;
+- the ordered compact-reference digest for each of the `M` positions;
+- the corresponding transaction binding and fee commitment `F_i` for each
+  position;
+- the miner output commitment and its fixed-format ciphertext;
+- the issuance reward recomputed from the block height.
+
+The proof keeps the `f_i`, tier bits, dummy bits, blindings, and total private.
+It proves:
+
+```text
+F_i = Poseidon2_fee_v1(context_i || f_i || r_i)       for every i
+f_i is exactly 0, b_i, or 4*b_i                      for every i
+T   = sum(i = 0..M-1) f_i                            (checked integer sum)
+miner_amount = issuance_reward(height) + T            (checked integer sum)
+miner_commitment = NoteCommit(miner_amount, miner_blind)
+```
+
+`T` is not a public block field. The miner note commitment and ciphertext are
+the only settlement result. The proof binds them to the exact included
+transaction list and to the height-derived reward. The public block therefore
+does not expose a fee total, a paid-slot count, or a per-transaction fee.
+
+The settlement proof is padded to the selected fixed capacity and has a fixed
+shape for that capacity. A 16-position group is the smallest unit; an empty
+position is represented by an ordinary fixed-format padding transaction and an
+ordinary fee witness with `f = 0`. The proof must not contain a variable-length
+list whose length reveals the number of real transactions.
+
+This proof is intentionally described as a block-level relation rather than a
+recursive aggregation of the transaction proofs. It may reuse their public
+statements, but it must not accept a transaction merely because the settlement
+proof claims its fee. Each transaction proof is still verified independently
+and the settlement proof must bind to the resulting statement digest.
+
+## Mempool and block validation flow
+
+1. Decode the fixed transaction bytes and proof envelope with bounded lengths.
+   Reject unsupported network, suite, format, or proof sizes before expensive
+   work.
+2. Recompute the canonical transaction binding and verify the native proof
+   against the trusted verifier key. The verifier obtains `F` from the
+   decoded statement, never from a peer-selected statement.
+3. Check duplicate nullifiers against the candidate state and the mempool's
+   reservation table. Admission is atomic: a failure changes neither table.
+4. Retain the verified transaction binding, `F`, proof digest, and nullifier
+   reservations. The node does not attempt to decode `f` or classify the slot.
+5. The miner obtains the private witness for every position through the
+   selected settlement-capsule or private-channel protocol. It constructs a
+   fixed-capacity block, recomputes the issuance reward from the candidate
+   height, includes the miner output exactly once, and produces the settlement
+   proof. Missing or context-mismatched witness data aborts block production.
+6. A receiving node verifies the header, compact references, every transaction
+   proof, and the settlement proof. It checks that every `F_i` and transaction
+   binding occurs exactly once, that every referenced transaction is present,
+   and that all nullifiers are unique and unused in the parent state.
+7. The node verifies the miner output commitment/ciphertext against the
+   settlement proof, applies the common integer-only state transition, and
+   only then releases reservations and persists the block.
+
+The producer and validator call the same transition function. Any failure
+leaves the state, mempool reservations, fee accounting, and wallet journals
+unchanged.
+
+## Rejection and abuse cases
+
+The implementation test plan must reject each case below before state mutation:
+
+- changing any public transaction byte, compact reference, proof statement,
+  `F_i`, anchor snapshot, network identity, or suite identifier;
+- replacing a transaction proof while retaining its `F_i`, or replacing `F_i`
+  while retaining the proof;
+- omitting a position, adding a second copy, reordering references without
+  rebuilding the bound settlement proof, or using a transaction in two
+  positions;
+- using a duplicate nullifier within one transaction, in two transactions in
+  the block, in the mempool, or against confirmed state;
+- selecting a fee other than zero, `b`, or `4*b`, changing the anchor fee
+  schedule, or setting a non-boolean tier/dummy witness;
+- overflowing a fee limb, the per-position total, or `issuance_reward + T`,
+  including carries at every boundary;
+- claiming a miner amount that is not exactly the issuance reward plus the
+  proved private sum, claiming it twice, or moving the miner output to another
+  block height;
+- reusing a settlement proof, `F_i`, or private fee witness in another network,
+  block, suite, or anchor snapshot;
+- decrypting a capsule with the wrong epoch/key, changing its context or replay
+  counter, truncating it, or replacing it with a capsule for another
+  transaction;
+- truncating, extending, or making any proof, transaction, settlement, or
+  ciphertext encoding noncanonical; and
+- presenting a valid transaction proof but a settlement proof generated from a
+  different transaction set or capacity.
+
+Tests must include malformed proofs and oversized inputs so that proof
+allocation is bounded. They must exercise the maximum configured capacity and
+the largest allowed `b` without relying on host integer overflow behavior.
+
+## Privacy and accounting properties
+
+The protocol exposes the transaction's ordinary public data, proof size, and
+relay timing. It does not expose `f_i`, `t_i`, `d_i`, `T`, or a paid-slot
+count. `F_i` is a randomized binding digest and is expected to be
+computationally hiding under the selected Poseidon2 model; it is not a fee
+amount and must not be treated as one by metrics or APIs. Wallets, relays, and
+miners must not log or export `f_i` with transaction identifiers.
+
+The fee-binding digest and settlement proof add fixed proof/envelope bytes and
+verification work. Capacity, bandwidth, and mempool budgets must include those
+bytes, plus retransmissions and missing-proof requests. The existing 1,742-byte
+transaction target alone is not a complete relay budget.
+
+## Open gates before implementation
+
+This design cannot be activated until the following are specified and tested:
+
+- a fixed AIR layout replacing clear fee limbs with the private fee witness
+  and `F` statement fields;
+- an approved witness-delivery mechanism (or a demonstrated homomorphic
+  settlement alternative) that gives the block prover enough information to
+  construct the private sum without exposing fee tiers on the public chain;
+- a hash-based, quantum-accounted `NoteCommit` and `Poseidon2_fee_v1` domain
+  specification, including the 256-bit blinding representation;
+- a fixed-size settlement-proof construction and its cost at capacities 64
+  through 576;
+- p3-security reports for the transaction and settlement relations under the
+  selected quantum target;
+- a proof/envelope byte ledger and DoS limits incorporating `F` and the
+  settlement proof; and
+- independent tests for duplicate, omission, overflow, replay, forged payout,
+  capsule context/key failures, and state-atomicity failures.
+
+Until these gates pass, clear fee limbs in the research AIR and any existing
+recursive fee total are measurement fixtures only. They must not be presented
+as Route A V1 settlement or enabled on the retained network.

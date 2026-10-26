@@ -160,3 +160,52 @@ jobs:
               assert forwarded.returncode == 23
               assert sentinel.read_text() == 'argument-preserved'
           PY_CPU_TEST
+
+  native-transaction:
+    name: Native D8 transaction relation and codec
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - name: Prepare isolated pinned native implementation
+        run: python3 scripts/build-d8-checkpoint.py --prepare-only --output .local/native-transaction
+      - name: Check CPU before executing optimized tests
+        run: |
+          rustc scripts/prover-launcher.rs --edition=2021 -O -D warnings -C target-cpu=x86-64 -o /tmp/native-cpu-check
+          /tmp/native-cpu-check --check-cpu
+      - name: Native constraint and encoding rejection tests
+        env:
+          RAYON_NUM_THREADS: 4
+        run: |
+          cargo fmt --manifest-path crates/bench-d8/Cargo.toml --all --check
+          python3 - <<'PY_NATIVE_TEST'
+          import importlib.util
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
+          build = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(build)
+          command = ['cargo', 'test', '--release', '--manifest-path', '.local/native-transaction/application/Cargo.toml', '--features', 'security-report', '--lib']
+          for module, minimum in [('transaction', 8), ('codec', 5), ('encryption', 8)]:
+              build.run_logged([*command, module + '::tests'], Path('.local/native-transaction') / (module + '-tests.log'), nonempty_tests=True, minimum_tests=minimum)
+          build.run_logged([*command[:-1], '--bin', 'v1-transaction-scan'], Path('.local/native-transaction/diagnostic-tests.log'), nonempty_tests=True, minimum_tests=2)
+          PY_NATIVE_TEST
+          cargo clippy --release --manifest-path .local/native-transaction/application/Cargo.toml --features security-report --lib --bin v1-transaction-scan -- -D warnings
+          cargo build --release --manifest-path .local/native-transaction/application/Cargo.toml --features security-report --bin v1-transaction-scan
+          .local/native-transaction/application/target/release/v1-transaction-scan --security-only --log-blowup 4 --queries 80 --grinding 16 --output .local/native-transaction/security-diagnostic.json
+      - name: Preserve registry dependency pins
+        run: |
+          python3 - <<'PY_LOCK'
+          import importlib.util
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
+          build = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(build)
+          expected = build.registry_pins(Path('crates/bench-d8/Cargo.lock').read_text())
+          actual = build.registry_pins(Path('.local/native-transaction/application/Cargo.lock').read_text())
+          assert expected == actual, 'Registry pins changed during native validation'
+          PY_LOCK

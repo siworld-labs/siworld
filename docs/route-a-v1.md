@@ -2,7 +2,9 @@
 
 Status: selected V1 direction; production AIR, codec, parameter selection and
 node integration are not complete. Requirements below do not describe an
-activated network. Open design issues explicitly block a production AIR freeze.
+activated network. The confidential fee-settlement candidate is documented in
+[fee-settlement.md](fee-settlement.md), but is not implemented or selected.
+Open design issues explicitly block a production AIR freeze.
 
 ## Scope and network boundary
 
@@ -103,7 +105,7 @@ storage, fee-staleness and replay consequences that require explicit review.
 The final codec and capacity calculation must include any root-snapshot fields
 that are not amortized by block or proof context.
 
-### Fee settlement and padding privacy are open design issues
+### Fee settlement and padding privacy: research candidate
 
 The implemented recursive relation permits zero fees for all-dummy slots and
 standard or priority fees for other slots; the aggregate proof binds the
@@ -114,14 +116,20 @@ transactions or fee tiers. Equal byte lengths alone do not prevent this leak.
 
 V1 must define a confidential fee-settlement binding and hidden coinbase fee
 total that nodes can validate, that credits the producer exactly once, and
-that preserves the same public shape for paid and filler transactions.
-Alternatively, a different explicitly reviewed fee and padding model is required. A ciphertext or unbound private
-fee witness is insufficient. No such mechanism is selected here, and the
-1,742-byte target must not silently exclude extra fee-settlement fields.
+that preserves the same public shape for paid and filler transactions. A
+research-only candidate is documented in [Confidential Fee Settlement for
+Route A V1](fee-settlement.md). It proposes a private per-transaction fee
+binding and a block-level settlement proof with a hidden coinbase fee total.
+The candidate is neither selected nor implemented and requires a reviewed
+witness-delivery mechanism, fixed AIR layout, security report and capacity
+measurement. A ciphertext or unbound private fee witness is insufficient. The
+1,742-byte target must not silently exclude fee-settlement fields or
+proof-envelope bytes.
 Standard and priority amounts remain reward-linked: standard is
 `floor(reward / 1,000)` and priority is four times standard. Variable bids are
 outside scope. The production AIR cannot be frozen until collection,
-non-duplication and padding indistinguishability have a complete design.
+non-duplication and padding indistinguishability have a complete, reviewed
+design. The candidate research document does not close this gate.
 
 ## Encryption and ciphertext binding
 
@@ -312,14 +320,14 @@ They are conditional planning ranges, not delivery commitments.
 
 | Milestone | Work | Estimate | Exit condition |
 | --- | --- | ---: | --- |
-| M1 | Resolve fee/padding settlement, root-snapshot lifetime, encryption-correctness scope and exact byte ledger | 3–6 days | Reviewed, internally consistent relation and codec specification; unresolved choices block AIR freeze |
+| M1 | Evaluate the research fee-settlement candidate, resolve root-snapshot lifetime and encryption-correctness scope, and freeze the exact byte ledger | 3–6 days | Reviewed, internally consistent relation and codec specification; unresolved choices block AIR freeze |
 | M2 | Native D8/W24/12 transaction AIR, trace, two-input/two-output constraints and test-first rejection matrix | 8–14 days | Native proof generation/verification and rejection tests pass with extracted actual shapes |
 | M3 | Actual-AIR security scan and three-trial byte/time/memory measurements; limits and capacity report | 3–6 days | Eligible smallest-proof configuration and bounded production codecs selected, or infeasibility reported |
 | M4 | Node/block integration design: admission, grouping, filler lifecycle, compact relay, reorgs, retention and checkpoint/archives | 3–5 days, parallel | Interfaces, trust assumptions, budgets and test plan reviewed; no implementation in this scope |
 | M5 | X25519 + ML-KEM handshake and Dandelion++ or reviewed relay alternative | 6–10 days after M2/M3 | End-to-end handshake, failure, reconnect and source-privacy tests pass before the new engineering network |
 
 M2 cannot close with only a surrogate AIR, an unbound ciphertext digest or an
-unspecified fee settlement mechanism. M3 cannot close using proxy measurements.
+unapproved fee-settlement mechanism. M3 cannot close using proxy measurements.
 M4 may proceed in parallel as design, but cannot silently settle consensus
 choices in code. Network privacy follows the transaction AIR and scan and is
 required before launching the new engineering network. N=32 and recursive V2
