@@ -27,9 +27,14 @@ does not silently replace the EPYC 7763 acceptance baseline.
 
 ## Process-tree memory boundary
 
-`scripts/measure-proof-cgroup.py` creates an exclusively owned scope, reads
-back `memory.max=5368709120`, `memory.swap.max=0`, and `memory.oom.group=1`,
-places the child before exec, then drops the worker to an unprivileged UID/GID.
+`scripts/measure-proof-cgroup.py` creates an exclusively owned scope. Its
+5-GiB (`memory.max=5368709120`) default is retained for legacy D4 controls; it
+does not define the D8 production budget. The next D8 collector must explicitly
+select `--memory-max 10737418240` for its 10-GiB experimental ceiling, then read
+back that value, `memory.swap.max=0` and `memory.oom.group=1`. The ceiling is
+not production acceptance; select the production budget after actual peak
+measurements. The harness places the child before exec, then drops the worker
+to an unprivileged UID/GID.
 All descendants inherit the scope. The supervisor remains outside it and holds
 no circuit, proof state or worker helper. It does not enable parent controllers
 or change unrelated scopes. Missing permissions/controllers/peak counters fail
@@ -112,12 +117,15 @@ qualified baseline and project the complete N=16 `16 -> 2 -> 1` service:
 
 | Projected proof latency and peak charged memory | Action |
 | --- | --- |
-| At most 135 seconds and at most 5 GiB | Continue. |
-| More than 135 and at most 180 seconds, with peak memory at most 5 GiB | Continue and optimize parameters and circuits in parallel. |
-| More than 180 seconds or more than 5 GiB | Pause and report. |
+| At most 135 seconds and at most 10 GiB | Continue experiments; production memory acceptance remains open. |
+| More than 135 and at most 180 seconds, with peak memory at most 10 GiB | Continue experiments and optimize parameters and circuits in parallel. |
+| More than 180 seconds or more than 10 GiB | Pause and report. |
 
 An incorrect proof, OOM or resource-enforcement failure also blocks progression.
-Report both remaining memory margin and timing margin.
+Report both remaining experimental memory margin and timing margin. Passing
+under the 10-GiB ceiling does not select or satisfy a production memory budget.
+Preserve the previous 5-GiB OOM attempt as failure evidence; do not rewrite it
+with the larger ceiling or omit it from the attempt record.
 
 For startup/readiness, sixteen leaves, first merge, second merge, root and
 handoffs, place wall time and charged-memory peak side by side. Break memory

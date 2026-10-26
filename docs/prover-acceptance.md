@@ -59,19 +59,25 @@ must fail admission. Keep all test data independent of retained stores.
 
 ### Formal proof-process budget
 
-The acceptance budget is **5 GiB = 5,368,709,120 bytes** for the complete proof
-process and its children, including setup, leaf work, recursive workspaces,
-native workers, serialization, caches and allocator retention. It is an OS
-enforced resource boundary, not a sampled-RSS warning or a worst-case allocation
-proof. Use one proof job and at most two native hiding workers unless a new
-reviewed measurement justifies a different schedule.
+No formal production proof-process memory budget is selected. Determine it
+from actual D8 startup and proving peaks, with reviewed headroom for hardware,
+load and allocator variation, before production acceptance. The selected budget
+must cover the complete process tree: setup, resident circuits/keys, leaf work,
+recursive workspaces, native workers, serialization, caches and allocator
+retention. Use one proof job and at most two native hiding workers unless a
+new reviewed measurement justifies a different schedule.
 
-On Linux, place the worker and descendants in one dedicated cgroup with
-`memory.max=5368709120` and `memory.swap.max=0`. Record actual limits,
-`memory.peak`, sampled charged memory, swap and `memory.events` before and
-after every run. Keep all helper descendants inside the boundary. An OOM,
-restart, excess, missing peak or missing enforcement evidence fails acceptance;
-discard the job and stop progression without an automatic retry loop.
+The next D8 experiment has a hard ceiling of **10 GiB = 10,737,418,240 bytes**,
+with zero swap. This ceiling permits bounded characterization; it is not a
+production acceptance budget. On Linux, place the worker and all descendants
+in one dedicated cgroup with `memory.max=10737418240` and `memory.swap.max=0`.
+Keep startup and resident preparation inside that same lifetime. Record actual
+limits, `memory.peak`, sampled charged memory, swap and `memory.events` before
+and after every run. Keep all helper descendants inside the boundary. An OOM,
+restart, excess, missing peak or missing enforcement evidence stops progression
+without an automatic retry loop. Enforce the subsequently selected production
+budget separately during production-path acceptance; a sampled-RSS warning is
+not an OS-enforced resource boundary or a worst-case allocation proof.
 
 RSS, virtual size and macOS physical footprint are distinct metrics. A sampler
 or post-allocation watchdog is not a hard cap. Personal machines on other
@@ -80,19 +86,19 @@ isolated Linux worker with a separately budgeted VM. Do not label an uncapped
 macOS/Windows sample as passing the enforced-budget gate.
 
 The [current node memory model](memory-budgets.md) remains separate.
-The existing miners have 3-GiB container limits, so a worker with a 5-GiB budget
-cannot be placed inside those containers. Plan a separate worker boundary and
-retain the node's own resource checks. Do not raise its proof-category ceiling
-to disguise aggregate growth.
+The existing miners have 3-GiB container limits. A worker whose selected limit
+exceeds its node container's admitted capacity requires a separate boundary.
+The 10-GiB experiment does not authorize changing those containers. Plan
+worker placement and retain the node's own resource checks. Do not raise its
+proof-category ceiling to disguise aggregate growth.
 
-Size concurrent hard limits, not only observed usage. For example, a hypothetical
-node/gateway allocation of 13.75 GiB plus two 5-GiB workers totals 23.75 GiB.
-Adding 2 GiB for other applications, 1 GiB of platform reserve and 2 GiB for
-serialized maintenance requires 28.75 GiB of capacity; a 20-GiB worker VM
-cannot admit this illustrative configuration.
-One shared worker still requires admission/serialization and a fresh capacity
-review. A different worker host must include its own node/OS/application
-reserves. This illustration authorizes no VM or live-container change.
+Size concurrent hard limits, not only observed usage. Once the production
+worker budget is selected, recompute aggregate node/gateway and worker limits,
+other applications, OS/platform reserves and serialized maintenance allowances
+for the actual placement. The aggregate budget remains unresolved until
+worker-budget selection. A shared worker still requires admission and
+serialization. A different worker host must include its own
+node/OS/application reserves. This plan authorizes no VM or live-container change.
 
 ### Personal-machine qualification
 
@@ -118,8 +124,9 @@ physical and available RAM,
 OS/kernel, storage, virtualization, power/thermal mode, resource-controller
 support, compiler/dependency/image identities and background load policy.
 Record proof-worker and node placement, concurrency, actual hard limits and
-host/VM reserves. A machine with only 5 GiB total RAM does not qualify merely
-because the proof-process budget is 5 GiB.
+host/VM reserves. Total physical RAM must exceed the selected worker budget
+by enough to cover all admitted node, OS, application and reserve requirements.
+The 10-GiB experimental ceiling alone does not qualify a production machine.
 
 Validate each supported configuration on actual miner hardware. The existing
 M1 Max experiment is a reference, not proof that lower-memory or different-ISA
@@ -149,9 +156,11 @@ helper cannot hold prepared state outside the measured memory boundary.
 Measure service cold startup through readiness separately. Its duration is
 excluded from the 180-second latency budget. This timing exclusion does not
 exclude memory: startup preparation, resident state and every proof child stay
-inside the same enforced 5-GiB process-tree boundary. Record startup and ready
-service memory, interval peaks and the lifetime kernel peak; do not reset or
-discard a higher startup peak to manufacture a memory pass.
+inside the same enforced process-tree boundary. The next experiment uses the
+10-GiB ceiling; production acceptance requires a separately selected budget.
+Record startup and ready-service memory, interval peaks and the lifetime
+kernel peak; do not reset or discard a higher startup peak to manufacture a
+memory pass.
 
 PoW, publication, propagation, standalone root verification, peer durable
 acceptance and recipient receipt have separate timing markers and correctness
@@ -192,8 +201,10 @@ For each trial retain the following private evidence:
    component estimates and reconcile them with charged-memory peaks. Capture
    teardown/cancellation as well.
 
-Require correctness, the enforced 5-GiB budget and last-package-to-root latency
-of at most 180 seconds in all three trials. Report every failure, individual
+Select and enforce the production memory budget before these trials. Require
+correctness, compliance with that budget and last-package-to-root latency of
+at most 180 seconds in all three trials. The 10-GiB experimental ceiling does
+not establish production acceptance. Report every failure, individual
 values, medians and maxima, with cold startup separate. Do not substitute the
 fastest run or ignore failed attempts. Restart replay, disconnect/reconnect,
 memory-limit and reorg regressions remain required in addition to the three

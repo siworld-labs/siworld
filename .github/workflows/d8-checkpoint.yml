@@ -7,6 +7,8 @@ on:
       - "crates/bench-stark/patches/recursion-d8-w24.patch"
       - "scripts/build-d8-checkpoint.py"
       - "scripts/measure-d8-checkpoint.py"
+      - "scripts/measure-proof-cgroup.py"
+      - "scripts/tests/test_cgroup_measurement.py"
       - "scripts/tests/test_d8_checkpoint.py"
       - "scripts/build-prover-release.py"
       - "scripts/prover-launcher.rs"
@@ -70,7 +72,9 @@ jobs:
           cache-on-failure: true
           cache-workspace-crates: true
       - name: Validate checkpoint collector contracts
-        run: python3 -m unittest discover -s scripts/tests -p test_d8_checkpoint.py
+        run: |
+          python3 -m unittest discover -s scripts/tests -p test_d8_checkpoint.py
+          python3 -m unittest discover -s scripts/tests -p test_cgroup_measurement.py
       - name: Apply pinned patch, test D8 correctness, build and package v3 worker
         run: |
           python3 - <<'PY_BUILD'
@@ -92,7 +96,7 @@ jobs:
                   print(json.dumps(record))
           raise SystemExit(result.returncode)
           PY_BUILD
-      - name: Three frozen trials in one resident 5-GiB process tree
+      - name: Three frozen trials in one resident 10-GiB experimental process tree
         if: ${{ env.CHECKPOINT_REQUESTED == 'true' }}
         run: |
           python3 - <<'PY_CHECKPOINT'

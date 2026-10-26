@@ -16,6 +16,28 @@ SAMPLE_SECONDS = 0.1
 HARDWARE_PROFILES = ('diagnostic', 'epyc7763-baseline', 'epyc9v45-control')
 
 
+def memory_max_bytes(value):
+    """Require a finite positive byte count; never reinterpret an invalid cap."""
+    if type(value) is str and re.fullmatch(r'[0-9]+', value):
+        value = int(value)
+    if type(value) is not int or value <= 0:
+        raise ValueError('Memory cap must be a positive integer byte count')
+    return value
+
+
+def configure_memory_limits(group, memory_max):
+    memory_max = memory_max_bytes(memory_max)
+    actual = {}
+    for name, value in [('memory.max', memory_max), ('memory.swap.max', 0),
+                        ('memory.oom.group', 1)]:
+        (group / name).write_text(str(value))
+        observed = int((group / name).read_text())
+        if observed != value:
+            raise ValueError('Cgroup limit readback mismatch: ' + name)
+        actual[name] = observed
+    return {'memory_max': actual['memory.max'], 'memory_swap_max': actual['memory.swap.max']}
+
+
 def read_numbers(path):
     return {k: int(v) for k, v in (line.split() for line in path.read_text().splitlines())}
 
@@ -225,11 +247,12 @@ def cpu_summary(before, after, elapsed_ns, ancestry, affinity, samples, tick_hz)
         'thread_sampling_limit': 'Thread exits and short intervals can be missed; phase attribution is approximate.'}
 
 
-def assess(before, after, peak, swap_peak, exit_code, timed_out, remaining):
+def assess(before, after, peak, swap_peak, exit_code, timed_out, remaining, memory_max=BUDGET):
+    memory_max = memory_max_bytes(memory_max)
     delta = {k: after[k] - before[k] for k in before}
     if any(v < 0 for v in delta.values()):
         raise ValueError('Nonmonotonic memory.events')
-    ok = (exit_code == 0 and not timed_out and not remaining and 0 < peak <= BUDGET
+    ok = (exit_code == 0 and not timed_out and not remaining and 0 < peak <= memory_max
           and swap_peak == 0 and not any(delta.get(k, 0) for k in
                                         ('max', 'oom', 'oom_kill', 'oom_group_kill')))
     return {'resource_control_pass': ok, 'memory_events_delta': delta,
@@ -237,6 +260,7 @@ def assess(before, after, peak, swap_peak, exit_code, timed_out, remaining):
 
 
 def measure(args):
+    memory_max = memory_max_bytes(getattr(args, 'memory_max', BUDGET))
     hardware, hardware_evidence = qualify()
     qualification = qualify_hardware_profile(hardware, args.hardware_profile)
     if os.geteuid() != 0:
@@ -255,16 +279,12 @@ def measure(args):
     report = {'schema': 2, 'purpose': 'measurement harness validation',
               'acceptance': False, 'hardware': hardware, 'hardware_evidence': hardware_evidence,
               'hardware_qualification': qualification,
-              'memory_max': BUDGET, 'memory_swap_max': 0, 'cgroup_id': group.name,
+              'memory_max': memory_max, 'memory_swap_max': 0, 'cgroup_id': group.name,
               'samples': [], 'command_executable_sha256': hashlib.sha256(
                   Path(args.command[0]).resolve(strict=True).read_bytes()).hexdigest()}
     report_path = args.output / 'measurement.json'
     try:
-        for name, value in [('memory.max', BUDGET), ('memory.swap.max', 0),
-                            ('memory.oom.group', 1)]:
-            (group / name).write_text(str(value))
-            if int((group / name).read_text()) != value:
-                raise ValueError('Cgroup limit readback mismatch: ' + name)
+        report.update(configure_memory_limits(group, memory_max))
         if not (group / 'memory.peak').is_file():
             raise ValueError('Kernel lifetime memory.peak is required')
         before = read_numbers(group / 'memory.events')
@@ -332,7 +352,8 @@ def measure(args):
             'cpu_stat_after': cpu_after,
             'cpu_summary': cpu_summary(cpu_before, cpu_after, elapsed_ns,
                 report['cpu_ancestry_before'], hardware['affinity_cpus'], report['samples'], tick_hz),
-            **assess(before, after, peak, swap_peak, process.returncode, timed_out, remaining)})
+            **assess(before, after, peak, swap_peak, process.returncode, timed_out, remaining,
+                     memory_max=report['memory_max'])})
         return report
     except BaseException as error:
         report['resource_control_pass'] = False
@@ -366,6 +387,8 @@ def main():
     parser.add_argument('--uid', type=int, required=True)
     parser.add_argument('--gid', type=int, required=True)
     parser.add_argument('--timeout', type=int, default=900)
+    parser.add_argument('--memory-max', type=memory_max_bytes, default=BUDGET,
+        help='Positive process-tree memory cap in bytes; default is 5368709120')
     parser.add_argument('--hardware-profile', choices=HARDWARE_PROFILES, default='diagnostic',
         help='Require a reference CPU/VM profile; default collection is diagnostic only')
     parser.add_argument('command', nargs=argparse.REMAINDER)

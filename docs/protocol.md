@@ -101,18 +101,21 @@ final-package input arrival before queueing until canonical root completion,
 including all leaf and intervening per-candidate work. Input-independent
 circuits and keys are prepared at startup and remain resident. Cold-start
 duration is reported separately; all startup and resident memory remains within
-the 5-GiB process-tree hard cap, with zero extra swap. Propagation, external
+the selected process-tree boundary, with zero swap. The next D8 experiment
+uses a 10-GiB (10,737,418,240-byte) hard ceiling; the production memory budget
+remains undecided until actual peaks are measured. The experimental ceiling
+is not production acceptance. Propagation, external
 verification, PoW and receipt timing are separate metrics. This proof-latency
 target does not change the consensus block interval.
 
 Complete opening-batch grinding and freeze the final checkpoint configuration
 before timing the first verified eight-input merge. It triggers three
 same-machine measurements and an N=16 latency/memory projection. At most
-135 seconds with peak memory at most 5 GiB permits continuation. More than
-135 and at most 180 seconds with peak memory at most 5 GiB requires optimization
-alongside implementation. Above 180 seconds, above 5 GiB, OOM or an incorrect
-proof pauses progression. Report stage memory with the same prominence as stage
-time, including startup, prepared residency, active workspace, retained proofs
+135 seconds with peak memory within the 10-GiB experimental ceiling permits
+continued experiments. More than 135 and at most 180 seconds within that ceiling
+requires optimization alongside implementation. Above 180 seconds, above 10 GiB,
+OOM or an incorrect proof pauses progression. Report stage memory with the
+same prominence as stage time, including startup, prepared residency, active workspace, retained proofs
 and handoff overlap. Use the EPYC 7763 Ubuntu 24.04 VM profile with two exposed
 cores and four vCPUs as the Linux baseline; EPYC 9V45 is a comparison profile.
 The x86_64 release baseline is x86-64-v3, with AVX2 required and no scalar

@@ -20,7 +20,8 @@ def manifest():
               'resident_components': {name: term(25) for name in (*MODULE.LAYERS, 'fixed_service')},
               'phases': {name: {'workspace': term(200), 'retained': term(100)}
                          for name in MODULE.PROJECTED_PHASES}}
-    return {'schema': 1, 'checkpoint_mode': 'merge8-early', 'suite': MODULE.SUITE, 'poseidon2_parameters': 'Plonky3-standard',
+    return {'schema': 1, 'checkpoint_mode': 'merge8-early', 'suite': MODULE.SUITE,
+            'resource_limits': dict(MODULE.RESOURCE_LIMITS), 'poseidon2_parameters': 'Plonky3-standard',
             'source_revision': 'a' * 40, 'recursion_revision': 'b' * 40,
             'execution': {'slots': 16, 'jobs': 1, 'native_workers': 2,
                           'rayon_threads': 2, 'hiding_workers': 2},
@@ -58,6 +59,7 @@ def security():
 
 def trial(merge_ns=30_000_000_000, peak=500):
     return {'resource_control_pass': True, 'memory_peak': peak,
+        'resource_limits': dict(MODULE.RESOURCE_LIMITS),
         'swap_peak': 0, 'phases': {name: {'wall_ns': 10_000_000_000 if name == 'leaf16'
             else merge_ns if name == 'merge8' else 1_000_000_000,
             'sampled_memory_peak': 300, 'sample_count': 2}
@@ -67,6 +69,20 @@ def trial(merge_ns=30_000_000_000, peak=500):
 class CheckpointTests(unittest.TestCase):
     def test_valid_metadata_allows_explicit_root_estimate(self):
         MODULE.validate_metadata(manifest(), shapes(), security())
+
+    def test_header_requires_exact_experimental_resource_limits(self):
+        for limits in (None, {},
+                {**MODULE.RESOURCE_LIMITS, 'memory_max': 5368709120},
+                {**MODULE.RESOURCE_LIMITS, 'memory_max': 21474836480},
+                {**MODULE.RESOURCE_LIMITS, 'memory_swap_max': 1},
+                {**MODULE.RESOURCE_LIMITS, 'memory_swap_max': False},
+                {**MODULE.RESOURCE_LIMITS, 'production_memory_budget_status': 'approved'},
+                {**MODULE.RESOURCE_LIMITS, 'production_memory_budget': 10737418240}):
+            with self.subTest(limits=limits):
+                value = manifest()
+                value['resource_limits'] = limits
+                with self.assertRaisesRegex(ValueError, 'experimental limit'):
+                    MODULE.validate_header(value)
 
     def test_d4_substitute_rejected(self):
         value = manifest()
@@ -119,14 +135,29 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(value['acceptance'])
 
     def test_exact_thresholds(self):
-        self.assertEqual(MODULE.decide(135_000_000_000, MODULE.BUDGET), 'continue')
-        self.assertEqual(MODULE.decide(135_000_000_001, MODULE.BUDGET), 'continue-optimize')
-        self.assertEqual(MODULE.decide(180_000_000_000, MODULE.BUDGET), 'continue-optimize')
-        self.assertEqual(MODULE.decide(180_000_000_001, MODULE.BUDGET), 'pause')
-        self.assertEqual(MODULE.decide(1, MODULE.BUDGET + 1), 'pause')
+        self.assertEqual(MODULE.decide(135_000_000_000, MODULE.EXPERIMENTAL_MEMORY_MAX), 'continue')
+        self.assertEqual(MODULE.decide(135_000_000_001, MODULE.EXPERIMENTAL_MEMORY_MAX), 'continue-optimize')
+        self.assertEqual(MODULE.decide(180_000_000_000, MODULE.EXPERIMENTAL_MEMORY_MAX), 'continue-optimize')
+        self.assertEqual(MODULE.decide(180_000_000_001, MODULE.EXPERIMENTAL_MEMORY_MAX), 'pause')
+        self.assertEqual(MODULE.decide(1, MODULE.EXPERIMENTAL_MEMORY_MAX + 1), 'pause')
+        self.assertEqual(MODULE.decide(1, 5368709120 + 1), 'continue')
+
+    def test_projection_margins_use_experimental_ceiling_without_production_acceptance(self):
+        result = MODULE.project(manifest(), [trial(peak=8 * 1024**3) for _ in range(3)])
+        self.assertEqual(result['decision'], 'continue')
+        self.assertEqual(result['memory_margin_bytes'], 2 * 1024**3)
+        self.assertEqual(result['resource_limits'], MODULE.RESOURCE_LIMITS)
+        self.assertEqual(result['resource_limits']['production_memory_budget_status'], 'undecided')
+        self.assertFalse(result['acceptance'])
+
+    def test_projection_rejects_mixed_resource_limits(self):
+        rows = [trial(), trial(), trial()]
+        rows[1]['resource_limits']['memory_max'] = 5368709120
+        with self.assertRaisesRegex(ValueError, 'resource limits'):
+            MODULE.project(manifest(), rows)
 
     def test_observed_maximum_cannot_hide_behind_median(self):
-        value = MODULE.project(manifest(), [trial(), trial(), trial(peak=MODULE.BUDGET + 1)])
+        value = MODULE.project(manifest(), [trial(), trial(), trial(peak=MODULE.EXPERIMENTAL_MEMORY_MAX + 1)])
         self.assertEqual(value['decision'], 'pause')
 
     def test_failed_trial_cannot_be_discarded(self):
@@ -253,6 +284,14 @@ class CheckpointTests(unittest.TestCase):
         self.assertNotIn('observations', summary)
         self.assertNotIn('same_live_machine_boot_id', summary)
         self.assertIn('phase_medians', summary)
+        self.assertEqual(summary['resource_limits'], MODULE.RESOURCE_LIMITS)
+
+    def test_summary_does_not_relabel_historical_resource_limits(self):
+        historical = {**MODULE.RESOURCE_LIMITS, 'memory_max': 5368709120}
+        summary = MODULE.public_summary({'complete': False, 'acceptance': False,
+            'resource_limits': historical})
+        self.assertEqual(summary['resource_limits'], historical)
+        self.assertEqual(summary['resource_limits']['memory_max'], 5368709120)
 
 
     def full_trials(self):
@@ -262,6 +301,7 @@ class CheckpointTests(unittest.TestCase):
                 'sampled_memory_peak': 300, 'sample_count': 2}
                 for name in MODULE.FULL_PHASES}
             rows.append({'trial': index, 'resource_control_pass': True,
+                'resource_limits': dict(MODULE.RESOURCE_LIMITS),
                 'swap_peak': 0, 'memory_peak': 500, 'phases': phases,
                 'timed_total_ns': 101_000_000_000 + index,
                 'handoff_overhead_ns': 1_000_000_000,
@@ -270,25 +310,34 @@ class CheckpointTests(unittest.TestCase):
         return rows
 
     def test_full_proof_can_use_actual_memory_without_allocator_estimates(self):
-        value = {'checkpoint_mode': 'n16-full'}
+        value = manifest()
+        value['checkpoint_mode'] = 'n16-full'
         result = MODULE.project(value, self.full_trials())
         self.assertEqual(result['projected_total_ns'], 101_000_000_002)
         self.assertEqual(result['projected_memory_peak'], 500)
         self.assertEqual(result['trial_sampled_memory_peak_median'], 302)
         self.assertIn('kernel lifetime', result['memory_evidence_kind'])
         self.assertFalse(result['acceptance'])
+        self.assertEqual(result['memory_margin_bytes'], MODULE.EXPERIMENTAL_MEMORY_MAX - 500)
+        self.assertEqual(result['resource_limits'], MODULE.RESOURCE_LIMITS)
+
+    def test_full_projection_rejects_old_or_mixed_resource_limits(self):
+        rows = self.full_trials()
+        rows[0]['resource_limits']['memory_max'] = 5368709120
+        with self.assertRaisesRegex(ValueError, 'resource limits'):
+            MODULE.project_full(rows, MODULE.RESOURCE_LIMITS)
 
     def test_full_trials_cannot_mix_independent_process_lifetime_peaks(self):
         rows = self.full_trials()
         rows[2]['memory_peak'] = 501
         with self.assertRaisesRegex(ValueError, 'share one'):
-            MODULE.project_full(rows)
+            MODULE.project_full(rows, MODULE.RESOURCE_LIMITS)
 
     def test_full_trials_must_be_ordered_without_retry(self):
         rows = self.full_trials()
         rows[2]['trial'] = 2
         with self.assertRaisesRegex(ValueError, 'ordered'):
-            MODULE.project_full(rows)
+            MODULE.project_full(rows, MODULE.RESOURCE_LIMITS)
 
     def test_complete_root_shape_cannot_be_an_estimate(self):
         value = manifest()
@@ -303,6 +352,29 @@ class CheckpointTests(unittest.TestCase):
         after['parameters']['root']['queries'] += 1
         with self.assertRaisesRegex(ValueError, 'parameters'):
             MODULE.check_setup_freeze(before, after)
+
+    def test_setup_cannot_change_pre_frozen_resource_limits(self):
+        before = manifest()
+        before['files'] = {role: {'path': role, 'sha256': 'a' * 64} for role in MODULE.INITIAL_ROLES}
+        after = copy.deepcopy(before)
+        after['resource_limits']['memory_max'] = 5368709120
+        with self.assertRaisesRegex(ValueError, 'resource_limits'):
+            MODULE.check_setup_freeze(before, after)
+
+    def test_supervisor_receives_frozen_experimental_memory_limit(self):
+        from types import SimpleNamespace
+        args = SimpleNamespace(timeout=3600, manifest=Path('/synthetic/bootstrap.json'), sha256='a' * 64)
+        command = MODULE.supervisor_command(args, {'launcher': Path('/synthetic/bin/d8-checkpoint')},
+            Path('/synthetic/process-tree'), Path('/synthetic/control'), MODULE.RESOURCE_LIMITS)
+        option = command.index('--memory-max')
+        self.assertLess(option, command.index('--'))
+        self.assertEqual(command[option + 1], '10737418240')
+        self.assertEqual(command[command.index('--timeout') + 1], '3600')
+        self.assertEqual(command[command.index('--hardware-profile') + 1], 'epyc7763-baseline')
+        self.assertNotIn('5368709120', command)
+        with self.assertRaisesRegex(ValueError, 'experimental limit'):
+            MODULE.supervisor_command(args, {}, Path('/synthetic/tree'), Path('/synthetic/control'),
+                {**MODULE.RESOURCE_LIMITS, 'memory_max': 5368709120})
 
     def test_setup_cannot_replace_pre_frozen_binary(self):
         before = manifest()
@@ -335,7 +407,7 @@ class CheckpointTests(unittest.TestCase):
             'phases': phases}
         measurement = {'resource_control_pass': True,
             'hardware_qualification': {'profile': 'epyc7763-baseline', 'profile_qualified': True},
-            'memory_max': MODULE.BUDGET, 'memory_swap_max': 0,
+            'memory_max': MODULE.EXPERIMENTAL_MEMORY_MAX, 'memory_swap_max': 0,
             'worker_environment': {'RAYON_NUM_THREADS': '2', 'SIWORLD_COMPOSITION_HIDING_WORKERS': '2'},
             'monotonic_started_ns': 100, 'elapsed_ns': 3000, 'samples': [],
             'memory_peak': 500, 'swap_peak': 0, 'memory_events_delta': {}}
@@ -343,12 +415,17 @@ class CheckpointTests(unittest.TestCase):
             directory = Path(temporary)
             (directory / 'measurement.json').write_text(json.dumps(measurement))
             result = MODULE.read_trial(directory, value, 'a' * 64, row, setup, teardown)
+            measurement['memory_max'] = 5368709120
+            (directory / 'measurement.json').write_text(json.dumps(measurement))
+            with self.assertRaisesRegex(ValueError, '10-GiB experimental'):
+                MODULE.read_trial(directory, value, 'a' * 64, row, setup, teardown)
         self.assertEqual(result['timed_total_ns'], 700)
         self.assertEqual(result['handoff_overhead_ns'], 300)
         self.assertEqual(result['sampled_trial_memory_peak'], 300)
         self.assertEqual(result['phases']['verification']['wall_ns'], 100)
         self.assertEqual(result['handoff_memory']['wall_ns'], 300)
         self.assertEqual(result['handoff_memory']['sampled_memory_peak'], 300)
+        self.assertEqual(result['resource_limits'], MODULE.RESOURCE_LIMITS)
 
 
     def test_handoff_memory_attributes_only_gaps_and_boundary_charges(self):
@@ -417,7 +494,7 @@ class CheckpointTests(unittest.TestCase):
                 path.write_text(json.dumps(data))
                 value['files'][role]['sha256'] = MODULE.digest(path)
             save('configuration', {key: value[key] for key in
-                ('suite', 'source_revision', 'recursion_revision', 'parameters')})
+                ('suite', 'source_revision', 'recursion_revision', 'parameters', 'resource_limits')})
             save('root_model', {'projection': value['projection']})
             worker_sha = value['files']['worker']['sha256']
             config_sha = value['files']['cargo_config']['sha256']
@@ -436,11 +513,21 @@ class CheckpointTests(unittest.TestCase):
             loaded, _ = MODULE.load_bootstrap(path, MODULE.digest(path))
             self.assertEqual(loaded['stage'], 'bootstrap')
             self.assertEqual(loaded['parameters'], value['parameters'])
+            self.assertEqual(loaded['resource_limits'], MODULE.RESOURCE_LIMITS)
+            configuration = {key: value[key] for key in
+                ('suite', 'source_revision', 'recursion_revision', 'parameters', 'resource_limits')}
+            for limits in (None, {**MODULE.RESOURCE_LIMITS, 'memory_max': 5368709120},
+                    {**MODULE.RESOURCE_LIMITS, 'production_memory_budget_status': 'approved'}):
+                with self.subTest(limits=limits):
+                    save('configuration', {**configuration, 'resource_limits': limits})
+                    path.write_text(json.dumps(value))
+                    with self.assertRaisesRegex(ValueError, 'Frozen configuration'):
+                        MODULE.load_bootstrap(path, MODULE.digest(path))
 
 
     def test_startup_oom_summary_preserves_memory_and_phase_evidence_without_values(self):
         measurement = {'monotonic_started_ns': 1000, 'elapsed_ns': 1000,
-            'memory_peak': MODULE.BUDGET, 'swap_peak': 0, 'memory_max': MODULE.BUDGET,
+            'memory_peak': MODULE.EXPERIMENTAL_MEMORY_MAX, 'swap_peak': 0, 'memory_max': MODULE.EXPERIMENTAL_MEMORY_MAX,
             'memory_swap_max': 0, 'resource_control_pass': False, 'exit_code': -9,
             'timed_out': False, 'memory_events_delta': {'max': 4, 'oom': 1, 'oom_kill': 1},
             'samples': [{'elapsed_ns': 150, 'memory_current': 200},
@@ -455,10 +542,13 @@ class CheckpointTests(unittest.TestCase):
             (directory / 'measurement.json').write_text(json.dumps(measurement))
             (directory / 'stdout.jsonl').write_text('\n'.join(json.dumps(row) for row in rows))
             evidence = MODULE.failure_evidence(directory)
-        summary = MODULE.public_summary({'complete': False, 'decision': 'pause', 'failure': evidence})
+        summary = MODULE.public_summary({'complete': False, 'decision': 'pause', 'failure': evidence,
+            'resource_limits': dict(MODULE.RESOURCE_LIMITS)})
         self.assertEqual(summary['failure']['classification'], 'cgroup-oom')
         self.assertEqual(summary['failure']['last_phase'], 'prepare_merge8')
-        self.assertEqual(summary['failure']['memory_peak'], MODULE.BUDGET)
+        self.assertEqual(summary['failure']['memory_peak'], MODULE.EXPERIMENTAL_MEMORY_MAX)
+        self.assertEqual(summary['resource_limits'], MODULE.RESOURCE_LIMITS)
+        self.assertEqual(summary['resource_limits']['production_memory_budget_status'], 'undecided')
         self.assertTrue(summary['failure']['zero_swap_observed'])
         self.assertEqual(summary['failure']['completed_phase_summaries'][0]['sampled_memory_peak'], 200)
         self.assertEqual(summary['failure']['interrupted_phase_summary']['sampled_memory_peak'], 400)
@@ -502,6 +592,48 @@ class BuilderTests(unittest.TestCase):
         lock = ('[[package]]\nname = "one"\nversion = "1"\nsource = "registry+url"\nchecksum = "abc"\n'
                 '[[package]]\nname = "two"\nversion = "2"\nsource = "git+url#pin"\n')
         self.assertEqual(self.builder.registry_pins(lock), {('one', '1', 'abc')})
+
+    def test_builder_freezes_experimental_limits_in_manifest_configuration_and_receipt(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            destination, workspace, upstream = (root / name for name in ('output', 'application', 'upstream'))
+            for path in (destination, workspace, upstream, root / '.cargo'):
+                path.mkdir(parents=True)
+            (workspace / 'Cargo.lock').write_text('Synthetic dependency lock fixture')
+            (upstream / 'source.rs').write_text('// Synthetic nonexecutable source fixture\n')
+            (root / '.cargo/config.toml').write_text('Synthetic build configuration fixture')
+            dependency_patch = root / 'recursion.patch'
+            dependency_patch.write_text('Synthetic dependency patch fixture')
+            launcher = destination / 'release/bin/d8-checkpoint'
+            worker = destination / 'release/libexec/d8-checkpoint'
+            for path in (launcher, worker):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('Synthetic nonexecutable release fixture')
+            worker_sha = MODULE.digest(worker)
+            config_sha = MODULE.digest(root / '.cargo/config.toml')
+            build_receipt = {'worker_isa': 'x86-64-v3', 'bootstrap_isa': 'x86-64',
+                'bootstrap_sha256': MODULE.digest(launcher), 'repository_config_sha256': config_sha,
+                'workers': [{'name': 'd8-checkpoint', 'worker_sha256': worker_sha,
+                    'isa_inspection': {'required_isa': 'x86-64-v3', 'binary_sha256': worker_sha,
+                        'avx2_packed_multiply_instructions': 1}}],
+                'worker_build_receipt': {'binary_sha256': worker_sha,
+                    'effective_rustflags': '-C target-cpu=x86-64-v3',
+                    'cargo_working_directory': 'repository-root', 'repository_config_sha256': config_sha}}
+            (destination / 'release/build-receipt.json').write_text(json.dumps(build_receipt))
+            with patch.object(self.builder, 'ROOT', root), patch.object(self.builder, 'PATCH', dependency_patch), \
+                    patch.object(self.builder, 'load_script', return_value=MODULE):
+                path = self.builder.write_bootstrap(destination, workspace, upstream,
+                    {'binary_sha256': worker_sha}, 'a' * 40)
+            value = json.loads(path.read_text())
+            configuration = json.loads((path.parent / value['files']['configuration']['path']).read_text())
+            receipt = json.loads((destination / 'bootstrap-receipt.json').read_text())
+            for record in (value, configuration, receipt):
+                self.assertEqual(record['resource_limits'], MODULE.RESOURCE_LIMITS)
+                self.assertEqual(record['resource_limits']['production_memory_budget_status'], 'undecided')
+            loaded, _ = MODULE.load_bootstrap(path, MODULE.digest(path))
+            self.assertEqual(loaded['resource_limits']['memory_max'], 10737418240)
+            self.assertFalse(receipt['acceptance'])
 
     def test_required_correctness_filter_cannot_succeed_with_zero_tests(self):
         from unittest.mock import patch

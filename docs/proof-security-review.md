@@ -95,12 +95,14 @@ the best unique-decoding score as the requested Johnson score.
 ## Measurement and integration gates
 
 Only profiles passing the full screen proceed to three N=16 `16 -> 2 -> 1`
-acceptance runs on qualified target hardware, one proof at a time and two native
+experimental runs on qualified target hardware, one proof at a time and two native
 workers. The latency target is at most 180 seconds from last-package arrival to
 root-proof completion, including leaf proving. Prepare all input-independent
 circuits at service startup and keep them resident; record cold startup
 separately and exclude its duration from latency. Startup and resident memory
-remain inside the enforced 5-GiB process-tree cap with no extra swap. Record
+remain inside the next experiment's enforced 10-GiB process-tree ceiling
+(10,737,418,240 bytes), with zero swap. This is not a production acceptance
+budget; select that budget after actual peak measurements. Record
 leaf, each eight-input node, root, standalone verification, cold startup and
 both lifetime and interval memory peaks. Give stage time and memory equal
 prominence: separate prepared residency, active workspaces, retained proofs and
@@ -109,10 +111,12 @@ as measured or estimated and reconcile it with simultaneous charged memory.
 Report every attempt. Uncapped characterization cannot pass that gate.
 
 The early checkpoint uses three same-machine trials after opening-batch
-grinding is complete and the configuration is frozen. At most 135 seconds and
-at most 5 GiB permits continuation; more than 135 and at most 180 seconds under
-the cap requires parallel optimization; more than 180 seconds or more than
-5 GiB pauses progression. An OOM or incorrect proof also blocks progression.
+grinding is complete and the configuration is frozen. At most 135 seconds
+within the 10-GiB experimental ceiling permits continued experiments; more than
+135 and at most 180 seconds under that ceiling requires parallel optimization;
+more than 180 seconds or more than 10 GiB pauses progression. An OOM or incorrect
+proof also blocks progression. A result under this ceiling does not close
+production resource acceptance; its memory budget remains undecided.
 The EPYC 7763 Ubuntu 24.04 VM profile, exposing two cores and four vCPUs, is the
 Linux baseline; EPYC 9V45 is a comparison profile. The x86_64 release baseline
 is x86-64-v3, with mandatory AVX2 and no scalar fallback. See the

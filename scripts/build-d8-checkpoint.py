@@ -148,7 +148,8 @@ def write_bootstrap(destination, workspace, upstream, receipt, source_revision):
         'commit_grinding': 0 if layer == 'leaf' else 16, 'query_grinding': 16,
         'batch_grinding': 16, 'max_log_arity': 1, 'final_poly_log': 0} for layer in checkpoint.LAYERS}
     configuration = {'suite': checkpoint.SUITE, 'source_revision': source_revision,
-        'recursion_revision': PIN, 'parameters': parameters}
+        'recursion_revision': PIN, 'parameters': parameters,
+        'resource_limits': dict(checkpoint.RESOURCE_LIMITS)}
     (bundle / 'configuration.json').write_text(json.dumps(configuration, indent=2) + '\n')
     (bundle / 'root-model.json').write_text(json.dumps({
         'checkpoint_mode': 'n16-full', 'projection': None,
@@ -165,14 +166,16 @@ def write_bootstrap(destination, workspace, upstream, receipt, source_revision):
         'suite': checkpoint.SUITE, 'poseidon2_parameters': 'Plonky3-standard',
         'source_revision': source_revision, 'recursion_revision': PIN,
         'execution': {'slots': 16, 'jobs': 1, 'native_workers': 2, 'rayon_threads': 2, 'hiding_workers': 2},
-        'parameters': parameters, 'files': {role: {'path': relative, 'sha256': sha(bundle / relative)}
+        'parameters': parameters, 'resource_limits': dict(checkpoint.RESOURCE_LIMITS),
+        'files': {role: {'path': relative, 'sha256': sha(bundle / relative)}
             for role, relative in paths.items()}}
     path = bundle / 'bootstrap-manifest.json'
     path.write_text(json.dumps(manifest, indent=2) + '\n')
     checkpoint.load_bootstrap(path, sha(path))
     (destination / 'bootstrap-receipt.json').write_text(json.dumps({
         'bootstrap_manifest': str(path.resolve()), 'bootstrap_manifest_sha256': sha(path),
-        'binary_sha256': receipt['binary_sha256'], 'acceptance': False}, indent=2) + '\n')
+        'binary_sha256': receipt['binary_sha256'],
+        'resource_limits': dict(checkpoint.RESOURCE_LIMITS), 'acceptance': False}, indent=2) + '\n')
     return path
 
 

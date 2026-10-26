@@ -38,9 +38,9 @@ the checker, not live memory acceptance.
 
 ## Isolated proof process budget
 
-Composition experiments have a separate 4 GiB whole-process budget, including
-setup, prepared circuits, witness generation, proving and verification. This
-does not change a node or container limit. On macOS both peak RSS and physical
+Historical D4 composition controls used a separate 4 GiB whole-process budget,
+including setup, prepared circuits, witness generation, proving and
+verification. This does not change a node or container limit. On macOS both peak RSS and physical
 footprint must fit; compression makes RSS alone insufficient. The collector
 checks the kernel lifetime footprint peak and current RSS every 100 ms and
 terminates its owned process group on an overrun. Sampling can overshoot the
@@ -52,4 +52,10 @@ The older binary comparison tool also requires physical footprint on macOS.
 The 106-second historical reference lacks its original command and artifact,
 so it cannot support a matched performance claim. Configuration, tree capacity,
 query count, CPU allocation, cold setup and online proof time must be explicit.
-See [proof composition](proof-composition.md) for relation and timing scope.
+The next D8 checkpoint uses a separate 10-GiB (10,737,418,240-byte) experimental
+process-tree ceiling with zero swap, including startup and resident circuits.
+This is not a production acceptance budget. Select the production budget after
+actual D8 peak measurements, then recompute worker placement and aggregate host
+admission. Node category ceilings and retained-network limits remain separate.
+See the [D8 resource procedure](prover-acceptance.md#formal-proof-process-budget)
+and [proof composition](proof-composition.md) for relation and timing scope.

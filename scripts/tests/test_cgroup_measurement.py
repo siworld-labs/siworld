@@ -1,8 +1,14 @@
 """Reject limit events and escaped/living descendants even when exit is zero."""
+import argparse
+import contextlib
 import importlib.util
+import io
+import json
+import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location('cg', Path(__file__).parents[1] / 'measure-proof-cgroup.py')
 CG = importlib.util.module_from_spec(SPEC)
@@ -29,6 +35,120 @@ class CgroupAssessmentTests(unittest.TestCase):
     def test_counter_reset_is_rejected(self):
         with self.assertRaises(ValueError):
             CG.assess({'oom': 1}, {'oom': 0}, 100, 0, 0, False, [])
+
+
+class MemoryLimitTests(unittest.TestCase):
+    EXPERIMENTAL_CAP = 10737418240
+
+    def test_explicit_cap_controls_assessment_without_changing_legacy_default(self):
+        counters = {'max': 0, 'oom': 0, 'oom_kill': 0, 'oom_group_kill': 0}
+        peak = 7 * 1024**3
+        self.assertFalse(CG.assess(counters, counters, peak, 0, 0, False, [])[
+            'resource_control_pass'])
+        result = CG.assess(counters, counters, peak, 0, 0, False, [],
+                           memory_max=self.EXPERIMENTAL_CAP)
+        self.assertTrue(result['resource_control_pass'])
+        self.assertFalse(result['acceptance'])
+        self.assertFalse(CG.assess(counters, counters, self.EXPERIMENTAL_CAP + 1,
+            0, 0, False, [], memory_max=self.EXPERIMENTAL_CAP)['resource_control_pass'])
+        for after, swap in (({**counters, 'oom': 1}, 0), (counters, 1)):
+            self.assertFalse(CG.assess(counters, after, peak, swap, 0, False, [],
+                memory_max=self.EXPERIMENTAL_CAP)['resource_control_pass'])
+
+    def test_invalid_caps_are_rejected_without_fallback(self):
+        for cap in (0, -1, None, True, False, 1.5, '', '0', '-1', 'max', '1.5'):
+            with self.subTest(cap=cap), self.assertRaises(ValueError):
+                CG.assess({}, {}, 1, 0, 0, False, [], memory_max=cap)
+            with self.subTest(measure_cap=cap), mock.patch.object(CG, 'qualify') as qualify:
+                with self.assertRaises(ValueError):
+                    CG.measure(argparse.Namespace(memory_max=cap))
+                qualify.assert_not_called()
+
+    def test_requested_cap_is_written_and_read_back_with_zero_swap(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            group = Path(temporary)
+            actual = CG.configure_memory_limits(group, self.EXPERIMENTAL_CAP)
+            self.assertEqual((group / 'memory.max').read_text(), str(self.EXPERIMENTAL_CAP))
+            self.assertEqual((group / 'memory.swap.max').read_text(), '0')
+            self.assertEqual((group / 'memory.oom.group').read_text(), '1')
+            self.assertEqual(actual, {'memory_max': self.EXPERIMENTAL_CAP, 'memory_swap_max': 0})
+
+    def test_readback_mismatch_rejects_a_silently_lower_cap(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            group = Path(temporary)
+            read_text = Path.read_text
+
+            def mismatched(path, *args, **kwargs):
+                return str(CG.BUDGET) if path.name == 'memory.max' else read_text(path, *args, **kwargs)
+
+            with mock.patch.object(Path, 'read_text', mismatched):
+                with self.assertRaisesRegex(ValueError, 'readback mismatch: memory.max'):
+                    CG.configure_memory_limits(group, self.EXPERIMENTAL_CAP)
+
+    def test_cli_preserves_default_and_forwards_explicit_cap(self):
+        for options, expected in (([], CG.BUDGET),
+                                  (['--memory-max', str(self.EXPERIMENTAL_CAP)], self.EXPERIMENTAL_CAP)):
+            argv = ['measure-proof-cgroup.py', '--output', 'unused', '--uid', '1000',
+                    '--gid', '1000', *options, '--', 'synthetic-worker']
+            with self.subTest(options=options), mock.patch.object(sys, 'argv', argv), \
+                    mock.patch.object(CG, 'measure', return_value={'resource_control_pass': True}) as measure, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as stopped:
+                    CG.main()
+                self.assertEqual(stopped.exception.code, 0)
+                self.assertEqual(measure.call_args.args[0].memory_max, expected)
+
+    def test_cli_invalid_caps_do_not_start_measurement(self):
+        for cap in ('0', '-1', 'max', '1.5', ''):
+            argv = ['measure-proof-cgroup.py', '--output', 'unused', '--uid', '1000',
+                    '--gid', '1000', '--memory-max=' + cap, '--', 'synthetic-worker']
+            with self.subTest(cap=cap), mock.patch.object(sys, 'argv', argv), \
+                    mock.patch.object(CG, 'measure') as measure, contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as stopped:
+                    CG.main()
+                self.assertEqual(stopped.exception.code, 2)
+                measure.assert_not_called()
+
+    def test_measure_reports_and_assesses_the_read_back_ten_gib_cap(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            parent = base / 'cgroup'
+            parent.mkdir()
+            (parent / 'cgroup.controllers').write_text('memory cpu')
+            worker = base / 'synthetic-worker'
+            worker.write_bytes(b'synthetic fixture; never executed')
+            args = argparse.Namespace(memory_max=self.EXPERIMENTAL_CAP, output=base / 'result',
+                hardware_profile='diagnostic', uid=1000, gid=1000, timeout=30, command=[str(worker)])
+            configure = CG.configure_memory_limits
+            charged = 7 * 1024**3
+
+            def fake_kernel_files(group, memory_max):
+                for name, text in {
+                        'memory.peak': str(charged), 'memory.swap.peak': '0',
+                        'memory.current': str(charged), 'memory.swap.current': '0',
+                        'memory.events': 'max 0\noom 0\noom_kill 0\noom_group_kill 0\n',
+                        'memory.stat': '', 'cpu.stat': 'usage_usec 0\n', 'cgroup.procs': ''}.items():
+                    (group / name).write_text(text)
+                return configure(group, memory_max)
+
+            process = mock.Mock(returncode=0)
+            process.poll.return_value = 0
+            with mock.patch.object(CG, 'Path', side_effect=lambda path: parent if str(path) == '/sys/fs/cgroup' else Path(path)), \
+                    mock.patch.object(CG, 'qualify', return_value=({'affinity_cpus': 4}, {})), \
+                    mock.patch.object(CG.os, 'geteuid', return_value=0), \
+                    mock.patch.object(CG, 'configure_memory_limits', side_effect=fake_kernel_files) as configured, \
+                    mock.patch.object(CG.subprocess, 'Popen', return_value=process) as spawn:
+                report = CG.measure(args)
+            self.assertEqual(configured.call_args.args[1], self.EXPERIMENTAL_CAP)
+            self.assertEqual(spawn.call_count, 1)
+            self.assertTrue(report['resource_control_pass'])
+            self.assertFalse(report['acceptance'])
+            self.assertEqual(report['memory_peak'], charged)
+            saved = json.loads((args.output / 'measurement.json').read_text())
+            self.assertEqual(saved['memory_max'], self.EXPERIMENTAL_CAP)
+            self.assertEqual(saved['memory_swap_max'], 0)
+            self.assertTrue(saved['resource_control_pass'])
+            self.assertEqual(CG.public_summary(saved)['memory_max'], self.EXPERIMENTAL_CAP)
 
 
 class HardwareProfileTests(unittest.TestCase):

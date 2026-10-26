@@ -20,7 +20,9 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-BUDGET = 5368709120
+EXPERIMENTAL_MEMORY_MAX = 10737418240
+RESOURCE_LIMITS = {'memory_max': EXPERIMENTAL_MEMORY_MAX, 'memory_swap_max': 0,
+                   'production_memory_budget_status': 'undecided'}
 SUITE = 'KoalaBear-D8-Poseidon2-W24-digest12'
 LAYERS = ('leaf', 'merge8', 'root')
 MEASURED_PHASES = ('startup', 'ready_resident', 'leaf16', 'merge8', 'verification', 'handoffs', 'teardown')
@@ -78,11 +80,20 @@ def evidence_term(term, name):
     return value
 
 
+def validate_resource_limits(value):
+    if (not isinstance(value, dict) or value != RESOURCE_LIMITS
+            or type(value.get('memory_max')) is not int
+            or type(value.get('memory_swap_max')) is not int):
+        raise ValueError('The checkpoint requires a frozen 10-GiB experimental limit, zero swap and an undecided production memory budget')
+    return dict(value)
+
+
 def validate_header(manifest):
     if manifest.get('schema') != 1 or manifest.get('suite') != SUITE:
         raise ValueError('Checkpoint requires the D8/W24/12-element suite schema')
     if manifest.get('poseidon2_parameters') != 'Plonky3-standard':
         raise ValueError('Checkpoint requires standard Plonky3 W24 parameters')
+    validate_resource_limits(manifest.get('resource_limits'))
     for key in ('source_revision', 'recursion_revision'):
         if not re.fullmatch('[0-9a-f]{40}', manifest.get(key, '')):
             raise ValueError('A frozen revision is required: ' + key)
@@ -164,15 +175,18 @@ def frozen_files(path, manifest, roles):
 
 
 def validate_configuration(manifest, files):
+    limits = validate_resource_limits(manifest.get('resource_limits'))
     root_model = json.loads(files['root_model'].read_text())
     if root_model.get('projection') != manifest.get('projection'):
         raise ValueError('Frozen root model differs from the manifest projection')
     configuration = json.loads(files['configuration'].read_text())
     if (configuration.get('parameters') != manifest['parameters']
+            or configuration.get('resource_limits') != limits
             or configuration.get('suite') != SUITE
             or configuration.get('source_revision') != manifest['source_revision']
             or configuration.get('recursion_revision') != manifest['recursion_revision']):
         raise ValueError('Frozen configuration does not match the checkpoint parameters')
+    validate_resource_limits(configuration.get('resource_limits'))
     receipt = json.loads(files['build_receipt'].read_text())
     worker = files['worker']
     if (files['launcher'].parent.name != 'bin'
@@ -220,7 +234,7 @@ def load_frozen(path, expected_sha):
 
 def check_setup_freeze(bootstrap, final):
     for name in ('suite', 'checkpoint_mode', 'source_revision', 'recursion_revision',
-                 'execution', 'parameters', 'projection'):
+                 'execution', 'parameters', 'projection', 'resource_limits'):
         if bootstrap.get(name) != final.get(name):
             raise ValueError('Prepared setup changed a pre-frozen field: ' + name)
     for role in INITIAL_ROLES:
@@ -296,6 +310,7 @@ def attribute_handoff_gaps(proof_phases, first, last, measurement):
 
 
 def read_trial(directory, manifest, frozen_sha, worker_row=None, setup_phases=None, teardown=None):
+    limits = validate_resource_limits(manifest.get('resource_limits'))
     measurement = json.loads((directory / 'measurement.json').read_text())
     if not measurement.get('resource_control_pass'):
         raise CheckpointFailure('A failed resource-control trial blocks the checkpoint; no retry')
@@ -332,8 +347,9 @@ def read_trial(directory, manifest, frozen_sha, worker_row=None, setup_phases=No
     qualification = measurement.get('hardware_qualification', {})
     if (qualification.get('profile') != 'epyc7763-baseline'
             or qualification.get('profile_qualified') is not True
-            or measurement.get('memory_max') != BUDGET or measurement.get('memory_swap_max') != 0):
-        raise ValueError('A qualified EPYC 7763 baseline under the full 5-GiB/no-swap limit is required')
+            or measurement.get('memory_max') != limits['memory_max']
+            or measurement.get('memory_swap_max') != limits['memory_swap_max']):
+        raise ValueError('A qualified EPYC 7763 baseline under the frozen 10-GiB experimental/no-swap limit is required')
     if measurement.get('worker_environment') != {
             'RAYON_NUM_THREADS': '2', 'SIWORLD_COMPOSITION_HIDING_WORKERS': '2'}:
         raise ValueError('Supervisor worker environment differs from the frozen configuration')
@@ -375,6 +391,7 @@ def read_trial(directory, manifest, frozen_sha, worker_row=None, setup_phases=No
             'sampled_trial_memory_peak': max([*values, *boundary_peaks]),
             'memory_peak_scope': 'Shared kernel lifetime peak; a conservative per-trial upper reference'}
     return {**extra, 'resource_control_pass': True, 'verified': True, 'phases': phases,
+        'resource_limits': limits,
         'memory_peak': measurement['memory_peak'], 'swap_peak': measurement['swap_peak'],
         'memory_events_delta': measurement['memory_events_delta'],
         'cpu_summary': measurement.get('cpu_summary'), 'hardware_qualification': qualification,
@@ -382,15 +399,18 @@ def read_trial(directory, manifest, frozen_sha, worker_row=None, setup_phases=No
 
 
 def decide(total_ns, memory):
-    if total_ns > 180_000_000_000 or memory > BUDGET:
+    if total_ns > 180_000_000_000 or memory > EXPERIMENTAL_MEMORY_MAX:
         return 'pause'
     return 'continue' if total_ns <= 135_000_000_000 else 'continue-optimize'
 
 
-def project_full(trials):
+def project_full(trials, resource_limits):
+    limits = validate_resource_limits(resource_limits)
     if len(trials) != 3 or [trial.get('trial') for trial in trials] != [1, 2, 3]:
         raise ValueError('Exactly three ordered warm trials in the same process are required')
     for trial in trials:
+        if trial.get('resource_limits') != limits:
+            raise ValueError('Trial resource limits differ from the frozen experiment')
         if not trial.get('resource_control_pass') or trial.get('swap_peak') != 0:
             raise CheckpointFailure('A failed full trial blocks progression')
         for name in FULL_PHASES:
@@ -418,6 +438,7 @@ def project_full(trials):
         'memory_evidence_kind': 'sampled-lower-bound',
         'observed_trials': len(observed_handoffs)}
     return {'schema': 1, 'purpose': 'D8 N=16 full proof engineering checkpoint',
+        'resource_limits': limits,
         'acceptance': False, 'trials': 3, 'projected_total_ns': total,
         'time_evidence_kind': 'measured complete last-package-to-root interval',
         'timed_total_ns_max': max(trial['timed_total_ns'] for trial in trials),
@@ -427,19 +448,23 @@ def project_full(trials):
         'phase_medians': phases, 'handoff_overhead_median_ns': statistics.median(
             trial['handoff_overhead_ns'] for trial in trials),
         'decision': decide(total, peak), 'time_margin_ns': 180_000_000_000 - total,
-        'memory_margin_bytes': BUDGET - peak,
+        'memory_margin_bytes': limits['memory_max'] - peak,
         'limitations': ['Stage and per-trial sampled peaks are lower bounds, not reset kernel peaks.',
             'The shared lifetime kernel peak bounds startup, all prepared layers and all warm trials.',
             'Serialized retained proof bytes do not include allocator or object overhead.',
+            'The 10-GiB limit is experimental; the production memory budget is undecided.',
             'This is a feasibility checkpoint, not independent security approval or network acceptance.']}
 
 
 def project(manifest, trials):
+    limits = validate_resource_limits(manifest.get('resource_limits'))
     if manifest.get('checkpoint_mode') == 'n16-full':
-        return project_full(trials)
+        return project_full(trials, limits)
     if len(trials) != 3:
         raise ValueError('Exactly three trials on one live baseline machine are required')
     for trial in trials:
+        if trial.get('resource_limits') != limits:
+            raise ValueError('Trial resource limits differ from the frozen experiment')
         if not trial.get('resource_control_pass') or trial.get('swap_peak') != 0:
             raise CheckpointFailure('A failed trial blocks progression; no outlier removal or automatic retry')
         for name in MEASURED_PHASES:
@@ -491,6 +516,7 @@ def project(manifest, trials):
     observed_max = max(t['memory_peak'] for t in trials)
     projected_peak = max(modeled_peak, observed_max)
     return {'schema': 1, 'purpose': 'provisional D8 N=16 engineering feasibility checkpoint',
+        'resource_limits': limits,
         'acceptance': False, 'trials': 3, 'projected_total_ns': total,
         'projected_memory_peak': projected_peak, 'modeled_memory_peak': modeled_peak,
         'observed_memory_peak_median': statistics.median(t['memory_peak'] for t in trials),
@@ -499,10 +525,11 @@ def project(manifest, trials):
         'startup_peak_model': memory['startup_peak'],
         'root_time': {**root, 'value_ns': root_ns}, 'overhead_ns': model['overhead_ns'],
         'decision': decide(total, projected_peak), 'time_margin_ns': 180_000_000_000 - total,
-        'memory_margin_bytes': BUDGET - projected_peak,
+        'memory_margin_bytes': limits['memory_max'] - projected_peak,
         'limitations': ['Root proxies and shape-based memory estimates are not upper bounds.',
             'Sampled stage peaks are lower bounds; the kernel reports the complete lifetime peak.',
-            'Final N=16 acceptance requires actual complete proofs and all-stage measurements.']}
+            'The 10-GiB limit is experimental; the production memory budget is undecided.',
+            'A complete checkpoint requires actual N=16 proofs and all-stage measurements; it does not establish production acceptance.']}
 
 
 def read_worker_rows(directory):
@@ -605,6 +632,17 @@ def failure_evidence(directory):
     return result
 
 
+def supervisor_command(args, files, directory, control, resource_limits):
+    limits = validate_resource_limits(resource_limits)
+    return ['sudo', '--preserve-env=RAYON_NUM_THREADS,SIWORLD_COMPOSITION_HIDING_WORKERS,GITHUB_ACTIONS',
+        sys.executable, str(ROOT / 'scripts/measure-proof-cgroup.py'),
+        '--output', str(directory), '--uid', str(os.getuid()), '--gid', str(os.getgid()),
+        '--timeout', str(args.timeout), '--hardware-profile', 'epyc7763-baseline',
+        '--memory-max', str(limits['memory_max']), '--',
+        str(files['launcher']), '--checkpoint-bootstrap', str(args.manifest.resolve()),
+        '--checkpoint-bootstrap-sha256', args.sha256, '--checkpoint-control-dir', str(control.resolve())]
+
+
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('Run checkpoint orchestration as the unprivileged runner user')
@@ -627,15 +665,11 @@ def run(args):
     control.mkdir()
     directory = args.output / 'process-tree'
     receipt = {'schema': 1, 'complete': False, 'acceptance': False,
+        'resource_limits': dict(bootstrap['resource_limits']),
         'bootstrap_manifest_sha256': args.sha256, 'hardware_qualification': qualification,
         'same_live_machine_boot_id': boot_id, 'observations': []}
     report = args.output / 'checkpoint.json'
-    command = ['sudo', '--preserve-env=RAYON_NUM_THREADS,SIWORLD_COMPOSITION_HIDING_WORKERS,GITHUB_ACTIONS',
-        sys.executable, str(ROOT / 'scripts/measure-proof-cgroup.py'),
-        '--output', str(directory), '--uid', str(os.getuid()), '--gid', str(os.getgid()),
-        '--timeout', str(args.timeout), '--hardware-profile', 'epyc7763-baseline', '--',
-        str(files['launcher']), '--checkpoint-bootstrap', str(args.manifest.resolve()),
-        '--checkpoint-bootstrap-sha256', args.sha256, '--checkpoint-control-dir', str(control.resolve())]
+    command = supervisor_command(args, files, directory, control, bootstrap['resource_limits'])
     process = None
     try:
         with (args.output / 'supervisor.log').open('x') as log:
@@ -719,6 +753,7 @@ def run(args):
 
 def public_summary(report):
     keys = ('schema', 'purpose', 'complete', 'acceptance', 'trials', 'decision',
+        'resource_limits',
         'projected_total_ns', 'projected_memory_peak', 'observed_memory_peak_median',
         'observed_memory_peak_max', 'phase_medians', 'time_margin_ns', 'memory_margin_bytes',
         'trial_sampled_memory_peak_median', 'trial_sampled_memory_peak_max',
@@ -766,13 +801,15 @@ def main():
     try:
         if args.validate_only:
             load_bootstrap(args.manifest, args.sha256)
-            print(json.dumps({'complete': False, 'acceptance': False, 'manifest_validated': True}))
+            print(json.dumps({'complete': False, 'acceptance': False, 'manifest_validated': True,
+                              'resource_limits': dict(RESOURCE_LIMITS)}))
             return
         report = run(args)
         print(json.dumps(public_summary(report), indent=2))
         raise SystemExit(0 if report['decision'] != 'pause' else 1)
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
         print(json.dumps({'complete': False, 'acceptance': False,
+                          'resource_limits': dict(RESOURCE_LIMITS),
                           'decision': 'pause' if isinstance(error, CheckpointFailure) else 'incomplete',
                           'error': type(error).__name__ + ': ' + str(error)}), file=sys.stderr)
         raise SystemExit(1 if isinstance(error, CheckpointFailure) else 2)

@@ -1,14 +1,18 @@
 # D8 W24 Recursive Suite Implementation Plan
 
 Status: experimental implementation with passing primitive, reusable-recursion
-and eight-input application correctness tests. The final-profile checkpoint
-is paused by a cgroup OOM at the 5-GiB limit during eight-input verifier-circuit
-construction/preprocessing, before eight-input proving. Actual-shape screening
-and performance measurement are blocked; security review remains pending. The target is
+and eight-input application correctness tests. A final-profile checkpoint attempt
+was stopped by a cgroup OOM at the 5-GiB limit during eight-input verifier-circuit
+construction/preprocessing, before eight-input proving. That failure remains
+retained evidence. A follow-up experiment uses a 10-GiB process-tree ceiling
+with zero swap; no result under that ceiling is yet established. Actual-shape
+screening, performance measurement and security review remain pending. The target is
 KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12-base-element digests.
-The N=16 proof-latency target is 180 seconds under the unchanged 5-GiB
-process-tree hard limit. This proving target does not change the consensus
-block interval. The baseline is Plonky3 `0.9.0-rc.2` and recursion revision
+The N=16 proof-latency target is 180 seconds. The next experiment enforces
+10 GiB = 10,737,418,240 bytes across the complete proof process tree. This
+ceiling is not a production acceptance budget; select that budget only after
+actual peak-memory characterization. This proving target does not change the
+consensus block interval. The baseline is Plonky3 `0.9.0-rc.2` and recursion revision
 `3a69ba61f713c8400b14eb3d8f0e52caa13512c7`, with the separately maintained
 experimental dependency patch. Passing correctness fixtures do not establish
 a checkpoint pass or security approval.
@@ -71,7 +75,7 @@ the early performance checkpoint permitting further work.
 | Recursive suite and FRI | 3–5 days | D8 AIR/table/recomposition dispatch, registry/config codec, transcript observation/squeezing, cap/MMCS targets and canonical artifacts; native/circuit transcript equivalence, wrong suite/key/cap and noncanonical proof rejection |
 | Opening-batch grinding | 2–4 days | Native nonce generation and recursive verification with identical transcript order; configuration/shape/key binding, serialization, positive-difficulty and zero-difficulty rejection tests; required before checkpoint |
 | SI relation port | 4–7 days | Consistent leaf/anchor/note/nullifier/hash/codecs, eight-input and root circuits, reviewed additive-set/output layouts; trigger the early performance checkpoint at the first verified eight-input merge with opening-batch grinding and the final checkpoint configuration; independent native oracle, all public-field mutations and complete N=16 proof verification |
-| Security screening and measurements | 2–4 days | Actual shape extraction, pinned conjectured and Johnson reports, composition/quantum screening, only passing profiles receive three full N=16 acceptance runs under 5 GiB |
+| Security screening and measurements | 2–4 days | Actual shape extraction, pinned conjectured and Johnson reports, composition/quantum screening, only passing profiles receive three full N=16 experimental runs under the 10-GiB ceiling; production budget selection follows measured peaks |
 | Production integration and freeze | 3–6 days | Shared transition/verification interfaces, worker/network binding, resource admission, isolated engineering-network fixtures, reproducible complete sources/artifacts/keys for audit |
 
 Plan the first eight-input checkpoint for engineering day 13, with an estimated
@@ -204,8 +208,8 @@ prepares the leaf and verifies bootstrap leaf and eight-input proofs, then
 prepares the root, extracts actual shapes and screens them before granting
 warm trials. A bootstrap proof is cold setup evidence, not one of the three
 measured trials. A failure, OOM or security-screen rejection during setup
-blocks warm trials and is itself a checkpoint failure to report. The current
-final profile reaches the 5-GiB cgroup limit and is OOM-terminated during
+blocks warm trials and is itself a checkpoint failure to report. The retained
+5-GiB final-profile attempt reached its cgroup limit and was OOM-terminated during
 eight-input verifier-circuit construction/preprocessing. Eight-input proving
 has not begun at that boundary. The phase includes circuit construction,
 relation/AIR preparation and preprocessing commitment; its evidence does not
@@ -233,8 +237,9 @@ on one live machine for all three trials; EPYC 9V45 remains a comparison.
 Start isolated merge timing with eight leaf
 proofs available; include their generation in the N=16 projection. Verify every
 resulting proof. Keep all three observations and report median proving time
-and median memory peak, together with observed maxima. Enforce the 5-GiB
-process-tree limit with zero extra swap, including during startup. An OOM,
+and median memory peak, together with observed maxima. Enforce the current
+10-GiB experimental process-tree ceiling with zero swap, including during startup.
+This does not select a production memory budget. An OOM,
 incorrect proof or observed cap violation blocks progression and must not be
 discarded as an outlier.
 
@@ -311,14 +316,17 @@ when available; this estimate is not a worst-case memory proof.
 ### Continuation thresholds
 
 Apply the decision to projected total N=16 proof latency and peak memory, not
-to the isolated merge. The memory limit is **5 GiB = 5,368,709,120 bytes**.
-Report remaining memory margin and uncertainty alongside timing margin.
+to the isolated merge. The next experiment uses a hard ceiling of
+**10 GiB = 10,737,418,240 bytes**, with zero swap. This ceiling bounds the
+experiment; it is not production acceptance. The production memory budget
+remains undecided until actual peak measurements are available. Report
+remaining experimental memory margin and uncertainty alongside timing margin.
 
 | Projected N=16 latency and peak memory | Required action |
 | --- | --- |
-| At most 135 seconds and at most 5 GiB | Continue implementation. |
-| More than 135 and at most 180 seconds, with peak memory at most 5 GiB | Continue and investigate leaf parameters and circuit optimizations in parallel, retaining all security requirements. |
-| More than 180 seconds or more than 5 GiB | Pause progression and report the three observations, medians, maxima, projections and assumptions. Resume only after a decision on the target, hardware, optimization or N. |
+| At most 135 seconds and at most 10 GiB | Continue experimental implementation; production resource acceptance remains open. |
+| More than 135 and at most 180 seconds, with peak memory at most 10 GiB | Continue experimental work and investigate leaf parameters and circuit optimizations in parallel, retaining all security requirements. |
+| More than 180 seconds or more than 10 GiB | Pause progression and report the observations, available medians/maxima, projections and assumptions. Resume only after a decision on the target, hardware, optimization or N. |
 
 An observed OOM or incorrect proof also blocks progression. The checkpoint
 does not authorize a hardware or capacity change. N remains 16. N=32 is the
@@ -337,13 +345,14 @@ trials, and screen profiles under all requirements in the
 [review scope](proof-security-review.md), including 16/2/1
 composition losses. A missing theorem or term cannot be treated as a pass.
 
-Only profiles passing the security screen receive three N=16 acceptance trials
+Only profiles passing the security screen receive three N=16 experimental trials
 with one proof job and two native workers on qualified target hardware. Each
 trial begins from a ready service with prepared circuits resident. Record
 last-package-to-root latency, every proving phase, separate cold startup and
-post-proof timings, whole-worker charged-memory peaks, actual enforced 5-GiB
-limit, zero extra swap and OOM events. Select parameters from complete security
-and performance evidence; do not lower security to reach 180 seconds. The
+post-proof timings, whole-worker charged-memory peaks, actual enforced 10-GiB
+experimental ceiling, zero swap and OOM events. The production memory budget
+remains undecided and requires actual peak measurements. Select parameters
+from complete security and performance evidence; do not lower security to reach 180 seconds. The
 existing D4 leaf-B and uniform-q92 timing medians are below 180 seconds but do
 not qualify: D4/W16 fails the required security targets and those records lack
 the new timing and hard-limit evidence.
@@ -388,17 +397,18 @@ These tests use lower-cost correctness fixtures. The eight-input application
 fixture uses two queries and four batch/query grinding bits, rather than the
 final checkpoint's 148/140-query and 16-bit grinding configuration. They
 establish behavior only for the covered fixtures, not actual-shape security
-acceptance, 5-GiB compliance or performance feasibility. Final-profile startup
-is blocked by the preparation OOM before eight-input proving. No final
+acceptance, compliance with a selected production memory budget or performance
+feasibility. The retained 5-GiB attempt stopped at preparation before eight-input
+proving; the 10-GiB follow-up has no established result yet. No final
 actual-shape/security bundle, three-trial warm median, measured root cost or
 complete N=16 latency evidence is available. No continuation gate has passed.
 
 The worker freezes source/dependency and build identities, actual circuit
 shapes, parameter reports, preprocessing artifacts and verifying keys before
 three warm trials. Input-independent setup remains resident inside the same
-5-GiB cgroup for startup and all trials. Each trial regenerates hiding proofs
-with fresh randomness, executes all 16 leaves, two serial eight-input merges
-and the root, and verifies the resulting proof. The root phase ends only after
+10-GiB experimental cgroup for startup and all trials, with zero swap. Each
+trial regenerates hiding proofs with fresh randomness, executes all 16 leaves,
+two serial eight-input merges and the root, and verifies the resulting proof. The root phase ends only after
 canonical proof-artifact export, including the proof check inherent in that
 API. The canonical byte buffer remains retained through standalone verification
 and trial-result handoff. Standalone verification is measured separately after

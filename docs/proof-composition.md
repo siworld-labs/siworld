@@ -56,7 +56,10 @@ Prepare all input-independent leaf, aggregation and root circuits and trusted
 keys at service startup and keep them resident. Cold-start duration is recorded
 separately and excluded from the 180-second latency budget. Preparation,
 resident circuits, caches, proof buffers and native workers all remain inside
-the 5-GiB process-tree hard limit, including during startup. Input-dependent
+the current experimental process-tree ceiling, including during startup. The
+next D8 experiment uses 10 GiB (10,737,418,240 bytes), with zero swap. This is
+not a production acceptance budget; select that budget from actual peak
+measurements. Input-dependent
 work cannot be relabeled as startup preparation. PoW, propagation, standalone
 root verification and wallet receipt are reported separately from proof latency.
 
@@ -74,18 +77,20 @@ and root verification, so they are useful timing-method references but not
 exact measurements of the new arrival-to-root interval. The synthetic inputs
 have no production last-package arrival marker. D4/W16 does not meet the
 required security targets, so **none of these results constitutes acceptance**.
-The records also do not establish the new enforced 5-GiB gate; uniform q92
-reached 5.82 GiB physical footprint during uncapped characterization. Changing
+The records also do not establish an enforced production memory budget; uniform
+q92 reached 5.82 GiB physical footprint during uncapped characterization. Changing
 the time target does not qualify a rejected suite or change a memory observation.
 D8/W24 requires new security screening and target-hardware measurements.
 
 After opening-batch grinding is implemented and the checkpoint configuration
 is frozen, at the first verified D8 eight-input merge apply the
 [early checkpoint](d8-w24-recursion.md#early-performance-checkpoint)
-to projected N=16 latency and peak memory: at most 135 seconds and at most
-5 GiB permits continuation; more than 135 and at most 180 seconds under the cap
-requires parallel optimization; more than 180 seconds or more than 5 GiB pauses
-progression. Report per-stage memory components and peaks alongside times.
+to projected N=16 latency and peak memory: at most 135 seconds within the
+10-GiB experimental ceiling permits continued experiments; more than 135 and
+at most 180 seconds under that ceiling requires parallel optimization; more
+than 180 seconds, more than 10 GiB or OOM pauses progression. The ceiling is
+not production acceptance. Select the production memory budget after measured
+peaks are available. Report per-stage memory components and peaks alongside times.
 N=32 is the first separately scoped assessment after that checkpoint passes
 and is not measured in the current work.
 
@@ -350,12 +355,13 @@ leaf verifier's query count changes both the eight-input circuit and the root
 circuit that verifies it, despite retaining q92 output-proof parameters.
 
 The [production-path acceptance plan](prover-acceptance.md)
-requires an enforced 5 GiB proof-process budget, approximately 38% above B's
-largest observed footprint. This experiment did not enforce that budget.
-Uniform q92 exceeded 5 GiB physical footprint; it cannot pass that same gate
-on these observations. A larger experimental allowance would not change the
-production requirement. Three processes do not establish tail latency or a
-worst-case memory bound, and the existing node/container limits are separate.
+leaves the production proof-process budget undecided until actual D8 peak
+measurements are available. Uniform q92's observed physical footprint exceeded
+5 GiB; this historical value is unchanged. Those uncapped D4 observations do
+not establish compliance with any subsequently selected hard limit. The next
+D8 experiment has a 10-GiB ceiling, which is not a production budget. Three
+processes do not establish tail latency or a worst-case memory bound, and the
+existing node/container limits are separate.
 
 On a fresh experiment checkout, build the isolated two-worker dependency as
 above, then export the B pin and collect three uncapped macOS processes:

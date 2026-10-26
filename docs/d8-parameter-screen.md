@@ -7,9 +7,12 @@ grinding, native/full/prepared recursive-proof and eight-input application
 correctness tests, including nonempty statement binding and canonical
 verifier/proof artifact round trips. This coverage uses lower-cost fixtures;
 it does not establish the final profile's actual-shape security bounds,
-5-GiB compliance or checkpoint performance. The final-profile checkpoint is
-paused by a cgroup OOM at the 5-GiB limit during eight-input verifier-circuit
-construction/preprocessing, before eight-input proving. Re-extract every shape
+production memory budget or checkpoint performance. A final-profile attempt
+was stopped by a cgroup OOM at the 5-GiB limit during eight-input verifier-circuit
+construction/preprocessing, before eight-input proving. Preserve that failure
+evidence. The next experiment uses a 10-GiB process-tree hard ceiling with zero
+swap; production memory remains undecided until actual peak measurements.
+No result under the larger ceiling is established here. Re-extract every shape
 and checked grinding site from the final implementation before measuring a profile. Do not
 deploy from this table.
 
@@ -289,10 +292,12 @@ Only then measure passing profiles under the hard limit. Opening-batch
 grinding is a mandatory pre-checkpoint task. Freeze and measure
 the implemented final configuration on the qualified EPYC 7763 baseline rather
 than timing a reduced-difficulty substitute. Apply the joint checkpoint gates:
-at most 135 seconds and at most 5 GiB permits continuation; more than 135 and at
-most 180 seconds under the cap requires parallel optimization; more than
-180 seconds or more than 5 GiB pauses progression. Give each stage's memory
-breakdown the same prominence as its time, with measured and estimated
+at most 135 seconds within the current 10-GiB experimental ceiling permits
+continued experiments; more than 135 and at most 180 seconds under that ceiling
+requires parallel optimization; more than 180 seconds, more than 10 GiB or OOM
+pauses progression. The ceiling is 10,737,418,240 bytes with zero swap, not a
+production acceptance budget. Select the production budget after actual peak
+measurements. Give each stage's memory breakdown the same prominence as its time, with measured and estimated
 components distinguished. See the [checkpoint procedure](d8-w24-recursion.md#early-performance-checkpoint).
 N=32 is the first separately scoped assessment after that checkpoint passes;
 there is no N=32 screening in the current work.

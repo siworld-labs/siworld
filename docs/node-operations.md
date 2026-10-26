@@ -31,11 +31,13 @@ for AVX2 instructions.
 
 AArch64 has a separate build target and requires its own hardware/resource
 qualification. Historical M1 measurements do not qualify every AArch64 machine.
-The D8 proving budget is 5 GiB for the proof process and all children, with zero
-extra swap. Total host RAM must additionally cover the node, operating system,
-other admitted processes and reserves; a 5-GiB machine does not qualify merely
-because it matches the proof-process limit. Do not place a 5-GiB worker in an
-existing smaller node container or change retained-network resources to fit it.
+The next D8 experiment has a 10-GiB (10,737,418,240-byte) hard ceiling for the
+proof process and all children, with zero swap. This is an experimental ceiling,
+not production acceptance. The production memory budget remains undecided
+until actual peak measurements are available. Recompute host admission once
+that budget is selected: total RAM must also cover the node, operating system,
+other admitted processes and reserves. Do not place a worker beyond a node
+container's admitted capacity or change retained-network resources to fit it.
 
 Linux D8 acceptance uses the EPYC 7763 Ubuntu 24.04 Microsoft VM profile with
 two exposed cores and four vCPUs as the baseline; EPYC 9V45 is a comparison.
