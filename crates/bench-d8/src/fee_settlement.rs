@@ -23,6 +23,48 @@ pub struct FeeOpening {
     pub priority: bool,
 }
 
+/// The private fee witness delivered with a transaction through the mempool
+/// sidecar.  The transaction's public proof statement carries the matching
+/// commitment; the sidecar carries only the opening and the binding digest
+/// needed to prevent moving an opening to another transaction.
+///
+/// This evaluation type intentionally has no signature or second encryption
+/// layer.  Production transport confidentiality and peer authentication are
+/// provided by the planned X25519 + ML-KEM connection handshake.  Every node
+/// that receives a sidecar can independently recompute the commitment before
+/// forwarding it or using it for settlement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeeSidecar {
+    pub transaction_binding: Digest,
+    pub opening: FeeOpening,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SidecarError {
+    Missing,
+    TransactionBindingMismatch,
+    CommitmentMismatch,
+}
+
+/// Validate a received sidecar against the transaction's public binding and
+/// fee commitment.  Callers must discard a sidecar on any error and record the
+/// bounded peer-abuse event in their normal relay diagnostics.
+pub fn validate_sidecar<'a>(
+    hasher: &Hasher,
+    transaction_binding: &Digest,
+    fee_commitment: &Digest,
+    sidecar: Option<&'a FeeSidecar>,
+) -> Result<&'a FeeOpening, SidecarError> {
+    let sidecar = sidecar.ok_or(SidecarError::Missing)?;
+    if &sidecar.transaction_binding != transaction_binding {
+        return Err(SidecarError::TransactionBindingMismatch);
+    }
+    if &hasher.fee_commit(sidecar.opening.fee, &sidecar.opening.blind) != fee_commitment {
+        return Err(SidecarError::CommitmentMismatch);
+    }
+    Ok(&sidecar.opening)
+}
+
 impl FeeOpening {
     pub fn dummy(blind: [F; 4]) -> Self {
         Self {
@@ -209,7 +251,7 @@ pub fn verify_settlement(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::F;
+    use crate::common::{DIGEST, F};
     use p3_field::PrimeCharacteristicRing;
 
     fn blind(seed: u32) -> [F; 4] {
@@ -291,5 +333,49 @@ mod tests {
         let slot = SettlementSlot::from_opening(&h, opening);
         let err = verify_settlement(&h, &[slot], FEE_BASE, 0, 0).unwrap_err();
         assert_eq!(err, SettlementError::RealFeeZero { index: 0 });
+    }
+
+    #[test]
+    fn sidecar_opening_must_match_public_commitment() {
+        let h = Hasher::new();
+        let binding = [F::from_u32(7); DIGEST];
+        let opening = FeeOpening::standard(blind(31));
+        let commitment = h.fee_commit(opening.fee, &opening.blind);
+        let sidecar = FeeSidecar {
+            transaction_binding: binding,
+            opening: FeeOpening::standard(blind(32)),
+        };
+        assert_eq!(
+            validate_sidecar(&h, &binding, &commitment, Some(&sidecar)),
+            Err(SidecarError::CommitmentMismatch)
+        );
+    }
+
+    #[test]
+    fn missing_sidecar_is_rejected_before_settlement() {
+        let h = Hasher::new();
+        let binding = [F::from_u32(8); DIGEST];
+        let commitment = h.fee_commit(FEE_BASE, &blind(41));
+        assert_eq!(
+            validate_sidecar(&h, &binding, &commitment, None),
+            Err(SidecarError::Missing)
+        );
+    }
+
+    #[test]
+    fn sidecar_cannot_be_replayed_for_another_transaction() {
+        let h = Hasher::new();
+        let sidecar_binding = [F::from_u32(9); DIGEST];
+        let transaction_binding = [F::from_u32(10); DIGEST];
+        let opening = FeeOpening::priority(blind(51));
+        let commitment = h.fee_commit(opening.fee, &opening.blind);
+        let sidecar = FeeSidecar {
+            transaction_binding: sidecar_binding,
+            opening,
+        };
+        assert_eq!(
+            validate_sidecar(&h, &transaction_binding, &commitment, Some(&sidecar)),
+            Err(SidecarError::TransactionBindingMismatch)
+        );
     }
 }

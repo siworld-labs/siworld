@@ -103,37 +103,28 @@ the public transaction bytes.
 
 A transaction proof deliberately does not reveal `f` or `r`. A miner therefore
 cannot create the block settlement proof from the public proof alone. This is a
-real protocol dependency, not an implementation detail. Scheme B requires the
-wallet to place a fixed-size fee-opening witness alongside the transaction in
-the mempool. The witness is available to the block producer for fee ordering
-and settlement, while ordinary relays store and forward only an authenticated
-encrypted capsule; the clear opening must never be put in the block or public
-chain. The capsule binds `(f, r, transaction_binding, anchor_snapshot)` and
-uses the same length and encoding for real and padding transactions.
+real protocol dependency, not an implementation detail. Scheme B places a
+fixed-size fee-opening sidecar alongside the transaction in the mempool. The
+sidecar contains `(transaction_binding, f, r, dummy, priority)` and uses the
+same canonical encoding for real and padding transactions. It is available to
+the block producer for ordering and settlement; the opening is never written
+to the block or public chain.
 
-Before Route A is activated, the authentication and key-rotation details of
-that mempool witness channel must be selected:
+Sidecars do not carry an additional signature or application-level encryption
+layer. Any node that receives one recomputes the fee commitment `F_i` and
+checks the transaction binding before forwarding or using it for settlement.
+Missing sidecars, an opening that does not match `F_i`, and a sidecar bound to
+another transaction are rejected before mempool or consensus state changes,
+and the bounded relay-abuse diagnostic records the peer. Confidentiality and
+peer authentication for sidecar transport come from the planned X25519 +
+ML-KEM connection handshake; the sidecar protocol does not introduce a second
+key schedule. The handshake and reconnect design remains a separate network
+gate.
 
-* **Epoch settlement capsule (candidate):** an authenticated key schedule
-  publishes a rotating settlement public key. The wallet places the capsule in
-  the bounded mempool sidecar and proof/relay envelope. A winning miner uses
-  the corresponding private or threshold key to recover the witness and
-  checks the context before proving settlement. Nodes see ciphertext only.
-* **Private miner channel:** the wallet delivers the same witness over an
-  authenticated private channel to a miner-selected settlement key. This
-  requires a deterministic rebroadcast and expiry protocol and must not make
-  transaction inclusion depend on a miner-specific public fee.
-
-Neither mechanism is implemented or approved. An epoch key shared by every
-miner would let every miner learn individual fees, while a miner-specific key
-requires additional relay coordination. The privacy goal in this document is
-that the public chain and ordinary nodes cannot identify a fee tier; a stronger
-goal covering all miners requires a threshold design. Capsule ciphertext,
-key identifiers, replay counters, and any recovery proof add fixed envelope
-bytes and must be included in the capacity and DoS ledger. If no approved
-witness-delivery mechanism exists, the settlement proof cannot be generated
-and the route remains blocked. Until one is approved, the Scheme B direction
-is not part of the V1 production scope.
+If a valid sidecar is unavailable, block production aborts rather than
+guessing an opening or weakening the settlement proof. Until the sidecar
+codec, handshake coverage, and rejection tests are reviewed, Scheme B remains
+an evaluation direction and is not an activated V1 consensus rule.
 
 ## Block settlement statement
 
@@ -195,7 +186,7 @@ budget pauses the route and does not silently lower the privacy or proof
 requirements.
 
 The per-transaction accounting must list the 48-byte `F_i` commitment and the
-encrypted witness capsule separately from the 1,742-byte permanent public
+fixed-size fee-opening sidecar separately from the 1,742-byte permanent public
 transaction encoding. The selected `MAX_LEAF_PROOF_LEN`, mempool byte caps,
 concurrent-verification limits, and relay capacity cannot be set until this
 ledger and the 576-position settlement result are available.
@@ -211,15 +202,14 @@ ledger and the 576-position settlement result are available.
 3. Check duplicate nullifiers against the candidate state and the mempool's
    reservation table. Admission is atomic: a failure changes neither table.
 4. Retain the verified transaction binding, `F`, proof digest, and nullifier
-   reservations. The miner's private mempool sidecar retains the authenticated
-   fee-opening capsule for ordering and settlement; ordinary relays retain
-   ciphertext only. The node does not attempt to decode `f` or classify the
-   slot.
-5. The miner obtains the private witness for every position through the
-   selected settlement-capsule or private-channel protocol. It constructs a
+   reservations. The miner's private mempool sidecar retains the fee opening
+   for ordering and settlement. A node validates the sidecar's transaction
+   binding and commitment before retaining it; the node does not log `f` or
+   classify the slot.
+5. The miner obtains a validated sidecar for every position. It constructs a
    fixed-capacity block, recomputes the issuance reward from the candidate
    height, includes the miner output exactly once, and produces the settlement
-   proof. Missing or context-mismatched witness data aborts block production.
+   proof. Missing or context-mismatched sidecar data aborts block production.
 6. A receiving node verifies the header, compact references, every transaction
    proof, and the settlement proof. It checks that every `F_i` and transaction
    binding occurs exactly once, that every referenced transaction is present,
@@ -262,9 +252,8 @@ The implementation test plan must reject each case below before state mutation:
   block height;
 - reusing a settlement proof, `F_i`, or private fee witness in another network,
   block, suite, or anchor snapshot;
-- decrypting a capsule with the wrong epoch/key, changing its context or replay
-  counter, truncating it, or replacing it with a capsule for another
-  transaction;
+- omitting a sidecar, supplying a sidecar whose opening does not match `F_i`,
+  or supplying a sidecar bound to another transaction;
 - truncating, extending, or making any proof, transaction, settlement, or
   ciphertext encoding noncanonical; and
 - presenting a valid transaction proof but a settlement proof generated from a
@@ -285,8 +274,14 @@ miners must not log or export `f_i` with transaction identifiers.
 
 The fee-binding digest and settlement proof add fixed proof/envelope bytes and
 verification work. Capacity, bandwidth, and mempool budgets must include those
-bytes, plus retransmissions and missing-proof requests. The existing 1,742-byte
+bytes, plus the fixed sidecar and retransmissions. The existing 1,742-byte
 transaction target alone is not a complete relay budget.
+
+Settlement proofs and sidecars are retained for four weeks after final
+confirmation to support reorg handling, archive/checkpoint verification, and
+operational recovery. After that period, nodes delete the proof bodies and
+sidecars. The public fee commitments `F_i` remain permanently with the
+confirmed transaction; no fee opening is retained in the permanent record.
 
 ## Open gates before implementation
 
@@ -294,9 +289,9 @@ This design cannot be activated until the following are specified and tested:
 
 - a fixed AIR layout replacing clear fee limbs with the private fee witness
   and `F` statement fields;
-- an approved witness-delivery mechanism (or a demonstrated homomorphic
-  settlement alternative) that gives the block prover enough information to
-  construct the private sum without exposing fee tiers on the public chain;
+- a reviewed fixed-size sidecar codec and handshake integration that gives the
+  block prover enough information to construct the private sum without
+  exposing fee tiers on the public chain;
 - a hash-based, quantum-accounted `NoteCommit` and `Poseidon2_fee_v1` domain
   specification, including the 256-bit blinding representation;
 - a fixed-size settlement-proof construction and its cost at capacities 64
@@ -309,8 +304,9 @@ This design cannot be activated until the following are specified and tested:
   settlement proof; and
 - independent tests for duplicate, omission, overflow, replay, forged payout,
   forged openings, wrong commitment sums, non-zero padding fees, zero-fee real
-  transactions, zero-amount dummy-input membership skips, capsule context/key
-  failures, and state-atomicity failures.
+  transactions, zero-amount dummy-input membership skips, missing sidecars,
+  sidecar/transaction mismatches, sidecar commitment mismatches, and
+  state-atomicity failures.
 
 Until these gates pass, clear fee limbs in the research AIR and any existing
 recursive fee total are measurement fixtures only. They must not be presented

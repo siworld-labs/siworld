@@ -124,15 +124,21 @@ transactions or fee tiers. Equal byte lengths alone do not prevent this leak.
 V1 selects Scheme B as its fee-settlement direction. Each transaction exposes
 only a randomized fee commitment `F_i`; a real transaction commits the private
 standard or priority fee and a padding transaction commits zero. Wallets place
-the fee opening in a bounded, authenticated mempool sidecar/encrypted relay
-envelope so a block producer can order transactions and build settlement; the
-opening is never written in clear to the block or chain. A separate native,
+the fee opening in a bounded mempool sidecar so a block producer can order
+transactions and build settlement; the opening is never written in clear to
+the block or chain. A separate native,
 non-recursive block proof binds every `F_i` to its opening and proves that the
 private sum equals the fee component of the miner reward note. Real and padding
 transactions share the same public shape, including dummy nullifiers.
 
-The direction is not yet included in the V1 production scope. The settlement
-design requires a reviewed witness-delivery mechanism, a reviewed and frozen
+The direction is not yet included in the V1 production scope. The sidecar has
+no standalone signature or second encryption layer: nodes recompute `F_i` and
+the transaction binding on receipt, while confidentiality and peer
+authentication come from the planned X25519 + ML-KEM connection handshake.
+Missing sidecars, mismatched openings, and sidecars bound to another
+transaction are discarded before state mutation and recorded as bounded peer
+abuse. The settlement design requires a reviewed sidecar codec, a reviewed
+and frozen
 AIR layout, a security report, and qualified-host 64--576 capacity measurements,
 with a three-trial 576-position result reporting proof bytes, generation and
 verification time, and per-stage peak memory. The four required rejection
@@ -140,7 +146,7 @@ cases are explicit:
 wrong commitment sum versus the miner reward, forged fee opening, non-zero
 padding fee, and zero-fee real transaction. A ciphertext or unbound private
 fee witness is insufficient. The 1,742-byte target must not silently exclude
-the 48-byte commitment, witness capsule, proof statement, or relay-envelope
+the 48-byte commitment, fee sidecar, proof statement, or relay-envelope
 bytes.
 Standard and priority amounts remain reward-linked: standard is
 `floor(reward / 1,000)` and priority is four times standard. Variable bids are
@@ -194,11 +200,11 @@ native proof and proof/relay-envelope context. The current implementation uses
 Under Scheme B, each transaction statement adds one canonical 48-byte `F_i`
 commitment (twelve D8 field elements). The commitment is public in the proof
 statement and relay envelope, while the fee opening remains in the private
-mempool sidecar/capsule. It is not part of the 1,742-byte base encoding, but it
+mempool sidecar. It is not part of the 1,742-byte base encoding, but it
 is retained in the on-chain transaction statement after the proof body is
 pruned; absent an explicitly amortized block-context format, the public record
 is 1,790 bytes before relay and settlement overhead. Capacity and
-denial-of-service accounting must include the 48-byte commitment, capsule,
+denial-of-service accounting must include the 48-byte commitment, sidecar,
 proof body, settlement proof, and retransmission reserve as separate ledger
 entries.
 
@@ -319,8 +325,10 @@ The following changes are proposed and are not implemented by this document:
 - Set the new route's local `MAX_REORG_DEPTH` to 24. Test depth 23/24/25,
   root-window boundaries and conflict re-admission. A deeper fork requires
   explicit checkpoint recovery rather than silent partial rollback.
-- Retain proofs for four weeks **after final confirmation**, then delete them
-  from the online proof store. At a 300-second target, 24 blocks correspond to
+- Retain transaction and settlement proofs, together with private fee sidecars,
+  for four weeks **after final confirmation**, then delete them from the online
+  proof store. Retain each public `F_i` commitment permanently with the
+  confirmed transaction. At a 300-second target, 24 blocks correspond to
   two hours nominally; actual finality is a deterministic depth rule, not a
   wall-clock guarantee. Specify four-week expiry using deterministic chain
   metadata and a local deletion policy that cannot shorten required evidence.

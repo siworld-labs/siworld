@@ -17,6 +17,12 @@ consensus block interval. The baseline is Plonky3 `0.9.0-rc.2` and recursion rev
 experimental dependency patch. Passing correctness fixtures do not establish
 a checkpoint pass or security approval.
 
+The recursive aggregation baseline currently retains two correctness failures:
+the level-one anchor-membership check and the root fee-accumulation check both
+return `Lookup(TerminalSumNonZero)`. These are deferred V2 investigation items
+and are outside the current V1 native transaction-proof and fee-settlement
+scope. This change does not repair or activate the recursive path.
+
 ## Upstream gaps and isolated implementation
 
 The unmodified pinned dependency has no D8/12-element suite entry and rejects

@@ -18,9 +18,15 @@ and denial-of-service budgets.
 
 The private opening contains the fee, tier/dummy flags, and a 256-bit
 blinding value. A verified mempool entry retains that opening for miner
-ordering and settlement. Any relay of the opening must use an authenticated,
-bounded sidecar; the opening is never written to a block or exposed as a
-public block field.
+ordering and settlement. The fixed-size sidecar carries the transaction
+binding and opening; it has no standalone signature or second encryption
+layer. Nodes recompute the public commitment and transaction binding before
+forwarding or retaining it. Sidecar transport confidentiality and peer
+authentication come from the planned X25519 + ML-KEM connection handshake.
+Missing sidecars, mismatched openings, and sidecars bound to another
+transaction are discarded before state mutation and recorded in bounded
+peer-abuse diagnostics. The opening is never written to a block or exposed as
+a public block field.
 
 The block relation is a native, non-recursive STARK. For every fixed position
 it checks the commitment opening, accepts only zero for a padding position and
@@ -29,6 +35,12 @@ fees with checked integer carries. It binds the resulting private sum to the
 miner reward note. The proof binds the ordered compact references and the
 capacity, so an omitted, duplicated, or reordered transaction cannot be
 settled by reusing a valid proof.
+
+Settlement proofs and their private fee-opening sidecars are retained for four
+weeks after final confirmation, then deleted from the online store. The public
+fee commitments remain permanently with the confirmed transaction; fee
+openings are never part of the permanent record. Archive and checkpoint
+operators may retain proofs longer when they need independent replay evidence.
 
 Zero-valued dummy inputs skip commitment-tree membership checks in the
 transaction AIR. They still derive a fresh nullifier and remain subject to
@@ -138,3 +150,10 @@ position with a nonzero fee, and a real position with a zero fee. Until
 qualified-host memory measurements and the remaining review gates are
 available, Scheme B remains a V1 evaluation candidate and must not be
 described as production-ready or activated on the retained network.
+
+No qualified EPYC 7763 Ubuntu 24.04 cgroup result is included in this
+evaluation. The available diagnostic host is macOS and reports no delegated
+cgroup, so it cannot supply the required three `memory.peak` and
+`memory.events` samples for either the transaction proof or the 576-position
+settlement proof. Existing D4 measurements and generic CI runners are not
+substitutes for that baseline.

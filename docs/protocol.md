@@ -99,7 +99,7 @@ and imports no retained notes or proofs. See the
 | Change encryption | ChaCha20-Poly1305 with a 256-bit key and domain-separated BLAKE3 derivation |
 | Blocks | Groups of 16; 64–576 positions; 300-second target; 20-Mbps minimum node link |
 | Reorganization bound | New-route local `MAX_REORG_DEPTH = 24`; existing implementation remains at 100 |
-| Proof retention | Four weeks after final confirmation, then online proof deletion; archive and checkpoint trust model required |
+| Proof retention | Transaction and settlement proofs plus private fee sidecars are retained for four weeks after final confirmation, then deleted online; public fee commitments remain permanent and archive/checkpoint trust is required |
 | Production parameter choice | Smallest eligible proof with four-core generation at most two seconds, measured on the actual AIR |
 
 Nodes verify proofs on mempool admission. Blocks use compact references and
