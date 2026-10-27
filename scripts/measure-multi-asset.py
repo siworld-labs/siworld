@@ -31,6 +31,8 @@ GENERATION_MAX_NS = 2_000_000_000
 SUITE = 'KoalaBear-D8-Poseidon2-W24-digest12'
 GRID = tuple((b, g) for b in range(4, 9) for g in (16, 20, 24))
 FALLBACK_GRID = tuple((9, g) for g in (16, 20, 24))
+WALLET_FAST_GRID = tuple((b, g) for b in range(5, 9) for g in (20, 24))
+HARDWARE_PROFILES = ('diagnostic', 'epyc7763-baseline')
 PARAMETER_KEYS = ('log_blowup', 'num_queries', 'query_pow_bits', 'commit_pow_bits',
                   'batch_pow_bits', 'max_log_arity', 'log_final_poly_len')
 SHAPE_KEYS = ('base_trace_rows', 'main_width', 'preprocessed_width', 'public_values',
@@ -214,6 +216,10 @@ def record(config):
     Path('/proc/self/oom_score_adj').write_text('-1000')
     before = CG.snapshot(group, MEMORY_MAX)
     command = child_command(config)
+    hardware_profile = config.get('hardware_profile', 'diagnostic')
+    cpu_helper = module('measure-proof-cgroup.py')
+    cpu_ancestry = cpu_helper.cpu_ancestry(group, Path('/sys/fs/cgroup'))
+    cpu_helper.qualify_cpu_profile(cpu_ancestry, hardware_profile)
 
     def unprivileged():
         Path('/proc/self/oom_score_adj').write_text('0')
@@ -257,6 +263,8 @@ def record(config):
         'memory_peak_bytes': after['memory.peak'],
         'memory_events_before': before['memory.events'], 'memory_events_after': after['memory.events'],
         'memory_events_delta': assessment['event_deltas'], 'cpu_max': after['cpu.max'],
+        'hardware_profile': hardware_profile,
+        'visible_cpu_limits': clean_cpu_limits(cpu_ancestry),
         'resource_control_pass': assessment['resource_control_pass'],
         'remaining_descendants_at_exit': len(remaining),
         'verification_workers': config['workers'],
@@ -297,12 +305,71 @@ def medians(rows):
         return {'complete': False, 'trial_count': len(rows)}
     return {'complete': True, 'trial_count': 3,
         'generation_median_ns': statistics.median(row['measurement']['generation_ns'] for row in rows),
+        'generation_min_ns': min(row['measurement']['generation_ns'] for row in rows),
+        'generation_max_ns': max(row['measurement']['generation_ns'] for row in rows),
         'verification_median_ns': statistics.median(row['measurement']['verification_ns'] for row in rows),
         'process_wall_median_ns': statistics.median(row['process_wall_ns'] for row in rows),
         'memory_peak_median_bytes': statistics.median(row['memory_peak_bytes'] for row in rows),
         'memory_peak_max_bytes': max(row['memory_peak_bytes'] for row in rows),
+        'proof_bytes_min': min(row['measurement']['proof_bytes'] for row in rows),
         'proof_bytes_max': max(row['measurement']['proof_bytes'] for row in rows),
         'acceptance': False}
+
+
+def clean_cpu_limits(ancestry):
+    """Retain visible rate limits without exporting host cgroup paths."""
+    return [{'ancestor_level': index, 'cpu_max': row.get('cpu.max'),
+        'quota_cores': row.get('cpu_limit', {}).get('quota_cores')
+            if row.get('cpu_limit') else None}
+        for index, row in enumerate(ancestry)]
+
+
+def current_cpu_ancestry(helper):
+    mount = Path('/sys/fs/cgroup')
+    memberships = [line[3:] for line in Path('/proc/self/cgroup').read_text().splitlines()
+                   if line.startswith('0::')]
+    if len(memberships) != 1:
+        raise ValueError('Unified cgroup v2 membership required')
+    relative = Path(memberships[0])
+    if not relative.is_absolute() or '..' in relative.parts:
+        raise ValueError('Invalid current cgroup membership')
+    return helper.cpu_ancestry(mount / str(relative).lstrip('/'), mount)
+
+
+def qualify_and_record(output, profile):
+    """Keep a sanitized failure artifact when a hosted runner is not the baseline."""
+    helper = module('measure-proof-cgroup.py')
+    record = {'required_hardware_profile': profile, 'profile_qualified': False,
+        'reserved_reference_machine': False, 'acceptance': False}
+    try:
+        hardware, evidence = helper.qualify()
+        record.update(hardware=hardware, lscpu=evidence['lscpu_json'],
+                      lscpu_text=evidence['lscpu_text'])
+        record['qualification'] = helper.qualify_hardware_profile(hardware, profile)
+        ancestry = current_cpu_ancestry(helper)
+        record['visible_cpu_limits'] = clean_cpu_limits(ancestry)
+        helper.qualify_cpu_profile(ancestry, profile)
+        record['profile_qualified'] = True
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
+        record['failure'] = 'required-cpu-os-topology-or-cgroup-profile-unavailable'
+        record['classification'] = type(error).__name__
+        write_json(output / 'hardware-qualification.json', record)
+        print('Hardware qualification failed: requires Ubuntu 24.04 x86_64, AVX2, '
+              'and the requested CPU/topology profile with no visible CPU quota below four cores.',
+              file=sys.stderr)
+        return None
+    write_json(output / 'hardware-qualification.json', record)
+    return record
+
+
+def choose_wallet_fast(profile_results):
+    """Require all three four-worker trials to meet time; proof size is unrestricted."""
+    eligible = [row for row in profile_results if row['summary'].get('complete') is True
+        and row['summary']['generation_max_ns'] <= GENERATION_MAX_NS
+        and len(row['trials']) == 3 and all(trial.get('workers') == 4 for trial in row['trials'])]
+    return min(eligible, key=lambda row: (row['summary']['proof_bytes_max'],
+        row['summary']['generation_median_ns'], row['parameters']['log_blowup'],
+        row['parameters']['query_pow_bits'])) if eligible else None
 
 
 def collect(args):
@@ -311,11 +378,13 @@ def collect(args):
     args.output.mkdir(parents=True)
     screen = json.loads(args.screen.read_text())
     grids = {kind: profiles(screen, kind) for kind in ('transaction', 'settlement', 'issuance')}
-    helper = module('measure-proof-cgroup.py')
-    hardware, evidence = helper.qualify()
-    hardware_record = {'hardware': hardware, 'lscpu': evidence['lscpu_json'],
-        'lscpu_text': evidence['lscpu_text'], 'hardware_profile': 'github-hosted-diagnostic',
-        'reserved_reference_machine': False}
+    scan_mode = getattr(args, 'scan_mode', 'legacy')
+    hardware_profile = getattr(args, 'hardware_profile', 'diagnostic')
+    if scan_mode == 'wallet-fast' and hardware_profile != 'epyc7763-baseline':
+        raise ValueError('Wallet-fast scan requires the EPYC 7763 baseline profile')
+    hardware_record = qualify_and_record(args.output, hardware_profile)
+    if hardware_record is None:
+        return 1
     executable = args.executable.resolve(strict=True)
     worker = args.worker.resolve(strict=True)
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -335,6 +404,7 @@ def collect(args):
             config = {'uid': os.getuid(), 'gid': os.getgid(), 'unit': unit,
                 'kind': kind, 'parameters': profile['parameters'], 'workers': workers,
                 'trial': index, 'timeout': args.timeout, 'executable': str(executable),
+                'hardware_profile': hardware_profile,
                 'private_output': str(private / (stem + '-raw.json')),
                 'private_log': str(private / (stem + '.log')),
                 'result': str(private / (stem + '-result.json')), **identity}
@@ -358,6 +428,46 @@ def collect(args):
                 scopes_valid = False
             outcomes.append(result)
             return result
+
+        if scan_mode == 'wallet-fast':
+            profile_results = []
+            for coordinate in WALLET_FAST_GRID:
+                profile = grids['transaction'][coordinate]
+                if profile is None:
+                    profile_results.append({'coordinate': {'log_blowup': coordinate[0],
+                        'grinding': coordinate[1]}, 'parameters': None, 'security': None,
+                        'trials': [], 'summary': {'complete': False, 'trial_count': 0},
+                        'reason': 'no-security-passing-profile'})
+                    continue
+                rows = [trial('transaction', profile, 4, index) for index in range(1, 4)]
+                profile_results.append({'coordinate': {'log_blowup': coordinate[0],
+                    'grinding': coordinate[1]}, 'parameters': profile['parameters'],
+                    'security': profile['security'], 'trials': rows, 'summary': medians(rows)})
+            selected = choose_wallet_fast(profile_results)
+            summary = {'schema': 2, 'suite': SUITE, 'source_commit': commit,
+                'diagnostic_binary': 'native-scan', 'local_guard_alias': 'v1-transaction-scan',
+                'launcher_sha256': sha(executable), **identity,
+                'hardware': hardware_record, 'hardware_profile': hardware_profile,
+                'memory_max_bytes': MEMORY_MAX, 'memory_swap_max_bytes': 0,
+                'memory_boundary_is_miner_requirement': False,
+                'scan_mode': scan_mode, 'trial_count_per_profile': 3,
+                'rayon_workers': 4, 'hiding_workers': 2,
+                'selection_scope': 'all three four-worker generation trials at or below two seconds; smallest maximum measured proof body',
+                'legacy_524288_byte_cap_applied': False,
+                'generation_limit_ns': GENERATION_MAX_NS,
+                'profile_results': profile_results, 'candidate_selected': selected is not None,
+                'candidate_parameters': selected['parameters'] if selected else None,
+                'three_trial_target_met': selected is not None,
+                'candidate_rejected': selected is None,
+                'candidate_security': selected['security'] if selected else None,
+                'candidate_summary': selected['summary'] if selected else None,
+                'measurement_grid_complete': all(row['summary'].get('complete') for row in profile_results),
+                'scope_startup_complete': scopes_valid,
+                'proof_size_scope': 'observed serialized proof bodies; no deterministic maximum-length claim',
+                'verification_measurement': 'four-worker process verifier timing; not a single-worker verification benchmark',
+                'cryptographic_approval': False, 'network_activation': False, 'acceptance': False}
+            write_json(args.output / 'summary.json', summary)
+            return 0 if scopes_valid and summary['measurement_grid_complete'] else 1
 
         coordinates = GRID if args.grid_mode == 'full' else tuple((8, g) for g in (16, 20, 24))
         grid = []
@@ -427,11 +537,19 @@ def main():
     parser.add_argument('--screen', type=Path)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--private-parent', type=Path)
+    parser.add_argument('--scan-mode', choices=('legacy', 'wallet-fast'), default='legacy')
+    parser.add_argument('--hardware-profile', choices=HARDWARE_PROFILES, default='diagnostic')
+    parser.add_argument('--qualify-only', action='store_true')
     parser.add_argument('--grid-mode', choices=('full', 'b8-only'), default='full')
     parser.add_argument('--timeout', type=int, default=600)
     args = parser.parse_args()
     if args.worker_config:
         return record(json.loads(args.worker_config.read_text()))
+    if args.qualify_only:
+        if not args.output:
+            parser.error('output is required for qualification')
+        args.output.mkdir(parents=True, exist_ok=False)
+        return 0 if qualify_and_record(args.output, args.hardware_profile) else 1
     if not all((args.executable, args.worker, args.screen, args.output)) or args.timeout < 1:
         parser.error('executable, worker, screen, output and positive timeout are required')
     return collect(args)

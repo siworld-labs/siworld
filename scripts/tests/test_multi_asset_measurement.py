@@ -168,7 +168,7 @@ class MultiAssetMeasurementTests(unittest.TestCase):
                     'kind': cfg['kind'], 'trial': cfg['trial'], 'parameters': cfg['parameters']}
                 Path(cfg['result']).write_text(json.dumps(value))
                 return SimpleNamespace(returncode=0, stdout='')
-            with mock.patch.object(M, 'module', return_value=helper), \
+            with mock.patch.object(M, 'qualify_and_record', return_value={'profile_qualified': True}), \
                  mock.patch.object(M.subprocess, 'check_output', return_value='a' * 40), \
                  mock.patch.object(M.subprocess, 'run', side_effect=run_scope):
                 self.assertEqual(M.collect(args), 0)
@@ -192,6 +192,81 @@ class MultiAssetMeasurementTests(unittest.TestCase):
         self.assertFalse(M.medians(rows[:2])['complete'])
         rows[0]['resource_control_pass'] = False
         self.assertFalse(M.medians(rows)['complete'])
+
+    def test_wallet_fast_selection_ignores_old_cap_and_requires_every_trial_under_time(self):
+        def profile(size, times, b=5, g=20):
+            rows = [trial(size=size, elapsed=value) for value in times]
+            return {'parameters': params(b=b, g=g), 'trials': rows, 'summary': M.medians(rows)}
+        passing = profile(900000, (1_000_000_000, 1_100_000_000, 2_000_000_000))
+        median_only = profile(600000, (1_000_000_000, 1_100_000_000, 2_000_000_001))
+        slower_small = profile(800000, (1_900_000_000,) * 3, b=6)
+        self.assertIs(M.choose_wallet_fast([passing, median_only]), passing)
+        self.assertIs(M.choose_wallet_fast([passing, median_only, slower_small]), slower_small)
+        self.assertIsNone(M.choose_wallet_fast([median_only]))
+        incomplete = profile(1, (100,) * 3)
+        incomplete['trials'][0]['resource_control_pass'] = False
+        incomplete['summary'] = M.medians(incomplete['trials'])
+        self.assertIsNone(M.choose_wallet_fast([incomplete]))
+        single_worker = profile(1, (100,) * 3)
+        single_worker['trials'][0]['workers'] = 1
+        self.assertIsNone(M.choose_wallet_fast([single_worker]))
+
+    def test_wallet_fast_measures_exact_eight_profiles_three_times_with_no_size_filter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            screen_path = base / 'screen.json'; screen_path.write_text(json.dumps(screen()))
+            executable = base / 'launcher'; executable.write_bytes(b'launcher')
+            worker = base / 'worker'; worker.write_bytes(b'worker')
+            args = SimpleNamespace(output=base / 'output', screen=screen_path,
+                executable=executable, worker=worker, private_parent=base,
+                grid_mode='full', scan_mode='wallet-fast',
+                hardware_profile='epyc7763-baseline', timeout=5)
+            configs = []
+            def run_scope(command, **_):
+                cfg = json.loads(Path(command[command.index('--worker-config') + 1]).read_text())
+                configs.append(cfg)
+                value = {**trial(size=700000 + cfg['parameters']['log_blowup'],
+                    elapsed=1_500_000_000, workers=cfg['workers']), 'kind': cfg['kind'],
+                    'trial': cfg['trial'], 'parameters': cfg['parameters']}
+                Path(cfg['result']).write_text(json.dumps(value))
+                return SimpleNamespace(returncode=0, stdout='')
+            with mock.patch.object(M, 'qualify_and_record', return_value={'profile_qualified': True}), \
+                 mock.patch.object(M.subprocess, 'check_output', return_value='a' * 40), \
+                 mock.patch.object(M.subprocess, 'run', side_effect=run_scope):
+                self.assertEqual(M.collect(args), 0)
+            saved = json.loads((args.output / 'summary.json').read_text())
+            self.assertEqual(len(configs), 24)
+            self.assertEqual({(row['parameters']['log_blowup'], row['parameters']['query_pow_bits'])
+                for row in configs}, set(M.WALLET_FAST_GRID))
+            self.assertEqual({row['workers'] for row in configs}, {4})
+            self.assertEqual({row['kind'] for row in configs}, {'transaction'})
+            self.assertEqual({row['hardware_profile'] for row in configs}, {'epyc7763-baseline'})
+            self.assertTrue(saved['candidate_selected'])
+            self.assertFalse(saved['legacy_524288_byte_cap_applied'])
+            self.assertEqual(saved['candidate_parameters']['log_blowup'], 5)
+            self.assertEqual(saved['candidate_summary']['proof_bytes_max'], 700005)
+            self.assertEqual(len(saved['profile_results']), 8)
+            self.assertTrue(all(row['summary']['trial_count'] == 3 for row in saved['profile_results']))
+            self.assertFalse(saved['acceptance'])
+
+    def test_baseline_hardware_or_quota_failure_retains_sanitized_evidence(self):
+        for failure in ('hardware', 'quota'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                helper = mock.Mock()
+                helper.qualify.return_value = ({'cpu_model': 'AMD EPYC 7763'},
+                    {'lscpu_json': {'lscpu': []}, 'lscpu_text': 'synthetic'})
+                if failure == 'hardware':
+                    helper.qualify_hardware_profile.side_effect = ValueError('/private/owner')
+                else:
+                    helper.qualify_hardware_profile.return_value = {'profile_qualified': True}
+                    helper.qualify_cpu_profile.side_effect = ValueError('/private/owner')
+                with mock.patch.object(M, 'module', return_value=helper), \
+                     mock.patch.object(M, 'current_cpu_ancestry', return_value=[]):
+                    self.assertIsNone(M.qualify_and_record(Path(directory), 'epyc7763-baseline'))
+                saved = json.loads((Path(directory) / 'hardware-qualification.json').read_text())
+                self.assertFalse(saved['profile_qualified'])
+                self.assertEqual(saved['failure'], 'required-cpu-os-topology-or-cgroup-profile-unavailable')
+                self.assertNotIn('/private/owner', json.dumps(saved))
 
     def test_fresh_scope_keeps_exact_memory_boundary_and_calls_new_recorder(self):
         command = M.scope_command('siworld-native-' + 'a' * 32 + '.scope', Path('/synthetic/config'))
@@ -226,9 +301,11 @@ class MultiAssetMeasurementTests(unittest.TestCase):
             with mock.patch.object(M.os, 'geteuid', return_value=0), \
                  mock.patch.object(M, 'Path', side_effect=mapped), \
                  mock.patch.object(M.CG, 'scoped_group', return_value=base / 'scope'), \
+                 mock.patch.object(M, 'module') as helper, \
                  mock.patch.object(M.CG, 'snapshot', side_effect=[before, after]), \
                  mock.patch.object(M.CG, 'member_pids', return_value=set()), \
                  mock.patch.object(M.subprocess, 'Popen', return_value=process):
+                helper.return_value.cpu_ancestry.return_value = []
                 self.assertEqual(M.record(cfg), 0)
             result = json.loads((base / 'result.json').read_text())
             self.assertEqual(result['memory_events_delta']['oom_kill'], 1)

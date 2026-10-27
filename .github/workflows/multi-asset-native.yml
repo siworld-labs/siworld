@@ -3,19 +3,16 @@ name: Native multi-asset hosted diagnostics
 on:
   workflow_dispatch:
     inputs:
+      scan_mode:
+        description: Legacy diagnostics or CPU-qualified three-trial wallet-speed selection
+        type: choice
+        options: [legacy, wallet-fast]
+        default: wallet-fast
       grid_mode:
         description: Full requested grid, or a limited b8 plus conditional b9 diagnostic
         type: choice
         options: [full, b8-only]
         default: full
-  push:
-    branches: ["codex/v1-multi-asset"]
-    paths:
-      - ".github/workflows/multi-asset-native.yml"
-      - "crates/bench-multi-asset/**"
-      - "scripts/measure-multi-asset.py"
-      - "scripts/tests/test_multi_asset_measurement.py"
-      - ".cargo/config.toml"
 
 permissions:
   contents: read
@@ -34,10 +31,17 @@ jobs:
       RAYON_NUM_THREADS: 4
       SIWORLD_COMPOSITION_HIDING_WORKERS: 2
       GRID_MODE: ${{ inputs.grid_mode || 'full' }}
+      SCAN_MODE: ${{ inputs.scan_mode || 'legacy' }}
+      HARDWARE_PROFILE: ${{ inputs.scan_mode == 'wallet-fast' && 'epyc7763-baseline' || 'diagnostic' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Qualify the requested CPU profile before building or measuring
+        run: |
+          python3 scripts/measure-multi-asset.py --qualify-only \
+            --hardware-profile "$HARDWARE_PROFILE" \
+            --output .local/multi-asset-results/preflight
       - name: Install the repository toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
@@ -92,7 +96,7 @@ jobs:
               '-D', 'warnings', '-C', 'target-cpu=x86-64', '-o',
               str(target / 'bin/v1-transaction-scan')], check=True)
           output = Path('.local/multi-asset-results')
-          output.mkdir(parents=True)
+          output.mkdir(parents=True, exist_ok=True)
           (output / 'isa.json').write_text(json.dumps({
               'diagnostic_binary': 'native-scan', 'required_isa': 'x86-64-v3',
               'binary_sha256': inspected['binary_sha256'],
@@ -112,7 +116,9 @@ jobs:
             --worker .local/multi-asset-build/libexec/v1-transaction-scan \
             --screen .local/multi-asset-private/screen.json \
             --output .local/multi-asset-results/measurements \
-            --grid-mode "$GRID_MODE"
+            --grid-mode "$GRID_MODE" \
+            --scan-mode "$SCAN_MODE" \
+            --hardware-profile "$HARDWARE_PROFILE"
       - name: Retain an explicit outcome on build or scope failure
         if: ${{ always() }}
         env:
@@ -126,6 +132,9 @@ jobs:
           output.mkdir(parents=True, exist_ok=True)
           (output / 'workflow-status.json').write_text(json.dumps({
               'job_status_before_upload': os.environ['JOB_STATUS'],
+              'scan_mode': os.environ['SCAN_MODE'],
+              'required_hardware_profile': os.environ['HARDWARE_PROFILE'],
+              'hardware_qualification_present': (output / 'preflight/hardware-qualification.json').is_file(),
               'measurement_summary_present': (output / 'measurements/summary.json').is_file(),
               'diagnostic_memory_max_bytes': 5368709120,
               'diagnostic_swap_max_bytes': 0,
