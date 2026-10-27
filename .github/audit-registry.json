@@ -6,7 +6,7 @@
       "id": "proof-composition",
       "area": "proofs",
       "status": "planned",
-      "scope": "Native D8 transaction and confidential-fee settlement AIRs, pinned Plonky3-recursion D8/W24 modifications, random-codeword PCS, scalar witness buses, challenger and MMCS geometry, suite/artifact identity, enforced query/batch grinding, full/prepared verifier transcript equivalence, opt-in two-worker hiding and its RNG use, application ciphertext/fee binding, recursive aggregation and pinned verifier artifacts.",
+      "scope": "Native D8 transaction and confidential-fee settlement AIRs, pinned Plonky3-recursion D8/W24 modifications, random-codeword PCS, scalar witness buses, challenger and MMCS geometry, suite/artifact identity, enforced query/batch grinding, full/prepared verifier transcript equivalence, opt-in two-worker hiding and its RNG use, application ciphertext/fee binding, bounded native proof decoding and canonical snapshot admission, recursive aggregation and pinned verifier artifacts.",
       "excluded": [
         "unmodified upstream Plonky3",
         "unmodified upstream Plonky3-recursion"
@@ -46,7 +46,7 @@
       "id": "post-quantum-integration",
       "area": "cryptography",
       "status": "planned",
-      "scope": "SIWORLD integration of ML-KEM-768, ML-DSA-65, key lifecycle, encoding, authorization and downgrade boundaries.",
+      "scope": "SIWORLD integration of ML-KEM-768, ML-DSA-65, sender output self-checks, selective payment receipts, genuine padding encryption, key lifecycle, encoding, authorization and downgrade boundaries.",
       "excluded": [
         "unmodified upstream ML-KEM",
         "unmodified upstream ML-DSA"
@@ -54,7 +54,8 @@
       "implementation_paths": [
         "crates/crypto",
         "crates/node",
-        "docs/protocol.md"
+        "docs/protocol.md",
+        "crates/bench-d8/src/encryption.rs"
       ],
       "report": null,
       "accepted_commit": null,

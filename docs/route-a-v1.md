@@ -64,8 +64,8 @@ for ownership, note commitments, input membership, nullifiers, conservation,
 value ranges, output rho and unlock heights. It is a reusable starting point,
 not the completed production transaction relation. Its accumulator leaf exposes
 fee limbs and delegates recent-root membership to a parent relation. Moving
-that path into a native transaction proof does not resolve private fee
-settlement or root-snapshot lifetime.
+that path into a native transaction proof still requires private fee settlement
+and enforcement of the selected canonical snapshot lifetime.
 
 The existing relation binds a ciphertext digest but does not constrain ML-KEM
 encapsulation coins or shared secrets, the sender change secret/KDF, AEAD keys,
@@ -75,6 +75,28 @@ openings. Public-data mutation tests establish substitution resistance only.
 Native stateful nullifier checks, bounded decoding, wallet erasure and transport
 source privacy also remain separate requirements. Iterative code and test
 milestones do not establish complete AIR coverage or production acceptance.
+
+### Isolated implementation boundary
+
+The native experiment includes a prepared proof-shape decoder that validates
+canonical fields, fixed vector dimensions, FRI paths and complete byte
+consumption before dependency deserialization. The body limit is 524,288 bytes;
+a separate 4-MiB declared-vector budget bounds requested payloads and vector
+headers, not process RSS. Structural acceptance always requires subsequent
+cryptographic verification against the locally reconstructed statement.
+
+The canonical snapshot pool resolves trusted roots, checks proofs, reserves both
+nullifiers and applies atomic expiry/reorganization eviction. Its caller still
+validates canonical blocks, enforces reorganization depth and confirmed-state
+conflicts, and supplies authoritative refill history. Integration into the node,
+outer relay-envelope bounds and byte/CPU/in-flight quotas remain incomplete.
+
+Wallet helpers authenticate both constructed outputs before returning a checked
+pair, retain a zeroizing per-payment opening and generate genuine ephemeral-key
+padding ciphertexts. The diagnostic scanner exercises those helpers with
+synthetic notes and temporary keys. Durable protected receipt storage,
+recoverable change-key management, receipt disclosure controls and the wallet
+broadcast path remain integration requirements.
 
 ## Fixed transaction relation
 
@@ -99,23 +121,42 @@ network/suite/format identity, transaction public-data binding and any fee
 settlement binding required by the final design. It does not expose the
 individual anchor entry or path.
 
-### Root lifetime is an open design issue
+### Canonical snapshot lifetime
 
-Updating a recent-root tree changes its root even while an individual anchor
-remains in its 4,096-leaf window. A proof tied to one root does not become a
-proof for the next root automatically. Reusing the current parent/grandparent
-root allowance would make a relayed transaction expire after approximately two
-blocks, even if its anchor is still retained.
+Accept the newest 4,096 canonical-chain snapshots, inclusive: the snapshot
+4,095 blocks behind the tip is accepted; the one 4,096 blocks behind it is
+rejected. At the 300-second target the window spans approximately 14.22 days.
+This is a deterministic block-based rule, not a wall-clock timeout. A proof
+selects a snapshot by canonical block identity; the verifier resolves the
+recent-root-tree root from trusted chain state before verifying the proof.
+A root supplied by a peer is not a trust source. The public-data digest binds
+the selected height and 32-byte block identity with explicit domain and presence
+framing. The verifier reconstructs that context from its canonical selection;
+same-root replacement snapshots still require a new proof. This changes the
+statement values, not the AIR columns or path depth.
 
-Before freezing the AIR, specify a deterministic accepted-root window, how the
-proof envelope identifies its root snapshot, and how admission, inclusion,
-reorgs and expiry use that window. Specify wallet reproof/rebroadcast behavior
-when a snapshot expires, including nullifier reservations. A retained root
-must commit to valid consensus state and a valid fee schedule. Accepting an
-arbitrary public root supplied by a peer is invalid. Larger root windows have
-storage, fee-staleness and replay consequences that require explicit review.
-The final codec and capacity calculation must include any root-snapshot fields
-that are not amortized by block or proof context.
+The accepted snapshot window and the tree's 4,096 anchor leaves are separate
+bounds. The existing depth-12 AIR path is unchanged. Since an accepted older
+snapshot contains older anchors, the combined boundary can admit an anchor
+8,190 blocks behind the live tip, approximately 28.44 days. Fee schedules are
+committed by the anchor entry and may have corresponding staleness. Capacity,
+fee-policy and wallet-expiry analysis must include this effect.
+
+On expiry or reorganization, remove unavailable snapshot identities and evict
+all pending transactions referencing them; release their nullifier reservations
+and return a reproof condition to the wallet. Do not silently reinterpret an
+old identity as a replacement at the same height. A shorter-chain reorganization
+may require previously expired snapshots to refill the window from authoritative
+canonical history; incomplete history fails closed. Validation and historical
+replay use the snapshot window at the candidate block's canonical parent, not
+the current live window. Reproof uses fresh proof randomness and the canonical
+transaction/nullifier conflict rules.
+
+Root selectors and any unamortized envelope bytes remain outside the
+1,790-byte public-body ledger and must be counted in relay/admission budgets.
+Tests must accept the 4,096th-newest snapshot, reject the 4,097th, reject orphaned
+identities, preserve state on invalid chain replacement and evict affected
+pending transactions atomically.
 
 ### Fee settlement and padding privacy: Scheme B V1 direction
 
@@ -188,13 +229,35 @@ prevents substitution after proving, but does not prove that the ciphertext
 encrypts the corresponding valid output note. Recipient-side tag verification
 and rebuilt-commitment checking remain necessary.
 
-The required meaning of ciphertext/output binding must be fixed before AIR
-freeze: either retain public-data substitution resistance and explicitly leave
-sender-created undecryptable outputs outside the proven relation, or implement
-a complete encryption-correctness relation with its additional witness,
-constraints and cost. AEAD associated data alone must not be described as
-node-verifiable encryption correctness. This distinction affects the AIR scan,
-auditing scope and proof-generation target.
+V1 selects public-data substitution resistance. Complete ML-KEM and
+ChaCha20-Poly1305 encryption correctness is outside the AIR and remains future
+research. AEAD associated data must not be described as node-verifiable
+encryption correctness. The recipient verifies the tag, decodes the note and
+recomputes its output commitment before accepting a payment.
+
+Before broadcast, the sender must decrypt and check both locally constructed
+outputs and compare the recovered note commitments. For the recipient output,
+the sender uses the shared secret obtained during encapsulation; it does not
+possess or require the recipient's private decapsulation key. A failed self-check
+must not produce a broadcastable transaction. Retain per-payment encapsulation
+coins and the bound recipient/context in protected wallet storage so a selective
+payment receipt can reproduce the KEM ciphertext and validate the opened note.
+Do not publish or log receipts, coins or plaintexts. Receipt disclosure reveals
+that payment and is not an anonymity-preserving public record. Never disclose
+wallet master or change-secret material as a receipt.
+
+Padding outputs must execute actual ML-KEM encryption against a fresh valid
+ephemeral public key and the same change-encryption algorithm. Do not substitute
+random bytes for a ciphertext. Test recipient decryption and commitment checking,
+self-check failure before broadcast, receipt mismatch rejection, and identical
+public lengths and encoding for real and padding outputs. Equal format is not
+an independent indistinguishability proof.
+
+Consensus verifies the byte-bound spend/value relation without an AEAD key.
+A sender-created encryption error can make that output unusable for its intended
+recipient, while the transaction remains subject to the same commitment,
+conservation and nullifier checks. It does not make ciphertext decryptability a
+consensus rule or cause unrelated state to become invalid.
 
 ## Public-data codec target
 
@@ -364,7 +427,7 @@ They are conditional planning ranges, not delivery commitments.
 
 | Milestone | Work | Estimate | Exit condition |
 | --- | --- | ---: | --- |
-| M1 | Evaluate the research fee-settlement candidate, resolve root-snapshot lifetime and encryption-correctness scope, and freeze the exact byte ledger | 3–6 days | Reviewed, internally consistent relation and codec specification; unresolved choices block AIR freeze |
+| M1 | Evaluate the research fee-settlement candidate, enforce the selected 4,096-snapshot policy and V1 byte-binding boundary, and freeze the exact byte ledger | 3–6 days | Reviewed, internally consistent relation and codec specification; unresolved choices block AIR freeze |
 | M2 | Native D8/W24/12 transaction AIR, trace, two-input/two-output constraints and test-first rejection matrix | 8–14 days | Native proof generation/verification and rejection tests pass with extracted actual shapes |
 | M3 | Actual-AIR security scan and three-trial byte/time/memory measurements; limits and capacity report | 3–6 days | Eligible smallest-proof configuration and bounded production codecs selected, or infeasibility reported |
 | M4 | Node/block integration design: admission, grouping, filler lifecycle, compact relay, reorgs, retention and checkpoint/archives | 3–5 days, parallel | Interfaces, trust assumptions, budgets and test plan reviewed; no implementation in this scope |

@@ -56,7 +56,11 @@ F = Poseidon2_fee_v1(
 
 `transaction_binding` is the digest of the canonical 1,742-byte public
 transaction data and the fixed proof context. `anchor_snapshot` identifies
-the accepted recent-root snapshot and its fee schedule. The domain tag,
+the accepted canonical recent-root snapshot and its fee schedule. Accept only
+the newest 4,096 canonical snapshots; remove orphaned or expired snapshots and
+evict affected pending transactions for wallet reproof. This window is separate
+from the depth-12 anchor tree and may accept correspondingly older fee schedules.
+Historical replay uses the window at the block being validated. The domain tag,
 field-limb order, padding, and transcript framing are fixed before an AIR
 freeze. The chosen D8/W24/12-element suite is used for this relation; a
 separate hash circuit must not be introduced implicitly.

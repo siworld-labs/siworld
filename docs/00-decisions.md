@@ -21,6 +21,45 @@ selected screen; all future parameter changes must retain at least 80 bits.
 The [collision ledger](bht-security-accounting.md) distinguishes raw classical
 reports from quantum model conversions and application hashes.
 
+## Root snapshots and output-encryption boundary
+
+Accept the newest 4,096 canonical-chain snapshots of the recent-root tree.
+The newest snapshot has age zero; age 4,095 is accepted and age 4,096 is
+rejected. At the 300-second target this is approximately 14.22 days. A snapshot
+is selected by canonical block identity and resolved to a locally trusted root;
+a peer-supplied root is never authoritative. Bind the snapshot height and block
+identity into the existing public-data digest, so a proof cannot be reused under
+a replacement identity even if its tree root is identical. Remove noncanonical
+snapshots on reorganization. Evict pending transactions that reference an expired or removed
+snapshot, release their nullifier reservations, and require wallet reproof.
+Historical validation uses the canonical snapshot window at the block being
+validated, rather than the live tip or elapsed wall time.
+
+This retention window is distinct from the depth-12 recent-root tree, which
+already contains 4,096 anchor entries. The existing AIR depth remains unchanged.
+Allowing older tree snapshots also permits anchors older than the current
+anchor ring: at the full boundary an anchor may be 8,190 blocks behind the tip.
+Fee-schedule staleness and snapshot metadata storage must account for both
+windows. Reorganizations that shorten the chain require authoritative history
+to refill the accepted window; missing history fails closed.
+
+V1 proves ciphertext-byte binding, not ML-KEM or ChaCha20 encryption correctness.
+The AIR binds every encoded ciphertext byte through the public-data digest.
+The recipient verifies AEAD authentication and reconstructs the note commitment.
+The sender must locally open and check both outputs before broadcast, using the
+payment encapsulation secret for the recipient output, and retain per-payment
+encapsulation randomness in protected wallet storage for selective payment
+receipts. Receipts are private disclosures, never public transaction fields or
+logs; they must not reveal a wallet master or change secret.
+
+Padding uses actual ML-KEM encryption to a fresh valid ephemeral recipient key,
+plus the same fixed-format change encryption. Random byte padding is forbidden.
+Real and padding outputs share lengths and codecs. These checks do not prove
+computational indistinguishability. A malicious sender can still prove a
+byte-bound, undecryptable output: it is unusable by its recipient, but does not
+change the consensus value-conservation or spend-validity relation. Complete
+encryption-correctness circuits remain future research.
+
 ## Capacity and resource boundaries
 
 The block target is 300 seconds with 64 through 576 positions in groups of 16.

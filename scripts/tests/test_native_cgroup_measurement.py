@@ -83,13 +83,26 @@ class NativeCgroupTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CG.assess(before, after, 0, False, set())
 
+    def test_missing_or_invalid_kernel_events_fail_closed(self):
+        for stage in ('before', 'after'):
+            for event in CG.EVENTS:
+                before, after = self.counters(), self.counters()
+                del (before if stage == 'before' else after)['memory.events'][event]
+                with self.subTest(stage=stage, event=event), self.assertRaises(ValueError):
+                    CG.assess(before, after, 0, False, set())
+        for wrong in (-1, True, '0'):
+            before, after = self.counters(), self.counters()
+            after['memory.events']['oom'] = wrong
+            with self.subTest(value=wrong), self.assertRaises(ValueError):
+                CG.assess(before, after, 0, False, set())
+
     def test_kernel_readback_cannot_silently_drop_limit_or_oom_protection(self):
         with tempfile.TemporaryDirectory() as temporary:
             group = Path(temporary)
             files = {'memory.max': str(CG.MEMORY_MAX), 'memory.swap.max': '0',
                      'memory.oom.group': '0', 'memory.peak': '1000', 'memory.current': '500',
-                     'memory.swap.current': '0', 'memory.events': 'oom 0\n',
-                     'memory.events.local': 'oom 0\n', 'cpu.stat': 'usage_usec 1\n',
+                     'memory.swap.current': '0', 'memory.events': 'max 0\noom 0\noom_kill 0\noom_group_kill 0\n',
+                     'memory.events.local': 'max 0\noom 0\noom_kill 0\noom_group_kill 0\n', 'cpu.stat': 'usage_usec 1\n',
                      'cpu.max': 'max 100000'}
             for name, value in files.items():
                 (group / name).write_text(value)

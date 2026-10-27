@@ -87,11 +87,12 @@ not a production-readiness claim. Cryptographic review duration is separate.
 
 ## Production freeze dependencies
 
-A passing resource diagnostic does not resolve the transaction relation's open
-root-snapshot lifetime or ciphertext/output-encryption semantics. The current
-scanner deliberately emits `actual_production_air=false` and
+A passing resource diagnostic does not complete node integration of the selected
+4,096-canonical-snapshot policy, checked wallet outputs or bounded untrusted-proof
+admission. The isolated implementations are described in the native specification.
+The current scanner deliberately emits `actual_production_air=false` and
 `production_selection_allowed=false`; these flags may change only after the
-corresponding [relation and codec gates](route-a-v1.md) are resolved and tested.
+corresponding [relation and codec gates](route-a-v1.md) are implemented and tested.
 
 The 524,288-byte wire maximum is selected independently of that freeze.
 Mempool byte/CPU/in-flight limits need deterministic decoding bounds, the final

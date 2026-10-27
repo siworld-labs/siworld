@@ -15,8 +15,10 @@ pub mod fee_settlement;
 pub mod fee_settlement_air;
 #[cfg(feature = "phase-profile")]
 pub mod profile;
+pub mod proof_codec;
 #[cfg(feature = "security-report")]
 pub mod security;
+pub mod snapshots;
 pub mod trace;
 pub mod transaction;
 

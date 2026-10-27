@@ -94,6 +94,8 @@ and imports no retained notes or proofs. See the
 | Suite | KoalaBear D8, standard Plonky3 Poseidon2 W24, 12-base-element (48-byte) digests |
 | Security screening | Classical conjectured at least 128 bits; every Fiat–Shamir Johnson term, including queries and enforced grinding, at least 80 bits after quantum halving; challenge-domain terms at least 80 bits after halving; BHT commitment collision resistance at least 80 bits |
 | Anchor | Depth-12 recent-root membership checked inside the transaction AIR; only the recent-root tree root is public |
+| Snapshot acceptance | Newest 4,096 canonical-chain tree snapshots; reject expired/orphaned identities and evict affected pending transactions for wallet reproof |
+| Output-encryption boundary | V1 byte binding; sender self-check before broadcast, private per-payment receipt material, recipient AEAD/commitment checks; padding uses real ephemeral-key ML-KEM encryption |
 | Fee tiers | Reward-linked standard and four-times-standard priority; Scheme B confidential settlement is selected for evaluation and remains a production gate ([design](fee-settlement.md), [evaluation](fee-settlement-evaluation.md)) |
 | Public-data encoding | 1,742-byte body plus 48-byte confidential fee commitment (1,790 bytes); sidecar and envelope additional |
 | Change encryption | ChaCha20-Poly1305 with a 256-bit key and domain-separated BLAKE3 derivation |
@@ -104,10 +106,10 @@ and imports no retained notes or proofs. See the
 | Production parameter choice | Smallest eligible proof with four-core generation at most two seconds, measured on the actual AIR |
 
 Nodes verify proofs on mempool admission. Blocks use compact references and
-public transaction data without duplicating proof bodies. Root-snapshot expiry,
-private fee collection, public-data substitution resistance versus encryption
-correctness, and the complete fee/proof/envelope byte ledger are blocking design
-questions. The [fee-settlement design](fee-settlement.md) is selected for
+public transaction data without duplicating proof bodies. The selected snapshot
+and byte-binding requirements still need node/wallet integration. Private fee
+collection, bounded proof decoding and the complete fee/proof/envelope byte
+ledger remain production gates. The [fee-settlement design](fee-settlement.md) is selected for
 evaluation, not an activated rule; its [evaluation gate](fee-settlement-evaluation.md)
 must pass first. A keyless public node cannot authenticate an
 AEAD tag. None of these proposed properties may be described as implemented

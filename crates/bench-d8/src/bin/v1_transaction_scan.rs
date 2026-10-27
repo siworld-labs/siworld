@@ -1,8 +1,9 @@
 //! Native transaction-AIR security screening and isolated proof diagnostics.
 //!
-//! The native relation is executable, but its production statement and fee
-//! privacy policy are not frozen. Every output therefore remains ineligible
-//! for production parameter selection. No node, chain, keys or sockets are used.
+//! The native relation is executable, with canonical-root admission and
+//! checked wallet encryption selected for V1. Final admission/resource
+//! validation and the immutable artifact bundle remain freeze gates. No
+//! retained node, chain, deployment key or socket is used by this diagnostic.
 
 #[cfg(not(feature = "security-report"))]
 fn main() {
@@ -25,9 +26,14 @@ mod native {
     use sha2::{Digest as _, Sha256};
     use siworld_d8_checkpoint_experiment::{
         Cfg, FriParams,
-        codec::{ProofContext, PublicTransaction},
+        codec::{PROOF_CONTEXT_SCHEMA, ProofContext, PublicTransaction},
         common::{F, FEE_BASE, Hasher, acc_witnesses, sample_slot},
-        encryption::{ChangeCiphertext, PaymentCiphertext},
+        encryption::{
+            EncryptionContext, OutputPairCiphertexts, RecipientViewKey, SenderChangeSecret,
+            check_output_pair_before_broadcast, encrypt_change, encrypt_payment_with_opening,
+        },
+        proof_codec::ProofShape,
+        snapshots::SnapshotId,
         transaction::{TransactionAir, TransactionProver},
     };
     use std::collections::BTreeMap;
@@ -39,6 +45,10 @@ mod native {
     const SUITE: &str = "KoalaBear-D8-Poseidon2-W24-digest12";
     const SCOPE: &str = "v1-native-transaction-diagnostic";
     const ACCOUNTING: &str = "single-proof-johnson-halving-bht-v1";
+    const DIAGNOSTIC_SNAPSHOT: SnapshotId = SnapshotId {
+        height: 1000,
+        block_id: [10; 32],
+    };
 
     /// The application hashes encoded ciphertext bytes outside the AIR. This
     /// annotation is separate from the raw p3-security PCS report and does not
@@ -105,13 +115,20 @@ mod native {
         Ok(json!({"schema":1,"scope":SCOPE,"suite":SUITE,
             "actual_production_air":false,"air_version":"native-transaction-v1-draft",
             "codec_version":"transaction-public-v1-draft","parameters":params_json(p),
+            "proof_context_schema":PROOF_CONTEXT_SCHEMA,
+            "snapshot_binding":"height-le64-and-block-id-in-public-data-digest",
+            "snapshot_identity_source":"fixed-synthetic-diagnostic",
             "air_source_sha256":sha(&source()),
             "codec_sha256":sha(include_bytes!("../codec.rs")),
+            "proof_admission_codec_sha256":sha(include_bytes!("../proof_codec.rs")),
+            "wallet_encryption_sha256":sha(include_bytes!("../encryption.rs")),
+            "canonical_snapshot_policy_sha256":sha(include_bytes!("../snapshots.rs")),
             "dependencies_sha256":sha(include_bytes!("../../Cargo.lock")),
             "binary_sha256":sha(&binary),"machine_id":machine,
             "application_binding":application_binding(),
-            "production_blockers":["settlement proof and witness-delivery policy are not frozen",
-                "root freshness and output-encryption relation scope require review"],
+            "production_blockers":["node admission and bounded proof-codec integration require final validation",
+                "qualified resource evidence and immutable artifact freeze bundle require acceptance",
+                "cryptographic review remains outstanding"],
             "cryptographic_approval":false,"network_activation":false}))
     }
 
@@ -291,28 +308,53 @@ mod native {
         let cpu = effective_cpu_max(&group)?;
         let start = Instant::now();
         let prover = TransactionProver::new(p);
+        let proof_shape = ProofShape::from_trusted(&prover.air, &prover.vk, &prover.cfg)
+            .map_err(|e| e.to_string())?;
         let setup_ns = start.elapsed().as_nanos();
         let mut witness = acc_witnesses(vec![sample_slot(61, false)], 1000, FEE_BASE, 62)
             .0
             .remove(0);
-        let fields = witness.slot.public_inputs(&Hasher::new());
+        let hasher = Hasher::new();
+        let fields = witness.slot.public_inputs(&hasher);
+        let notes = [
+            witness.slot.output_note(&hasher, &fields.nf, 0),
+            witness.slot.output_note(&hasher, &fields.nf, 1),
+        ];
+        let recipient = RecipientViewKey::generate(notes[0].owner)
+            .map_err(|e| format!("payment view key: {e:?}"))?;
+        let sender = SenderChangeSecret::generate().map_err(|e| format!("change secret: {e:?}"))?;
+        let encryption_context = EncryptionContext::new([9; 32]);
+        let (payment, payment_opening) =
+            encrypt_payment_with_opening(&recipient.address(), &notes[0], &encryption_context)
+                .map_err(|e| format!("payment encryption: {e:?}"))?;
+        let change = encrypt_change(&sender, &notes[1], &encryption_context)
+            .map_err(|e| format!("change encryption: {e:?}"))?;
+        let checked = check_output_pair_before_broadcast(
+            OutputPairCiphertexts {
+                commitments: fields.cm_out,
+                payment,
+                change,
+            },
+            &notes,
+            &recipient.address(),
+            &payment_opening,
+            &sender,
+            &encryption_context,
+        )
+        .map_err(|e| format!("output pair validation: {e:?}"))?;
         let public = PublicTransaction {
             nf: fields.nf,
-            cm: fields.cm_out,
-            payment: PaymentCiphertext {
-                kem_ciphertext: [1; 1088],
-                body: [2; 208],
-                tag: [3; 16],
-                view_tag: 4,
-            },
-            change: ChangeCiphertext {
-                nonce: [5; 12],
-                body: [6; 208],
-                tag: [7; 16],
-                view_tag: 8,
-            },
+            cm: *checked.commitments(),
+            payment: checked.payment().clone(),
+            change: checked.change().clone(),
         };
-        let context = ProofContext::new([9; 32]);
+        // A synthetic fixed canonical identity is sufficient for this isolated
+        // diagnostic; real admission resolves it from the canonical snapshot pool.
+        let context = ProofContext::for_snapshot(
+            [9; 32],
+            DIAGNOSTIC_SNAPSHOT.height,
+            DIAGNOSTIC_SNAPSHOT.block_id,
+        );
         let wire = public.encode();
         let decoded = PublicTransaction::decode(&wire).map_err(|e| format!("codec: {e:?}"))?;
         witness = decoded
@@ -325,8 +367,7 @@ mod native {
             .map_err(|e| e.to_string())?
             .len();
         let proof_body = postcard::to_allocvec(&proof).map_err(|e| e.to_string())?;
-        let proof = postcard::from_bytes::<p3_uni_stark::Proof<Cfg>>(&proof_body)
-            .map_err(|e| e.to_string())?;
+        let proof = proof_shape.decode(&proof_body).map_err(|e| e.to_string())?;
         let fields = witness.slot.public_inputs(&Hasher::new());
         if statement
             != decoded.statement(

@@ -15,6 +15,10 @@ pub const FORMAT_VERSION: u16 = 1;
 pub const SUITE_ID: &[u8] = b"siworld-native-d8-w24-12-v1";
 /// A stable descriptor of this isolated codec, not a registered consensus suite.
 pub const CODEC_SCHEMA: &str = "native-v1:le32-canonical-koalabear:nf[2][48]:cm[2][48]:kem768[1088]:payment[208]:change[208]:tags[2][16]:change_nonce[12]:view_tags[2]";
+/// Snapshot context changes the derived statement, not the fixed public encoding.
+pub const PROOF_CONTEXT_SCHEMA: &str =
+    "native-v1:network[32]:suite:version:canonical-snapshot[presence:u8,height:le64,block-id:32]";
+const SNAPSHOT_CONTEXT_DOMAIN: &[u8] = b"siworld native transaction canonical snapshot v1";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CodecError {
@@ -30,19 +34,41 @@ pub enum CodecError {
 pub struct ProofContext {
     pub network: [u8; 32],
     version: u16,
+    snapshot: Option<(u64, [u8; 32])>,
 }
 impl ProofContext {
+    /// Unbound context for isolated fixtures. Canonical transaction admission
+    /// must select a snapshot identity with `bind_snapshot` before verification.
     pub fn new(network: [u8; 32]) -> Self {
         Self {
             network,
             version: FORMAT_VERSION,
+            snapshot: None,
         }
+    }
+    pub fn for_snapshot(network: [u8; 32], height: u64, block_id: [u8; 32]) -> Self {
+        Self::new(network).bind_snapshot(height, block_id)
+    }
+    /// Replace any supplied snapshot binding with the verifier's selected
+    /// canonical identity. This method does not establish canonical membership.
+    pub fn bind_snapshot(&self, height: u64, block_id: [u8; 32]) -> Self {
+        Self {
+            snapshot: Some((height, block_id)),
+            ..*self
+        }
+    }
+    pub fn snapshot(&self) -> Option<(u64, [u8; 32])> {
+        self.snapshot
     }
     pub fn from_version(network: [u8; 32], version: u16) -> Result<Self, CodecError> {
         if version != FORMAT_VERSION {
             return Err(CodecError::UnsupportedVersion);
         }
-        Ok(Self { network, version })
+        Ok(Self {
+            network,
+            version,
+            snapshot: None,
+        })
     }
     pub fn version(&self) -> u16 {
         self.version
@@ -128,14 +154,22 @@ impl PublicTransaction {
         })
     }
 
-    /// Bind the entire fixed encoding and trusted network/suite context. This
-    /// digest is converted to bounded 16-bit AIR limbs by the transaction AIR.
+    /// Bind the fixed encoding, network/suite and canonical snapshot identity.
+    /// The separate presence byte distinguishes an unbound fixture from the
+    /// all-zero snapshot. Height is little-endian u64, followed by 32 block-ID
+    /// bytes. This digest uses the existing AIR limbs; no columns are added.
     pub fn ciphertext_digest(&self, context: &ProofContext) -> [u8; 32] {
         let mut hash = blake3::Hasher::new_derive_key("siworld native transaction public data v1");
         hash.update(&(SUITE_ID.len() as u16).to_le_bytes());
         hash.update(SUITE_ID);
         hash.update(&context.version.to_le_bytes());
         hash.update(&context.network);
+        hash.update(&(SNAPSHOT_CONTEXT_DOMAIN.len() as u16).to_le_bytes());
+        hash.update(SNAPSHOT_CONTEXT_DOMAIN);
+        hash.update(&[u8::from(context.snapshot.is_some())]);
+        let (height, block_id) = context.snapshot.unwrap_or((0, [0; 32]));
+        hash.update(&height.to_le_bytes());
+        hash.update(&block_id);
         hash.update(&self.encode());
         *hash.finalize().as_bytes()
     }
@@ -301,6 +335,68 @@ mod tests {
             tx.bind_witness(&w, &ctx),
             Err(CodecError::WitnessMismatch)
         ));
+    }
+
+    #[test]
+    fn snapshot_presence_and_all_identity_bytes_change_the_statement_digest() {
+        let (tx, _, unbound) = fixture();
+        let height = 0x0123_4567_89ab_cdefu64;
+        let block_id = [17; 32];
+        let bound = ProofContext::for_snapshot(unbound.network, height, block_id);
+        assert_eq!(unbound.snapshot(), None);
+        assert_eq!(bound.snapshot(), Some((height, block_id)));
+        assert_eq!(unbound.bind_snapshot(height, block_id), bound);
+        assert_ne!(tx.ciphertext_digest(&unbound), tx.ciphertext_digest(&bound));
+        // Presence is bound even when every identity byte is zero.
+        assert_ne!(
+            tx.ciphertext_digest(&unbound),
+            tx.ciphertext_digest(&ProofContext::for_snapshot(unbound.network, 0, [0; 32]),)
+        );
+        for byte in 0..40 {
+            let mut changed_height = height.to_le_bytes();
+            let mut changed_id = block_id;
+            if byte < 8 {
+                changed_height[byte] ^= 1;
+            } else {
+                changed_id[byte - 8] ^= 1;
+            }
+            let changed = bound.bind_snapshot(u64::from_le_bytes(changed_height), changed_id);
+            assert_ne!(
+                tx.ciphertext_digest(&bound),
+                tx.ciphertext_digest(&changed),
+                "snapshot byte {byte}"
+            );
+        }
+        assert_eq!(tx.encode().len(), PUBLIC_TRANSACTION_BYTES);
+    }
+
+    #[test]
+    fn orphan_proof_cannot_be_reused_with_an_identical_root_snapshot() {
+        let (tx, witness, base_context) = fixture();
+        let original = base_context.bind_snapshot(19, [21; 32]);
+        let same_height_fork = base_context.bind_snapshot(19, [22; 32]);
+        let later_snapshot = base_context.bind_snapshot(20, [21; 32]);
+        let witness = tx.bind_witness(&witness, &original).unwrap();
+        let prover = TransactionProver::new(crate::FriParams::fast());
+        let (proof, statement) = prover.prove(&witness);
+        let root = witness.anchors_root(&Hasher::new());
+        let fields = witness.slot.public_inputs(&Hasher::new());
+        assert_eq!(
+            statement,
+            tx.statement(&original, &fields.fee_commit, &root)
+        );
+        tx.verify(&prover, &proof, &original, &fields.fee_commit, &root)
+            .unwrap();
+        for changed in [same_height_fork, later_snapshot, base_context] {
+            assert!(
+                tx.verify(&prover, &proof, &changed, &fields.fee_commit, &root)
+                    .is_err()
+            );
+            assert_eq!(
+                tx.statement(&changed, &fields.fee_commit, &root).len(),
+                statement.len()
+            );
+        }
     }
 
     #[test]

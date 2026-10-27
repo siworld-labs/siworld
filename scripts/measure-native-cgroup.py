@@ -104,12 +104,22 @@ def scoped_group(membership, unit, mount=Path('/sys/fs/cgroup')):
     return group
 
 
+def validate_events(counters):
+    if not isinstance(counters, dict) or not set(EVENTS).issubset(counters):
+        raise ValueError('Incomplete kernel memory event counters')
+    for value in counters.values():
+        if type(value) is not int or value < 0:
+            raise ValueError('Invalid kernel memory event counter')
+
+
 def snapshot(group):
     names = ('memory.max', 'memory.swap.max', 'memory.oom.group', 'memory.peak',
              'memory.current', 'memory.swap.current')
     data = {name: int((group / name).read_text().strip()) for name in names}
     for name in ('memory.events', 'memory.events.local', 'cpu.stat'):
         data[name] = read_numbers(group / name)
+    for name in ('memory.events', 'memory.events.local'):
+        validate_events(data[name])
     data['cpu.max'] = (group / 'cpu.max').read_text().strip()
     if data['memory.max'] != MEMORY_MAX or data['memory.swap.max'] != 0:
         raise ValueError('Systemd memory limit readback mismatch')
@@ -121,6 +131,8 @@ def snapshot(group):
 
 
 def assess(before, after, exit_code, timed_out, remaining):
+    validate_events(before['memory.events'])
+    validate_events(after['memory.events'])
     delta = {key: after['memory.events'].get(key, 0) - before['memory.events'].get(key, 0)
              for key in set(before['memory.events']) | set(after['memory.events'])}
     if any(value < 0 for value in delta.values()):

@@ -1,6 +1,6 @@
 //! Fixed-format wallet encryption for the experimental native D8 transaction.
 //!
-//! Authentication and commitment reconstruction require the output key holder.
+//! Output owners and senders authenticate plaintext and reconstruct commitments.
 //! Public ciphertext binding does not prove encryption correctness inside the AIR.
 
 use crate::common::{Digest, F, Hasher, Note, felt_from_canonical};
@@ -163,19 +163,13 @@ impl RecipientViewKey {
         context.check()?;
         let kem = MlKem768Ciphertext::from(&ciphertext.kem_ciphertext);
         let shared_secret = Zeroizing::new(mlkem768::decapsulate(&self.private_key, &kem));
-        if view_tag(PAYMENT_VIEW_DOMAIN, &shared_secret) != ciphertext.view_tag {
-            return Err(EncryptionError::Authentication);
-        }
-        let key = derive_secret(PAYMENT_KEY_DOMAIN, shared_secret.as_ref());
-        let mut plaintext = Zeroizing::new(ciphertext.body);
-        open(
-            &key,
-            &[0; 12],
-            &aad(context, PAYMENT_INDEX, commitment),
-            &mut plaintext,
-            &ciphertext.tag,
-        )?;
-        decode_note(self.address.owner, commitment, &plaintext)
+        decrypt_payment_with_shared_secret(
+            self.address.owner,
+            commitment,
+            ciphertext,
+            context,
+            &shared_secret,
+        )
     }
 }
 
@@ -227,12 +221,89 @@ impl fmt::Debug for SenderChangeSecret {
     }
 }
 
-/// Fresh OS encapsulation coins provide a new payment secret for the zero nonce.
+/// A single payment's encapsulation coins, retained privately for a receipt.
+///
+/// Disclosing this opening reveals the payment plaintext to its holder. It does
+/// not establish address ownership or transaction inclusion. Wallet persistence
+/// and receipt transport are outside this experimental helper's scope.
+#[must_use = "V1 real-wallet payment openings must be persisted securely before broadcast"]
+pub struct PaymentEncryptionOpening([u8; 32]);
+
+impl PaymentEncryptionOpening {
+    /// The caller owns erasure of any source copy used to construct this value.
+    pub fn from_encapsulation_coins(coins: [u8; 32]) -> Self {
+        Self(coins)
+    }
+
+    /// Explicit disclosure for one selected payment, never a wallet master key.
+    pub fn expose_encapsulation_coins(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// Rebuild the KEM ciphertext, authenticate and reconstruct the public note.
+    pub fn verify_payment(
+        &self,
+        address: &PaymentAddress,
+        commitment: &Digest,
+        ciphertext: &PaymentCiphertext,
+        context: &EncryptionContext,
+    ) -> Result<Note, EncryptionError> {
+        context.check()?;
+        let (expected, shared_secret) =
+            mlkem768::encapsulate(&MlKem768PublicKey::from(&address.encapsulation_key), self.0);
+        let shared_secret = Zeroizing::new(shared_secret);
+        if expected.as_slice() != &ciphertext.kem_ciphertext {
+            return Err(EncryptionError::Authentication);
+        }
+        decrypt_payment_with_shared_secret(
+            address.owner,
+            commitment,
+            ciphertext,
+            context,
+            &shared_secret,
+        )
+    }
+}
+
+impl Zeroize for PaymentEncryptionOpening {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+impl Drop for PaymentEncryptionOpening {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+impl ZeroizeOnDrop for PaymentEncryptionOpening {}
+impl fmt::Debug for PaymentEncryptionOpening {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PaymentEncryptionOpening(REDACTED)")
+    }
+}
+
+/// Lower-level discard-opening helper for padding and test fixtures.
+/// V1 real-wallet payments must use `encrypt_payment_with_opening` and persist
+/// the opening in protected wallet storage before broadcasting the transaction.
 pub fn encrypt_payment(
     address: &PaymentAddress,
     note: &Note,
     context: &EncryptionContext,
 ) -> Result<PaymentCiphertext, EncryptionError> {
+    encrypt_payment_with_opening(address, note, context).map(|(ciphertext, _)| ciphertext)
+}
+
+/// Fresh OS coins produce a new payment key for the fixed zero nonce.
+/// The sender uses the encapsulation secret to check the full plaintext and
+/// reconstructed commitment before any ciphertext is returned for publication.
+/// V1 real-wallet callers must persist the returned opening in protected wallet
+/// storage and run `check_output_pair_before_broadcast` on the completed pair.
+/// These helpers do not implement storage or transaction broadcasting.
+pub fn encrypt_payment_with_opening(
+    address: &PaymentAddress,
+    note: &Note,
+    context: &EncryptionContext,
+) -> Result<(PaymentCiphertext, PaymentEncryptionOpening), EncryptionError> {
     context.check()?;
     if address.owner != note.owner {
         return Err(EncryptionError::OwnerMismatch);
@@ -251,12 +322,23 @@ pub fn encrypt_payment(
         &aad(context, PAYMENT_INDEX, &commitment),
         &mut body,
     )?;
-    Ok(PaymentCiphertext {
+    let ciphertext = PaymentCiphertext {
         kem_ciphertext: *kem_ciphertext.as_slice(),
         body: *body,
         tag,
         view_tag: view_tag(PAYMENT_VIEW_DOMAIN, &shared_secret),
-    })
+    };
+    decrypt_payment_with_shared_secret(
+        address.owner,
+        &commitment,
+        &ciphertext,
+        context,
+        &shared_secret,
+    )?;
+    Ok((
+        ciphertext,
+        PaymentEncryptionOpening::from_encapsulation_coins(*coins),
+    ))
 }
 
 pub fn encrypt_change(
@@ -276,12 +358,14 @@ pub fn encrypt_change(
         &aad(context, CHANGE_INDEX, &commitment),
         &mut body,
     )?;
-    Ok(ChangeCiphertext {
+    let ciphertext = ChangeCiphertext {
         nonce,
         body: *body,
         tag,
         view_tag: view_tag(CHANGE_VIEW_DOMAIN, &key),
-    })
+    };
+    decrypt_change(secret, note.owner, &commitment, &ciphertext, context)?;
+    Ok(ciphertext)
 }
 
 pub fn decrypt_change(
@@ -301,6 +385,172 @@ pub fn decrypt_change(
         &key,
         &ciphertext.nonce,
         &aad(context, CHANGE_INDEX, commitment),
+        &mut plaintext,
+        &ciphertext.tag,
+    )?;
+    decode_note(owner, commitment, &plaintext)
+}
+
+/// A fully built output pair that has not passed the final local encryption check.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutputPairCiphertexts {
+    pub commitments: [Digest; 2],
+    pub payment: PaymentCiphertext,
+    pub change: ChangeCiphertext,
+}
+
+/// An immutable pair authenticated under the supplied wallet keys and context.
+/// This establishes local encryption consistency, not proof or ledger validity.
+#[must_use = "Use the checked output pair when constructing the broadcast transaction"]
+pub struct CheckedOutputPair {
+    pair: OutputPairCiphertexts,
+    context: EncryptionContext,
+}
+
+impl CheckedOutputPair {
+    pub fn commitments(&self) -> &[Digest; 2] {
+        &self.pair.commitments
+    }
+
+    pub fn payment(&self) -> &PaymentCiphertext {
+        &self.pair.payment
+    }
+
+    pub fn change(&self) -> &ChangeCiphertext {
+        &self.pair.change
+    }
+
+    pub fn context(&self) -> &EncryptionContext {
+        &self.context
+    }
+}
+
+/// Check the completed pair after construction and before the broadcast stage.
+/// Both supplied notes must reconstruct their commitments; payment and change
+/// must authenticate and reconstruct those same commitments under this context.
+/// Only immutable checked fields are returned. Wallet opening persistence is a
+/// separate mandatory precondition that this in-memory helper cannot enforce.
+pub fn check_output_pair_before_broadcast(
+    pair: OutputPairCiphertexts,
+    notes: &[Note; 2],
+    address: &PaymentAddress,
+    opening: &PaymentEncryptionOpening,
+    change_secret: &SenderChangeSecret,
+    context: &EncryptionContext,
+) -> Result<CheckedOutputPair, EncryptionError> {
+    context.check()?;
+    let hasher = Hasher::new();
+    if notes.each_ref().map(|note| hasher.note_cm(note)) != pair.commitments {
+        return Err(EncryptionError::CommitmentMismatch);
+    }
+    opening.verify_payment(address, &pair.commitments[0], &pair.payment, context)?;
+    decrypt_change(
+        change_secret,
+        notes[1].owner,
+        &pair.commitments[1],
+        &pair.change,
+        context,
+    )?;
+    Ok(CheckedOutputPair {
+        pair,
+        context: *context,
+    })
+}
+
+/// Private witness data with the same public encryption fields as other outputs.
+/// This type is not a transaction encoder or an empty-transaction proof builder.
+pub struct DummyOutputEncryption {
+    pub notes: [Note; 2],
+    pub payment: PaymentCiphertext,
+    pub change: ChangeCiphertext,
+}
+
+/// Create genuine encryption to fresh throwaway keys, never random ciphertext
+/// padding. The caller supplies output rhos derived by the transaction relation
+/// and remains responsible for its input nullifiers and proof.
+pub fn encrypt_dummy_outputs(
+    rhos: [Digest; 2],
+    context: &EncryptionContext,
+) -> Result<DummyOutputEncryption, EncryptionError> {
+    context.check()?;
+    let hasher = Hasher::new();
+    let recipient = RecipientViewKey::generate(hasher.owner(&random_digest()?))?;
+    let change_owner = hasher.owner(&random_digest()?);
+    let change_secret = SenderChangeSecret::generate()?;
+    encrypt_dummy_outputs_to(
+        &recipient.address(),
+        change_owner,
+        &change_secret,
+        rhos,
+        context,
+    )
+}
+
+fn encrypt_dummy_outputs_to(
+    address: &PaymentAddress,
+    change_owner: Digest,
+    change_secret: &SenderChangeSecret,
+    rhos: [Digest; 2],
+    context: &EncryptionContext,
+) -> Result<DummyOutputEncryption, EncryptionError> {
+    context.check()?;
+    let notes = [
+        Note {
+            owner: address.owner,
+            value: 0,
+            unlock_height: 0,
+            rho: rhos[0],
+            rseed: random_digest()?,
+        },
+        Note {
+            owner: change_owner,
+            value: 0,
+            unlock_height: 0,
+            rho: rhos[1],
+            rseed: random_digest()?,
+        },
+    ];
+    let payment = encrypt_payment(address, &notes[0], context)?;
+    let change = encrypt_change(change_secret, &notes[1], context)?;
+    Ok(DummyOutputEncryption {
+        notes,
+        payment,
+        change,
+    })
+}
+
+fn random_digest() -> Result<Digest, EncryptionError> {
+    let mut digest = [F::default(); 12];
+    let mut bytes = Zeroizing::new([0u8; 4]);
+    for field in &mut digest {
+        loop {
+            getrandom::fill(bytes.as_mut()).map_err(|_| EncryptionError::Entropy)?;
+            if let Some(value) = felt_from_canonical(u32::from_le_bytes(*bytes)) {
+                *field = value;
+                break;
+            }
+        }
+    }
+    Ok(digest)
+}
+
+fn decrypt_payment_with_shared_secret(
+    owner: Digest,
+    commitment: &Digest,
+    ciphertext: &PaymentCiphertext,
+    context: &EncryptionContext,
+    shared_secret: &[u8; 32],
+) -> Result<Note, EncryptionError> {
+    context.check()?;
+    if view_tag(PAYMENT_VIEW_DOMAIN, shared_secret) != ciphertext.view_tag {
+        return Err(EncryptionError::Authentication);
+    }
+    let key = derive_secret(PAYMENT_KEY_DOMAIN, shared_secret);
+    let mut plaintext = Zeroizing::new(ciphertext.body);
+    open(
+        &key,
+        &[0; 12],
+        &aad(context, PAYMENT_INDEX, commitment),
         &mut plaintext,
         &ciphertext.tag,
     )?;
@@ -491,6 +741,263 @@ mod tests {
     }
 
     #[test]
+    fn sender_checks_payment_and_retains_a_single_payment_opening() {
+        let recipient = RecipientViewKey::generate(digest(1)).unwrap();
+        let address = recipient.address();
+        let original_note = note(address.owner());
+        let commitment = Hasher::new().note_cm(&original_note);
+        let (ciphertext, opening) =
+            encrypt_payment_with_opening(&address, &original_note, &context()).unwrap();
+
+        // The sender can reconstruct the note without the recipient's view key.
+        drop(recipient);
+        let recovered = opening
+            .verify_payment(&address, &commitment, &ciphertext, &context())
+            .unwrap();
+        assert_note_eq(&original_note, &recovered);
+
+        // Export is explicit and reveals only this payment's encapsulation coins.
+        let exported = Zeroizing::new(*opening.expose_encapsulation_coins());
+        let disclosed = PaymentEncryptionOpening::from_encapsulation_coins(*exported);
+        assert_note_eq(
+            &original_note,
+            &disclosed
+                .verify_payment(&address, &commitment, &ciphertext, &context())
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn payment_opening_rejects_reuse_and_changed_public_data() {
+        let recipient = RecipientViewKey::generate(digest(1)).unwrap();
+        let address = recipient.address();
+        let original_note = note(address.owner());
+        let commitment = Hasher::new().note_cm(&original_note);
+        let (ciphertext, opening) =
+            encrypt_payment_with_opening(&address, &original_note, &context()).unwrap();
+        let (second, second_opening) =
+            encrypt_payment_with_opening(&address, &original_note, &context()).unwrap();
+        assert!(
+            opening
+                .verify_payment(&address, &commitment, &second, &context())
+                .is_err()
+        );
+        assert!(
+            second_opening
+                .verify_payment(&address, &commitment, &ciphertext, &context())
+                .is_err()
+        );
+        let mut wrong_coins = Zeroizing::new(*opening.expose_encapsulation_coins());
+        wrong_coins[0] ^= 1;
+        assert!(
+            PaymentEncryptionOpening::from_encapsulation_coins(*wrong_coins)
+                .verify_payment(&address, &commitment, &ciphertext, &context())
+                .is_err()
+        );
+        let mut changed = ciphertext.clone();
+        changed.kem_ciphertext[0] ^= 1;
+        assert!(
+            opening
+                .verify_payment(&address, &commitment, &changed, &context())
+                .is_err()
+        );
+        changed = ciphertext.clone();
+        changed.body[0] ^= 1;
+        assert!(
+            opening
+                .verify_payment(&address, &commitment, &changed, &context())
+                .is_err()
+        );
+        changed = ciphertext.clone();
+        changed.tag[0] ^= 1;
+        assert!(
+            opening
+                .verify_payment(&address, &commitment, &changed, &context())
+                .is_err()
+        );
+        changed = ciphertext.clone();
+        changed.view_tag ^= 1;
+        assert!(
+            opening
+                .verify_payment(&address, &commitment, &changed, &context())
+                .is_err()
+        );
+        assert!(
+            opening
+                .verify_payment(&address, &digest(9), &ciphertext, &context())
+                .is_err()
+        );
+        assert!(
+            opening
+                .verify_payment(
+                    &address,
+                    &commitment,
+                    &ciphertext,
+                    &EncryptionContext::new([12; 32]),
+                )
+                .is_err()
+        );
+        let wrong_recipient = RecipientViewKey::generate(address.owner()).unwrap();
+        assert!(
+            opening
+                .verify_payment(
+                    &wrong_recipient.address(),
+                    &commitment,
+                    &ciphertext,
+                    &context()
+                )
+                .is_err()
+        );
+        let wrong_owner = PaymentAddress::new(digest(2), *address.encapsulation_key()).unwrap();
+        assert!(
+            opening
+                .verify_payment(&wrong_owner, &commitment, &ciphertext, &context())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn prebroadcast_pair_check_rejects_changes_after_encryption() {
+        let recipient = RecipientViewKey::generate(digest(1)).unwrap();
+        let address = recipient.address();
+        let notes = [note(address.owner()), note(digest(2))];
+        let commitments = notes.each_ref().map(|note| Hasher::new().note_cm(note));
+        let change_secret = SenderChangeSecret::generate().unwrap();
+        let (payment, opening) =
+            encrypt_payment_with_opening(&address, &notes[0], &context()).unwrap();
+        let change = encrypt_change(&change_secret, &notes[1], &context()).unwrap();
+        let pair = OutputPairCiphertexts {
+            commitments,
+            payment,
+            change,
+        };
+        let check = |pair, notes: &[Note; 2], context: &EncryptionContext| {
+            check_output_pair_before_broadcast(
+                pair,
+                notes,
+                &address,
+                &opening,
+                &change_secret,
+                context,
+            )
+        };
+        let checked = check(pair.clone(), &notes, &context()).unwrap();
+        assert_eq!(checked.commitments(), &pair.commitments);
+        assert_eq!(checked.payment(), &pair.payment);
+        assert_eq!(checked.change(), &pair.change);
+        assert_eq!(checked.context(), &context());
+
+        for index in 0..2 {
+            let mut changed = pair.clone();
+            if index == PAYMENT_INDEX as usize {
+                changed.payment.body[0] ^= 1;
+            } else {
+                changed.change.body[0] ^= 1;
+            }
+            assert!(check(changed, &notes, &context()).is_err());
+            let mut changed = pair.clone();
+            if index == PAYMENT_INDEX as usize {
+                changed.payment.tag[0] ^= 1;
+            } else {
+                changed.change.tag[0] ^= 1;
+            }
+            assert!(check(changed, &notes, &context()).is_err());
+            let mut changed = pair.clone();
+            changed.commitments[index][0] += F::ONE;
+            assert!(check(changed, &notes, &context()).is_err());
+            let mut wrong_notes = notes.clone();
+            wrong_notes[index].value += 1;
+            assert!(check(pair.clone(), &wrong_notes, &context()).is_err());
+        }
+        assert!(check(pair.clone(), &notes, &EncryptionContext::new([12; 32])).is_err());
+        let mut unsupported = context();
+        unsupported.version += 1;
+        assert!(check(pair.clone(), &notes, &unsupported).is_err());
+        assert!(
+            check_output_pair_before_broadcast(
+                pair,
+                &notes,
+                &address,
+                &opening,
+                &SenderChangeSecret::generate().unwrap(),
+                &context(),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn dummy_outputs_use_valid_encryption_and_the_same_public_format() {
+        use crate::codec::PublicTransaction;
+
+        let recipient = RecipientViewKey::generate(digest(1)).unwrap();
+        let change_secret = SenderChangeSecret::generate().unwrap();
+        let rhos = [digest(7), digest(8)];
+        let dummy = encrypt_dummy_outputs_to(
+            &recipient.address(),
+            digest(2),
+            &change_secret,
+            rhos,
+            &context(),
+        )
+        .unwrap();
+        let commitments = dummy
+            .notes
+            .each_ref()
+            .map(|note| Hasher::new().note_cm(note));
+        for (index, note) in dummy.notes.iter().enumerate() {
+            assert_eq!(note.value, 0);
+            assert_eq!(note.rho, rhos[index]);
+        }
+        assert_note_eq(
+            &dummy.notes[0],
+            &recipient
+                .decrypt_payment(&commitments[0], &dummy.payment, &context())
+                .unwrap(),
+        );
+        assert_note_eq(
+            &dummy.notes[1],
+            &decrypt_change(
+                &change_secret,
+                dummy.notes[1].owner,
+                &commitments[1],
+                &dummy.change,
+                &context(),
+            )
+            .unwrap(),
+        );
+
+        let real_note = note(recipient.address().owner());
+        let real = PublicTransaction {
+            nf: [digest(3), digest(4)],
+            cm: [Hasher::new().note_cm(&real_note); 2],
+            payment: encrypt_payment(&recipient.address(), &real_note, &context()).unwrap(),
+            change: encrypt_change(&change_secret, &real_note, &context()).unwrap(),
+        };
+        let dummy_public = PublicTransaction {
+            nf: real.nf,
+            cm: commitments,
+            payment: dummy.payment,
+            change: dummy.change,
+        };
+        assert_eq!(real.encode().len(), dummy_public.encode().len());
+        assert_eq!(PublicTransaction::decode(&real.encode()).unwrap(), real);
+        assert_eq!(
+            PublicTransaction::decode(&dummy_public.encode()).unwrap(),
+            dummy_public,
+        );
+
+        // Fresh throwaway keys and note seeds are used by the public helper.
+        let first = encrypt_dummy_outputs(rhos, &context()).unwrap();
+        let second = encrypt_dummy_outputs(rhos, &context()).unwrap();
+        assert_ne!(first.notes[0].owner, second.notes[0].owner);
+        assert_ne!(first.notes[1].owner, second.notes[1].owner);
+        assert_ne!(first.notes[0].rseed, second.notes[0].rseed);
+        assert_ne!(first.payment.kem_ciphertext, second.payment.kem_ciphertext);
+        assert_ne!(first.change.nonce, second.change.nonce);
+    }
+
+    #[test]
     fn every_public_encryption_field_is_authenticated() {
         let recipient = RecipientViewKey::generate(digest(1)).unwrap();
         let original_note = note(recipient.address().owner());
@@ -668,6 +1175,7 @@ mod tests {
         fn erased_on_drop<T: zeroize::ZeroizeOnDrop>() {}
         erased_on_drop::<RecipientViewKey>();
         erased_on_drop::<SenderChangeSecret>();
+        erased_on_drop::<PaymentEncryptionOpening>();
         let mut recipient = RecipientViewKey::generate(digest(1)).unwrap();
         assert_eq!(format!("{recipient:?}"), "RecipientViewKey(REDACTED)");
         recipient.zeroize();
@@ -676,6 +1184,15 @@ mod tests {
         assert_eq!(format!("{sender:?}"), "SenderChangeSecret(REDACTED)");
         sender.zeroize();
         assert!(sender.0.iter().all(|byte| *byte == 0));
+        let mut opening = PaymentEncryptionOpening::from_encapsulation_coins([7; 32]);
+        assert_eq!(format!("{opening:?}"), "PaymentEncryptionOpening(REDACTED)");
+        opening.zeroize();
+        assert!(
+            opening
+                .expose_encapsulation_coins()
+                .iter()
+                .all(|byte| *byte == 0)
+        );
     }
 
     #[test]
