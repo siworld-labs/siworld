@@ -40,13 +40,22 @@ standalone-verifier or sustained-load qualification.
 
 ## Reproduce the public keys
 
-Use the pinned Rust toolchain and Python 3.11 or newer. On Linux x86_64, the
-repository release baseline requires AVX2 and operating-system AVX state support.
+Use the pinned Rust toolchain and Python 3.11 or newer. The commands below
+target Linux x86_64, where the repository release baseline requires AVX2 and
+operating-system AVX state support. Compile the CPU admission checker directly
+with the generic x86-64 baseline, independently of Cargo target flags. It must
+succeed before running any optimized executable; unsupported hardware or AVX
+state support is rejected with exit status 78.
 These commands prepare an isolated manifest with paths to unchanged native
 sources; they do not modify the dependency checkout or generate transaction
 proofs. Use a new local output directory for each reproduction:
 
 ```sh
+set -eu
+mkdir -p .local/native-profiles
+rustc scripts/prover-launcher.rs --edition=2021 -O -D warnings \
+  -C target-cpu=x86-64 -o .local/native-profiles/cpu-check
+.local/native-profiles/cpu-check --check-cpu
 python3 scripts/check-native-proof-profiles.py \
   --check crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json
 python3 scripts/check-native-proof-profiles.py \
@@ -84,6 +93,11 @@ profile deliberately, build the existing native crate and use separate new
 output files:
 
 ```sh
+set -eu
+mkdir -p .local/native-profiles
+rustc scripts/prover-launcher.rs --edition=2021 -O -D warnings \
+  -C target-cpu=x86-64 -o .local/native-profiles/cpu-check
+.local/native-profiles/cpu-check --check-cpu
 cargo build --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml \
   --features security-report --bin native-scan
 RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
