@@ -1,5 +1,7 @@
 # D8 Parameter Planning Screen
 
+> **Paused V2 research.** Recursive aggregation and historical proof compression are outside native V1. These experimental parameters, timings and resource limits do not qualify the [current V1 route](../v1-overview.md).
+
 Status: experimental planning candidates conditional on estimated shapes and
 specified transcript sites. These tables are not approved parameters or actual
 D8 circuit reports. The isolated D8 suite has passing primitive, opening-batch

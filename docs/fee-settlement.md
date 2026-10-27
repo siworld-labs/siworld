@@ -6,7 +6,10 @@ native, non-recursive transaction route. The direction is selected for V1, but
 it is not an activated consensus rule. The multi-asset transaction profile is
 [engineering-frozen](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
 at b7/q41/g20 with a 655,360-byte transaction body cap. Settlement remains an
-independent b8/q36/g20 relation with its own 524,288-byte body cap. Its isolated
+independent b8/q36/g20 relation with its own 524,288-byte body cap. The
+[source-bound relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+engineering-freezes exactly 576 positions and the public preprocessing key;
+other capacity keys need separate identities. Its isolated
 AIR constrains the reward asset to SI and uses the five-block asset-bound note
 commitment. See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md).
 Independent review and node integration remain activation gates, and the
@@ -22,8 +25,10 @@ codec implement this shape; the earlier two-output code is an unchanged
 baseline. Real and padding transactions use the same public byte length and the
 same proof envelope shape. A real transaction commits either the standard or
 priority fee; a padding transaction commits zero. The commitment, rather than
-the fee amount, is the only fee value exposed on chain, so the two cases remain
-indistinguishable from public data.
+the fee amount, is the on-chain fee field. Its hiding and the uniform encoding
+are intended to limit fee-based classification; they do not by themselves
+establish computational indistinguishability. Sidecar recipients learn fee
+openings, and producers recognize their own padding.
 
 The settlement mechanism must meet four requirements:
 

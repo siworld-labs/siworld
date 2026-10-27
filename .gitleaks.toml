@@ -1,0 +1,11 @@
+title = "SIWORLD publication secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Exact public Cargo dependency identifiers, not a credential"
+condition = "AND"
+paths = ['''(^|/)Cargo\.lock$''']
+regexTarget = "match"
+regexes = ['''^libcrux-secrets",(?:\s|\\n)*"libcrux-sha3"$''']

@@ -1,9 +1,11 @@
 # Commitment and Proof Composition Tree Separation
 
+> **Paused V2 research.** Recursive aggregation and historical proof compression are outside native V1. These experimental parameters, timings and resource limits do not qualify the [current V1 route](../v1-overview.md).
+
 Status: paused V2 recursive research, isolated circuit prototype and design
-evaluation. Native V1 uses [separate acceptance criteria](prover-acceptance.md). No new root key,
+evaluation. Native V1 uses [separate acceptance criteria](../prover-acceptance.md). No new root key,
 consensus format or parameter suite is activated. The node retains the binary
-tree specified in [Protocol Decisions](protocol.md). D4 q42/q92/B results
+tree specified in [Protocol Decisions](../legacy/protocol.md). D4 q42/q92/B results
 below are historical method evidence. B is no longer a parameter candidate:
 D4/W16 does not meet the selected post-quantum requirements. The selected
 D8/W24/12-element target requires new security reports and measurements.
@@ -357,7 +359,7 @@ leaf verifier's query count changes both the eight-input circuit and the root
 circuit that verifies it, despite retaining q92 output-proof parameters.
 
 No recursive production proof-process budget is selected. The
-[current native V1 acceptance plan](prover-acceptance.md) does not adopt this
+[current native V1 acceptance plan](../prover-acceptance.md) does not adopt this
 experiment memory ceiling or timing boundary. Uniform q92's observed physical footprint exceeded
 5 GiB; this historical value is unchanged. Those uncapped D4 observations do
 not establish compliance with any subsequently selected hard limit. The next

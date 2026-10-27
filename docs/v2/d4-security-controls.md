@@ -1,5 +1,7 @@
 # D4 Soundness Controls
 
+> **Paused V2 research.** Recursive aggregation and historical proof compression are outside native V1. These experimental parameters, timings and resource limits do not qualify the [current V1 route](../v1-overview.md).
+
 Status: reproducible experimental analysis, not parameter approval.
 `security-report` is an opt-in benchmark feature excluded from node defaults.
 It pins `p3-security = 0.9.0-rc.2` and extracts actual leaf and recursive table

@@ -55,7 +55,7 @@ so it cannot support a matched performance claim. Configuration, tree capacity,
 query count, CPU allocation, cold setup and online proof time must be explicit.
 Recursive D8 checkpoint work is paused V2 research. Its historical experimental
 ceiling and leaf/merge/root timing do not set native V1 requirements.
-See [proof composition](proof-composition.md) for that research scope.
+See [proof composition](v2/proof-composition.md) for that research scope.
 
 ## Native V1 resource qualification
 

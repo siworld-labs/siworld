@@ -64,8 +64,10 @@ private values must never enter public logs or chain data.
 The transaction identity is a domain-separated BLAKE3 digest of the canonical
 statement: network, suite, snapshot identity, public body and fee commitment.
 It excludes the proof length, proof randomness and sidecar. A new proof for the
-same statement therefore preserves the identity. A verification cache also
-keys on the proof digest and locally trusted verifier identity; statement
+same statement therefore preserves the identity. The native block codec must
+order these identities strictly ascending and reject equal IDs. This is an
+M1 (N1) requirement; no native block/list ordering validator is implemented.
+A verification cache also keys on the proof digest and locally trusted verifier identity; statement
 identity alone cannot authenticate a replacement proof.
 
 The proposed maximum envelope plus sidecar is **657,622 bytes** before stream
@@ -329,7 +331,7 @@ are separate N8/N9 work, for a combined planning range of 42–71 days.
 
 | Milestone | Work | Estimate | Exit condition |
 | --- | --- | ---: | --- |
-| N1 | Versioned block/public-record codec and common producer/validator transition | 4–7 days | Groups, counts, fee settlement, integer bounds and atomic rejection tests pass |
+| M1 (N1) | Versioned block/public-record codec, strict proof-independent BLAKE3 statement-ID ordering and common producer/validator transition | 4–7 days | Groups, counts, swapped/duplicate ID rejection, proof/sidecar-independent identity, fee settlement, integer bounds and atomic rejection tests pass |
 | N2 | Admission service, isolated verifier workers, quotas and padding proof pool | 4–7 days | Byte accounting, adversarial decode, exhaustion, expiry and reorg tests pass |
 | N3 | Compact inventories, bounded missing-data recovery and block reconstruction | 3–5 days | Collision/missing-data/reconnect tests and full-capacity relay measurement pass |
 | N4 | Three-day proof retention, permanent public-data backup and explicit-trust checkpoint bootstrap | 4–7 days | Recovery/pruning tests and verified checkpoint-plus-PoW synchronization pass |

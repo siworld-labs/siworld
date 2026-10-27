@@ -1,45 +1,61 @@
 # Technical Documentation
 
-Start with [the technical overview](whitepaper.md), [architecture](architecture.md) and [protocol](protocol.md). [Cryptography](cryptography.md) covers proof binding; [the security model](security-model.md) defines observer and deployment boundaries.
+Three fixed native V1 proof relations are engineering-frozen: two-input/three-
+output transaction, 576-position settlement and three-initial-note issuance.
+Their source-bound keys and security reports are reproducible; execution
+remains inside an isolated proof workspace.
+The complete native node, wallet and network path remains integration work.
+Independent review and public testnet acceptance are outstanding.
 
-Operational interfaces are in [node operations](node-operations.md) and [RPC and recovery](rpc.md). Validation is in [testing](testing.md), measurement in [benchmarks](benchmarks.md), and implementation invariants in [development](development.md).
+## Native V1
 
-Experimental [proof composition](proof-composition.md), local [worker control](worker-control.md) and [memory measurement budgets](memory-budgets.md) describe the implemented boundaries and remaining acceptance work.
+1. [System overview](v1-overview.md): selected design, implementation status and trust boundaries.
+2. [Current decisions](00-decisions.md): authoritative requirements and freeze scope.
+3. [Architecture](architecture.md), [protocol](protocol.md), [cryptography](cryptography.md) and [security model](security-model.md).
+4. [Transaction specification](route-a-v1.md), [multi-asset relation](v1-multi-asset.md) and [confidential fee settlement](fee-settlement.md).
+5. [Three-relation freeze reproduction](native-proof-profiles.md), [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json) and [actual-instance measurements](v1-multi-asset-evaluation.md).
+6. [Node/network milestones](v1-node-network-plan.md) and [testnet acceptance](prover-acceptance.md).
 
-The paused V2 [D8/W24 recursive suite](d8-w24-recursion.md) and its
-[recursive security scope](proof-security-review.md) are research references,
-not the native V1 launch criteria.
-[D4 control analysis](d4-security-controls.md) explains why legacy timings do
-not qualify the selected suite.
+## Proof implementation and measurement
 
-[Conditional D8 parameter screening](d8-parameter-screen.md) lists estimated
-shapes and unimplemented grinding requirements. [Linux measurement](linux-proof-measurement.md)
-defines the process-tree resource-control method.
+- [Native proof workspace](../crates/bench-multi-asset/README.md): transaction, issuance and settlement relations and reproducible checks.
+- [Collision accounting](bht-security-accounting.md), [dependency patch](d8-dependency-patch.md) and [settlement evaluation](fee-settlement-evaluation.md).
+- [Measurement procedure](benchmarks.md), [Linux resource measurement](linux-proof-measurement.md) and [memory accounting](memory-budgets.md).
+- [Circuit optimization](multi-asset-air-optimization.md): separate experimental work that does not change frozen parameters.
 
-The selected [native V1 transaction route](route-a-v1.md) and
-[confidential fee settlement](fee-settlement.md) define the implemented native
-relations and codecs. The [two-output engineering baseline](../crates/bench-d8/artifacts/v1-native-freeze.json)
-remains unchanged. The [multi-asset transaction engineering profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-binds its own parameters, source hashes, public verifier key, actual-instance
-security report and qualified three-trial measurements. Native node decoding,
-admission and wallet/network integration, independent review and activation
-remain separate gates.
-The [node and network plan](v1-node-network-plan.md) covers bounded admission,
-compact relay, retention, synchronization and hybrid transport.
-[Native V1 acceptance](prover-acceptance.md) defines the current release gates;
-[deployment and monitoring](v1-deployment.md) separates resource qualification
-from isolated benchmarks. The [transport/checkpoint design](v1-network-design.md)
-states identity, source-relay and bootstrap trust requirements. Recursive
-aggregation is deferred to V2 and its experiments are paused.
+The [two-output native baseline](../crates/bench-d8/artifacts/v1-native-freeze.json)
+remains diagnostic evidence. Its decoder and resource measurements do not
+qualify the three-output native node path.
 
-- [Current protocol decisions](00-decisions.md)
-- [Risks and Open Protocol Questions](11-risks-open-questions.md)
-- [Commitment collision accounting](bht-security-accounting.md)
-- [D8 dependency patch and review boundary](d8-dependency-patch.md)
+## Network, storage and operations
 
-- [V1 Multi-Asset Transaction Format](v1-multi-asset.md): three-output relation, issuance and integration gates.
-- [V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md): permanent records, three-day proof lifecycle, backup and recovery.
+- [Deployment and observability](v1-deployment.md): validator/miner roles, candidate hardware and private monitoring.
+- [Network capacity](v1-network-budget.md): separate proof caps, complete conditional wire accounting, 43-Mbps minimum and 100-Mbps recommendation.
+- [Storage and bootstrap](v1-storage-and-sync.md): permanent public records, three-day proof lifecycle, checkpoint trust, backups and recovery.
+- [Transport/checkpoint design](v1-network-design.md): proposed authenticated hybrid transport and Dandelion++.
+- [Native operational interfaces](node-operations.md) and [RPC boundary](rpc.md): integration status and requirements.
+- [Unresolved protocol and qualification questions](11-risks-open-questions.md).
 
-- [Native V1 Network Capacity Budget](v1-network-budget.md): complete bounded wire accounting at the 43-Mbps minimum, with at least 15% unused link capacity and a 100-Mbps recommendation.
+There are no native V1 start commands until runtime interfaces and deployment
+artifacts are implemented and qualified. There is no privileged main node;
+discovery services and the control panel have no consensus authority.
 
-- [Native Multi-Asset Proof Measurements](v1-multi-asset-evaluation.md): actual AIR shapes, eight-profile wallet-speed selection, proof-size and memory evidence, and hosted reproduction.
+## Legacy implementation and paused V2
+
+The [legacy documentation](legacy/README.md) covers the runnable recursive,
+two-output implementation and retained seven-node N=2 classical engineering
+testnet. Its full-proof replay and 100-block reorganization bound are not native
+V1 rules. V1 requires independent genesis, directories and keys and imports no
+retained notes, proofs or wallet state.
+
+[Paused V2 research](v2/README.md) covers recursive aggregation and historical
+compression. Recursive timings and experimental resource ceilings do not
+qualify V1. N=32 is outside the current scope.
+
+## Development and security reporting
+
+- [Regression coverage](testing.md), [engineering requirements](development.md) and [contribution guidance](../CONTRIBUTING.md).
+- [Security reporting](../SECURITY.md) and [dependency advisory applicability](dependency-advisories.md).
+
+Published measurements identify source, parameters, hardware and scope.
+Engineering freeze, CI success, independent review and activation are distinct.

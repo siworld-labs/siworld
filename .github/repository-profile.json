@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "description": "Shielded multi-asset payments in Rust with native STARK proofs and confidential fees. V1 proof engineering freeze; node integration and independent review pending.",
+  "topics": [
+    "rust",
+    "blockchain-research",
+    "shielded-transactions",
+    "multi-asset",
+    "stark",
+    "zero-knowledge",
+    "plonky3",
+    "post-quantum-cryptography"
+  ],
+  "pinned_repositories": [
+    "siworld-labs/siworld",
+    "siworld-labs/Plonky3-recursion"
+  ],
+  "navigation": [
+    {
+      "label": "Protocol",
+      "path": "docs/protocol.md"
+    },
+    {
+      "label": "Proofs",
+      "path": "crates/bench-multi-asset/README.md"
+    },
+    {
+      "label": "Node and network",
+      "path": "docs/v1-node-network-plan.md"
+    },
+    {
+      "label": "Operations",
+      "path": "docs/v1-deployment.md"
+    },
+    {
+      "label": "Security",
+      "path": "docs/security-model.md"
+    },
+    {
+      "label": "Legacy",
+      "path": "docs/legacy/README.md"
+    },
+    {
+      "label": "V2 research",
+      "path": "docs/v2/README.md"
+    }
+  ]
+}

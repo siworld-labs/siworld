@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = {
     ".editorconfig", ".gitattributes", ".gitignore", "Cargo.toml", "Cargo.lock",
     "rust-toolchain.toml", "LICENSE", "NOTICE", "README.md", "CONTRIBUTING.md",
-    "SECURITY.md",
+    "SECURITY.md", ".gitleaks.toml",
 }
 DOCUMENTS = {
     "00-decisions.md", "11-risks-open-questions.md", "bht-security-accounting.md", "d8-dependency-patch.md",
@@ -23,11 +23,13 @@ DOCUMENTS = {
     "v1-node-network-plan.md", "v1-deployment.md", "v1-network-design.md",
     "route-a-v1.md", "fee-settlement.md", "fee-settlement-evaluation.md",
     "v1-multi-asset.md", "v1-multi-asset-evaluation.md", "v1-storage-and-sync.md", "v1-network-budget.md",
-    "multi-asset-air-optimization.md",
+    "multi-asset-air-optimization.md", "v1-overview.md", "dependency-advisories.md",
+    "native-proof-profiles.md",
 }
 PUBLIC_ARTIFACTS = {
     "crates/bench-d8/artifacts/v1-native-freeze.json",
     "crates/bench-multi-asset/artifacts/v1-transaction-profile.json",
+    "crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json",
     *(f"crates/prover/keys/root-n{n}.bin" for n in (2, 4, 8, 16, 32, 64, 128)),
     "crates/prover/tests/data/root-proof-n16.bin",
     "crates/prover/tests/data/root-statement-n16.bin",
@@ -46,15 +48,26 @@ def allowed(path):
     if len(path.parts) == 1:
         return name in ROOT_FILES
     if path.parts[0] == "docs":
-        return len(path.parts) == 2 and path.name in DOCUMENTS
+        if len(path.parts) == 2:
+            return path.name in DOCUMENTS
+        scoped = {
+            "legacy": {"README.md", "whitepaper.md", "architecture.md", "protocol.md",
+                       "cryptography.md", "node-operations.md", "rpc.md", "worker-control.md",
+                       "benchmarks.md", "security-model.md"},
+            "v2": {"README.md", "proof-composition.md", "d8-w24-recursion.md",
+                   "proof-security-review.md", "d8-parameter-screen.md", "d4-security-controls.md",
+                   "linux-recursive-measurement.md"},
+        }
+        return len(path.parts) == 3 and path.name in scoped.get(path.parts[1], set())
     if name in {".cargo/config.toml", "scripts/prover-launcher.rs",
+                "scripts/native-proof-artifacts.rs",
                 "crates/bench-stark/patches/recursion-d8-w24.patch"}:
         return True
     if path.parts[0] == "scripts":
         return path.suffix == ".py" and (len(path.parts) == 2 or (len(path.parts) == 3 and path.parts[1] == "tests"))
     if path.parts[0] == "tools":
         return name in {"tools/control-panel/memory_trend.py", "tools/control-panel/test_memory_trend.py"}
-    if name == ".github/audit-registry.json":
+    if name in {".github/audit-registry.json", ".github/repository-profile.json"}:
         return True
     if path.parts[0] == ".github":
         return path.suffix in {".yml", ".yaml", ".md"} or path.name == "CODEOWNERS"

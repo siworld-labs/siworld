@@ -1,5 +1,7 @@
 # Recursive Proof Security Review Scope
 
+> **Paused V2 research.** Recursive aggregation and historical proof compression are outside native V1. These experimental parameters, timings and resource limits do not qualify the [current V1 route](../v1-overview.md).
+
 Status: requirements and review preparation. The selected target is KoalaBear
 D8, standard Plonky3 Poseidon2 W24 and 12-element digests. It is not yet a working
 registered recursive suite at the pinned dependency revision. No security
@@ -120,7 +122,7 @@ production resource acceptance; its memory budget remains undecided.
 The EPYC 7763 Ubuntu 24.04 VM profile, exposing two cores and four vCPUs, is the
 Linux baseline; EPYC 9V45 is a comparison profile. The x86_64 release baseline
 is x86-64-v3, with mandatory AVX2 and no scalar fallback. See the
-[hardware qualification requirements](linux-proof-measurement.md#baseline-and-comparison-hardware).
+[hardware qualification requirements](../linux-proof-measurement.md#baseline-and-comparison-hardware).
 
 Retained D4/W16 leaf-B and uniform-q92 setup-excluding timing medians are
 29.591 and 64.04 seconds, below 180 seconds numerically. D4/W16 fails the
@@ -130,6 +132,6 @@ excluded from this work.
 
 Independent review covers the final D8 suite and profiles, not a prior D4
 measurement. After findings close, integrate and validate the full production
-path on qualified miner hardware using the [acceptance plan](prover-acceptance.md).
+path on qualified miner hardware using the [acceptance plan](../prover-acceptance.md).
 Keep existing N=2 history separate. Neither benchmark verification nor estimator
 output alone establishes production or post-quantum acceptance.

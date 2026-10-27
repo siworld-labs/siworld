@@ -1,5 +1,7 @@
 # Miner and Trusted Proof-Worker Control Protocol
 
+> **Superseded by V1 (Route A).** This page documents the legacy recursive implementation. The retained seven-node N=2 engineering testnet uses this classical proof route; it is not a native V1 testnet or post-quantum acceptance result. See the [current V1 overview](../v1-overview.md).
+
 Status: implemented, opt-in loopback control listener with bounded handshake,
 heartbeat and reconnection. Encrypted remote job transport and independent
 security review remain open. This endpoint does not dispatch proof jobs.

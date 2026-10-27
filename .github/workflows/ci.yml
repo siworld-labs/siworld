@@ -16,6 +16,33 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  secrets:
+    name: Sensitive information and history
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install checksum-pinned secret scanner
+        run: |
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            --output /tmp/gitleaks.tar.gz
+          python3 - <<'PY_SCANNER'
+          import hashlib
+          from pathlib import Path
+          expected = '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+          assert hashlib.sha256(Path('/tmp/gitleaks.tar.gz').read_bytes()).hexdigest() == expected
+          PY_SCANNER
+          mkdir /tmp/siworld-scanner
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp/siworld-scanner gitleaks
+      - name: Scan reachable history with redacted findings
+        run: |
+          /tmp/siworld-scanner/gitleaks git . --log-opts='--all --full-history' \
+            --config=.gitleaks.toml --redact=100 --no-banner
+
   repository:
     name: Repository content
     runs-on: ubuntu-latest
@@ -251,7 +278,7 @@ jobs:
         run: |
           cargo fmt --manifest-path crates/bench-multi-asset/Cargo.toml --check
           cargo clippy --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --all-targets -- -D warnings
-          cargo test --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --lib --bin profile-artifacts
+          cargo test --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --lib --bin profile-artifacts --test public_codec_rejections
           rustc --edition=2024 --test crates/bench-multi-asset/src/experiments/transaction_layout.rs -D warnings -o /tmp/transaction-layout-tests
           /tmp/transaction-layout-tests
           cargo build --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --bin profile-artifacts
@@ -272,3 +299,15 @@ jobs:
           subprocess.run(['python3', 'scripts/freeze-multi-asset.py', '--check', str(frozen),
               '--verifier-key', str(output)], check=True)
           PY_PROFILE
+      - name: Reproduce all three fixed native relation keys and security reports
+        run: |
+          rustfmt --edition=2024 --check scripts/native-proof-artifacts.rs
+          python3 scripts/check-native-proof-profiles.py --check crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json
+          python3 scripts/check-native-proof-profiles.py --prepare .local/native-proof-profiles/application
+          cargo build --release --locked --manifest-path .local/native-proof-profiles/application/Cargo.toml --features security-report --bin native-proof-artifacts
+          cargo test --release --locked --manifest-path .local/native-proof-profiles/application/Cargo.toml --features security-report --bin native-proof-artifacts
+          mkdir -p .local/native-proof-profiles/reproduced
+          for kind in transaction settlement issuance; do
+            "$CARGO_TARGET_DIR/release/native-proof-artifacts" "$kind" ".local/native-proof-profiles/reproduced/$kind.json"
+          done
+          python3 scripts/check-native-proof-profiles.py --check crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json --reproduced .local/native-proof-profiles/reproduced

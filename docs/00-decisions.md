@@ -1,7 +1,12 @@
 # Current Protocol Decisions
 
-Status: the native two-input/three-output transaction profile is engineering-frozen
-in the [multi-asset profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json).
+Status: three isolated native proof relations are engineering-frozen in the
+[source-bound relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json):
+two-input/three-output transaction, exactly 576-position settlement and exactly
+three-initial-note issuance. Their public preprocessing keys and complete
+actual-AIR security reports reproduce under the fixed source/dependency graph.
+The [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+retains the existing parameter-selection measurements unchanged.
 Its qualified EPYC 7763 measurements meet the selected wallet-generation gate.
 The previous single-asset [freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
 remains an unchanged diagnostic baseline. Independent cryptographic approval,
@@ -10,7 +15,8 @@ activation remain separate requirements.
 
 ## Network and proof architecture
 
-Preserve the existing seven-node N=2 network, verifier, history and keys.
+Preserve the existing seven-node N=2 legacy recursive classical engineering
+testnet, verifier, history and keys.
 Native V1 uses a separate resettable engineering network with independent
 genesis, directories, keys and network identity. No existing notes or proofs
 are imported. V1 uses per-transaction native STARK proofs; recursion and
@@ -20,8 +26,9 @@ Use KoalaBear D8, standard Poseidon2 W24 and twelve-element digests. Require
 classical conjectured security of at least 128 bits and quantum-halved Johnson
 Fiat–Shamir terms, including query and enforced grinding terms, of at least
 80 bits. Challenge-domain and selected BHT collision terms must also meet
-80 bits. The approximately 81.9-bit diagnostic challenge ledger meets the
-selected screen; all future parameter changes must retain at least 80 bits.
+80 bits. The quantum-halved Johnson challenge ledgers are approximately 81.6922 bits
+for the transaction, 81.9837 for fixed-576 settlement and 81.8987 for three-note
+issuance. All future parameter changes must retain at least 80 bits.
 The [collision ledger](bht-security-accounting.md) distinguishes raw classical
 reports from quantum model conversions and application hashes.
 
@@ -111,7 +118,7 @@ Use confidential fee commitments with native fixed-capacity settlement.
 Nodes validate fee-opening sidecars against the transaction and commitment
 before admission; no additional sidecar signature or encryption layer is
 selected. Planned hybrid X25519 + ML-KEM transport handles connection secrecy.
-Transaction and settlement proofs and private sidecars remain online until
+Transaction, settlement and native issuance proofs and private sidecars remain online until
 three elapsed days after final confirmation, then are deleted. Public data is
 permanent on every node; no V1 archive-node role retains proof bodies beyond
 that window. Openings use eight independent canonical KoalaBear elements,
@@ -293,8 +300,14 @@ CI reproduces that key and report and rejects measured-runtime source drift.
 The unreferenced optimization prototype is excluded from this frozen relation.
 
 Transaction selection is complete under the stated engineering measurement
-model. Settlement and issuance keep their separately measured b8/q36/g20
-profiles and 512-KiB caps. Independent verifier CPU/memory qualification,
+model. The [relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+freezes source-bound keys, complete security reports and b8/q36/g20 parameters
+for exactly 576 settlement positions and exactly three initial issuance notes.
+Both keep separate 512-KiB caps. Other capacities require their own preprocessing
+identities; the three-note shape does not adopt a protocol issuance note limit.
+See [reproduction](native-proof-profiles.md). No performance rerun or node
+activation is implied by reproducing these public keys.
+Independent verifier CPU/memory qualification,
 full valid-block timings, node admission/decoder integration, issuance-fee
 policy and durable issuance transitions remain separate gates. A successful
 standalone proof does not activate consensus or establish testnet acceptance.

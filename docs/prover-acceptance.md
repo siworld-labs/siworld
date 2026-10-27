@@ -1,8 +1,10 @@
 # Native V1 Testnet Acceptance
 
 Status: engineering acceptance requirements for the independent native-proof
-testnet. The two-input/three-output transaction engineering profile is frozen
-with matching source, public key and qualified generation measurements.
+testnet. The two-input/three-output transaction, fixed-576 settlement and
+three-initial-note issuance proof relations have a source-bound engineering
+freeze with reproduced public preprocessing keys and security reports.
+Qualified generation measurements are separate existing evidence.
 The earlier single-asset freeze is an unchanged diagnostic baseline; node,
 wallet, transport, independent-verifier and recovery integration remain incomplete. A passed
 standalone benchmark is not testnet acceptance. Operating thresholds below
@@ -24,10 +26,17 @@ apply only to the new network. Coinbase maturity is a separate rule.
 
 Recursive leaf/merge/root timings, the 180-second recursive proof target,
 10-GiB recursive experiments and 99/100/101 reorganization tests are not V1
-acceptance criteria. [Recursive research](d8-w24-recursion.md) is paused V2
+acceptance criteria. [Recursive research](v2/d8-w24-recursion.md) is paused V2
 work. N=32 and retained-history verifier migration are excluded.
 
 ## Gate 1: proof identity and independent review
+
+Reproduce the [three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+using [the fixed profile procedure](native-proof-profiles.md). Its shapes are
+exactly two-input/three-output transaction, 576-position settlement and
+three-initial-note issuance. This does not adopt issuance policy or qualify
+smaller-capacity keys. Independent review and complete runtime acceptance
+remain separate from key/source reproduction.
 
 Reproduce the [multi-asset transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
 from pinned source and dependencies. Run `scripts/freeze-multi-asset.py --check`

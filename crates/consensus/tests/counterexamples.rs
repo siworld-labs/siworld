@@ -519,6 +519,20 @@ fn ce4_reuse_within_one_slot_is_rejected() {
 // ───────────── Other block-structure checks ─────────────
 
 #[test]
+fn duplicate_slot_ids_are_rejected_by_strict_order_before_proof_validation() {
+    let (p, state, owned) = funded();
+    let block = build(&state, &p, &[spend_one(&state, &p, &owned[0], 10)], 1).unwrap();
+    let mut duplicate = block.body.clone();
+    duplicate.slots[1] = duplicate.slots[0];
+    assert_eq!(duplicate.slots[0].id(), duplicate.slots[1].id());
+    assert_eq!(
+        transition(&state, &duplicate, 1, &p).unwrap_err(),
+        BlockError::NotSorted
+    );
+    assert!(transition(&state, &block.body, 1, &p).is_ok());
+}
+
+#[test]
 fn wrong_slot_count_unsorted_and_bad_coinbase_are_rejected() {
     let (p, state, owned) = funded();
     let block = build(&state, &p, &[spend_one(&state, &p, &owned[0], 10)], 1).unwrap();

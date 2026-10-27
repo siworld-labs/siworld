@@ -1,9 +1,9 @@
 # Native V1 Deployment and Observability
 
 Status: qualification design for the independent native V1 engineering network.
-The prior two-output profile is a diagnostic baseline. Multi-asset parameter
-selection requires the actual-AIR security and reference-host performance
-evidence; node integration, operating profiles, network capacity and supported
+The native transaction engineering profile is frozen with actual-AIR security
+and reference-host performance evidence. The prior two-output profile remains
+a diagnostic baseline. Node integration, operating profiles, network capacity and supported
 deployment platforms remain subject to acceptance. This document does not change the retained seven-node network.
 [Decisions](00-decisions.md), [native transaction design](route-a-v1.md) and the
 [node integration plan](v1-node-network-plan.md) define protocol requirements.

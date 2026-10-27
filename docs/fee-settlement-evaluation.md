@@ -1,24 +1,29 @@
 # Confidential Fee Settlement Evaluation
 
-Status: evaluation gate. Scheme B is the selected Route A V1 candidate for
-measurement. It is not an activated consensus rule and it is not included in
-the V1 production scope until the native settlement relation, measurements,
-and review gates below pass.
+Status: selected Route A V1 settlement design with an isolated native AIR and
+measured proof implementation. It is not an activated consensus rule. Native
+block integration, resource qualification and independent review remain gates.
+The [source-bound manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+engineering-freezes the fixed-576 native settlement shape, parameters and
+public preprocessing key. Smaller-capacity keys require separate identities.
+The transaction profile and earlier diagnostic tables remain separate evidence.
 
 ## Fixed requirements
 
 Each transaction publishes one fee commitment in its proof statement. The
 commitment is a twelve-element KoalaBear digest encoded as twelve canonical
 little-endian `u32` values, so it adds **48 public statement bytes per
-transaction**. The existing 1,742-byte transaction body is unchanged; when
-the commitment is retained in the per-transaction statement this is 1,790
-bytes before proof, relay, and settlement overhead. The commitment, proof
+transaction**. The native three-output body is 2,027 bytes. Adding the fee
+commitment and 40-byte snapshot selector gives 2,115 permanent bytes per
+position before proof, relay and block-level overhead. The earlier two-output
+1,742-byte body is separate diagnostic evidence. The commitment, proof
 envelope, and any private-relay sidecar must be counted separately in capacity
 and denial-of-service budgets.
 
-The private opening contains the fee, tier/dummy flags, and a 256-bit
-blinding value. A verified mempool entry retains that opening for miner
-ordering and settlement. The fixed-size sidecar carries the transaction
+The private opening contains the fee and eight independently sampled canonical
+KoalaBear blinding elements (32 encoded bytes, about 247.91 bits of entropy).
+The fixed sidecar does not carry a tier or padding flag. A verified mempool entry retains
+that opening for miner ordering and settlement. The fixed-size sidecar carries the transaction
 binding and opening; it has no standalone signature or second encryption
 layer. Nodes recompute the public commitment and transaction binding before
 forwarding or retaining it. Sidecar transport confidentiality and peer
@@ -28,19 +33,20 @@ transaction are discarded before state mutation and recorded in bounded
 peer-abuse diagnostics. The opening is never written to a block or exposed as
 a public block field.
 
-The block relation is a native, non-recursive STARK. For every fixed position
-it checks the commitment opening, accepts only zero for a padding position and
-the anchor's standard or priority amount for a real position, and adds the
-fees with checked integer carries. It binds the resulting private sum to the
-miner reward note. The proof binds the ordered compact references and the
+The settlement relation is a native, non-recursive STARK. For every fixed
+position it checks the commitment opening and adds fees with checked integer
+carries. The transaction proof enforces the private anchor's fee schedule and
+zero-fee padding rule; settlement must not impose the current fee schedule on
+an older anchored transaction. It binds the resulting private sum to the
+SI miner reward note. The proof binds the ordered compact references and the
 capacity, so an omitted, duplicated, or reordered transaction cannot be
 settled by reusing a valid proof.
 
-Settlement proofs and their private fee-opening sidecars are retained for four
-weeks after final confirmation, then deleted from the online store. The public
-fee commitments remain permanently with the confirmed transaction; fee
-openings are never part of the permanent record. Archive and checkpoint
-operators may retain proofs longer when they need independent replay evidence.
+Transaction, settlement and native issuance proofs and private fee-opening
+sidecars are retained for three elapsed days after final confirmation, then
+deleted under durable finality/retention metadata. Public fee commitments and
+proof-free settlement declarations remain permanent. V1 has no archive-node
+role; checkpoint bootstrap has an explicit trust policy.
 
 Zero-valued dummy inputs skip commitment-tree membership checks in the
 transaction AIR. They still derive a fresh nullifier and remain subject to
@@ -82,10 +88,15 @@ hash, four 16-bit fee limbs, one tier flag, one dummy flag, and one checked
 sum per position, followed by one miner-note commitment. These counts are
 planning quantities only; they are not AIR row or proof-size measurements.
 
-## Current result
+## Two-output diagnostic baseline
 
-The repository contains the transaction fee-commitment relation, a native
-reference design, and an evaluation fixed-capacity settlement AIR/prover in
+This section preserves measurements of the earlier two-output diagnostic
+relation. The current three-output SI-reward relation and its measured profile
+are described in the [multi-asset evaluation](v1-multi-asset-evaluation.md).
+These baseline samples do not replace source-bound current-profile evidence.
+
+The baseline contains a transaction fee-commitment relation, a native
+reference design, and a fixed-capacity settlement AIR/prover in
 `crates/bench-d8/src/fee_settlement_air.rs`. The AIR uses one W24 Poseidon2
 fee-commitment row per slot, four 16-bit fee limbs with range checks, checked
 tier carries, and a checked running sum bound to the miner amount. It is a
@@ -96,7 +107,8 @@ The three-trial harness is `fee-settlement-bench`. Run it inside the qualified
 independent cgroup with the patched D8 dependency:
 
 ```
-cargo run --release --features parallel --bin fee-settlement-bench -- \
+cargo run --release --locked --manifest-path crates/bench-d8/Cargo.toml \
+  --features parallel --bin fee-settlement-bench -- \
   --output .local/fee-settlement-measurements.json
 ```
 
@@ -152,7 +164,8 @@ available, Scheme B remains a V1 evaluation candidate and must not be
 described as production-ready or activated on the retained network.
 
 No qualified EPYC 7763 Ubuntu 24.04 cgroup result is included in this
-evaluation. The macOS series above cannot supply Linux kernel charged-memory
+two-output baseline table. Current-profile measurements are recorded separately
+in the [multi-asset evaluation](v1-multi-asset-evaluation.md). The macOS series above cannot supply Linux kernel charged-memory
 evidence. The hosted native cgroup workflow provides a separate three-trial
 process-tree diagnostic series on Ubuntu 24.04, with kernel `memory.peak`,
 `memory.events`, exact limit readback and actual CPU identity retained in its

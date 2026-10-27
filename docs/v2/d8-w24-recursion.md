@@ -1,5 +1,7 @@
 # D8 W24 Recursive Suite Implementation Plan
 
+> **Paused V2 research.** Recursive aggregation and historical proof compression are outside native V1. These experimental parameters, timings and resource limits do not qualify the [current V1 route](../v1-overview.md).
+
 Status: paused V2 experimental implementation with passing primitive, reusable-recursion
 and eight-input application correctness tests. A final-profile checkpoint attempt
 was stopped by a cgroup OOM at the 5-GiB limit during eight-input verifier-circuit
@@ -256,7 +258,7 @@ times, and complete process-tree charged-memory peaks, including resident
 preparation. Distinguish sampled per-phase charged-memory peaks from the
 kernel's lifetime peak: samples are lower bounds, and the lifetime peak governs
 hard-limit compliance. Serialized proof sizes describe retained encodings,
-not allocator footprint. Use the [Linux baseline profile](linux-proof-measurement.md#baseline-and-comparison-hardware)
+not allocator footprint. Use the [Linux baseline profile](../linux-proof-measurement.md#baseline-and-comparison-hardware)
 on one live machine for all three trials; EPYC 9V45 remains a comparison.
 Start isolated merge timing with eight leaf
 proofs available; include their generation in the N=16 projection. Verify every
@@ -494,7 +496,7 @@ selected quantum ledger gives 81.9 bits for the halved Johnson challenge union
 and 123.3 ideal BHT bits for the PCS commitment. The external BLAKE3-256
 ciphertext-byte binding has a nominal BHT exponent of 85.3 bits and is excluded
 from the PCS report. These calculations do not establish full-protocol security
-or cryptographic approval; see [collision accounting](bht-security-accounting.md).
+or cryptographic approval; see [collision accounting](../bht-security-accounting.md).
 macOS supplied no Linux cgroup peak
 memory evidence; the trials therefore do not establish a memory budget or
 production acceptance. `production_selection_allowed` remains `false` until
