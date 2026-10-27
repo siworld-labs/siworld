@@ -25,6 +25,33 @@ prove physical host core count, exclusive access or identical contention. A
 missing CI marker means unknown context, not a non-CI host. A comparison host
 does not silently replace the EPYC 7763 acceptance baseline.
 
+## Hosted native diagnostics
+
+`.github/workflows/d8-native-cgroup.yml` runs on a GitHub-hosted Ubuntu 24.04
+runner. It records the actual CPU model, topology, ISA and VM context without
+claiming the EPYC 7763 reference allocation. It builds release x86-64-v3 native
+transaction and 576-position settlement executables with pinned dependencies,
+checks the generic launcher's CPU guard and inspects their AVX2 instructions.
+
+`scripts/measure-native-cgroup.py` runs three fresh scopes per executable using
+`systemd-run --scope -p MemoryMax=5G -p MemorySwapMax=0`. A small privileged
+recorder remains inside each owned scope until it saves kernel `memory.peak`,
+`memory.events`, CPU counters and exact limit readback. The proof child drops
+privileges and has ordinary OOM priority; the protected recorder retains
+failure evidence when the proof is killed. Each scope includes setup, proof,
+verification and the recorder. Generation timing is reported separately from
+whole-process elapsed time. Memory peaks are independent per process and may
+not be described as phase-specific generation peaks.
+
+All six diagnostics are attempted. Missing counters, failed proof verification,
+OOM/limit events, timeout or surviving descendants fail the measurement after
+artifacts are retained. Uploaded JSON contains allowlisted CPU/kernel counters,
+executable identities and timings, excluding raw proof logs and synthetic
+openings. An explicit status artifact survives earlier build/startup failures.
+The 5-GiB limit applies to this diagnostic, not to a selected production memory
+budget. These draft-AIR results cannot freeze production parameters or replace
+security review, relation coverage and deterministic codec/resource bounds.
+
 ## Process-tree memory boundary
 
 `scripts/measure-proof-cgroup.py` creates an exclusively owned scope. Its

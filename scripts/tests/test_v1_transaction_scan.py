@@ -149,15 +149,15 @@ class V1TransactionScanTests(unittest.TestCase):
         result = self.validate()
         self.assertEqual(result["decision"], "candidate-selected")
         self.assertEqual(result["selected"]["parameters"]["log_blowup"], 8)
-        self.assertEqual(result["selected"]["max_leaf_proof_len_body_bytes"], 392000)
-        self.assertEqual(result["selected"]["tx_max_len_bytes"], 394998)
+        self.assertEqual(result["selected"]["max_leaf_proof_len_body_bytes"], 524288)
+        self.assertEqual(result["selected"]["tx_max_len_bytes"], 527286)
         self.assertEqual(result["capacity"]["positions"], 576)
         self.assertFalse(result["cryptographic_approval"])
         self.assertFalse(result["network_activation"])
 
     def test_exact_bandwidth_threshold_uses_integer_arithmetic(self):
-        self.assertEqual(SCAN.body_capacity(576, 2998), 431029)
-        self.assertEqual(SCAN.body_capacity(512, 2998), 485283)
+        self.assertEqual(SCAN.body_capacity(576, 1790), 540744)
+        self.assertEqual(SCAN.body_capacity(544, 1790), 572658)
 
     def test_proxy_scope_and_false_production_claim_are_rejected(self):
         for key, value in [("scope", "proxy"), ("actual_production_air", False),
@@ -236,6 +236,29 @@ class V1TransactionScanTests(unittest.TestCase):
         self.assertAlmostEqual(result["rows"][0]["security"]["bht_collision_bits"], 185 * 2 / 3)
         self.assertAlmostEqual(result["rows"][0]["security"]["nominal_minimum_hash_bht_bits"], 256 / 3)
 
+    def test_bht_target_boundary_keeps_raw_classical_collision_units(self):
+        def collision(bits):
+            def change(data):
+                for regime in ("conjectured", "proven_johnson"):
+                    for term in data[regime]["terms"]:
+                        if term["label"] == "commitment-collision":
+                            term["bits"] = bits
+            return change
+
+        # A 120-bit classical collision floor corresponds to 240 digest bits:
+        # generic BHT costs 2^80, whereas uniform halving would give 60 bits.
+        # The lower classical floor can fail another gate; inspect BHT alone.
+        self.mutate_security(collision(120))
+        row = self.validate()["rows"][0]
+        self.assertEqual(row["security"]["johnson_terms"]["commitment-collision"], 120)
+        self.assertAlmostEqual(row["security"]["bht_collision_bits"], 80)
+        self.assertFalse(any("BHT collision" in reason for reason in row["rejections"]))
+
+        self.mutate_security(collision(119))
+        row = self.validate()["rows"][0]
+        self.assertTrue(any("BHT collision below 80 bits" in reason
+                            for reason in row["rejections"]))
+
     def test_application_hash_annotation_cannot_be_omitted_or_replaced_by_pcs_security(self):
         self.mutate_security(lambda data: data.pop("application_binding", None))
         with self.assertRaisesRegex(ValueError, "application binding"):
@@ -279,39 +302,46 @@ class V1TransactionScanTests(unittest.TestCase):
         self.assertEqual(measured["measurements"]["four_worker"]["median_ns"], 2_000_000_000)
         self.assertEqual(measured["proof_body_bytes_max"], 392000)
 
-    def test_capacity_fallback_and_overflow_are_explicit(self):
+    def set_all_proof_sizes(self, size):
         for row in self.bundle.manifest["rows"]:
             for refs in row["trials"].values():
                 for ref in refs:
                     value = self.bundle.read(ref)
-                    value["proof_body_bytes"] = 450000
+                    value["proof_body_bytes"] = size
                     self.bundle.rewrite(ref, value)
-        result = self.validate()
-        self.assertEqual(result["capacity"]["positions"], 512)
-        self.assertEqual(result["decision"], "capacity-reduced-to-512")
-        self.assertTrue(result["capacity"]["requires_owner_report"])
-        for row in self.bundle.manifest["rows"]:
-            for refs in row["trials"].values():
-                for ref in refs:
-                    value = self.bundle.read(ref)
-                    value["proof_body_bytes"] = 500000
-                    self.bundle.rewrite(ref, value)
-        result = self.validate()
-        self.assertEqual(result["decision"], "blocked-bandwidth")
-        self.assertIsNone(result["selected"])
 
-    def test_smaller_codec_does_not_raise_the_directed_431029_byte_trigger(self):
-        self.bundle.manifest["tx_fixed_len"] = 1742
-        for row in self.bundle.manifest["rows"]:
-            for refs in row["trials"].values():
-                for ref in refs:
-                    value = self.bundle.read(ref)
-                    value["proof_body_bytes"] = 431030
-                    self.bundle.rewrite(ref, value)
+    def test_fixed_wire_cap_accepts_boundary_and_rejects_one_extra_byte(self):
+        self.set_all_proof_sizes(524288)
         result = self.validate()
-        self.assertEqual(result["capacity"]["positions"], 512)
-        self.assertEqual(result["capacity"]["proof_body_cap_at_576_bytes"], 431029)
-        self.assertGreater(result["capacity"]["actual_bandwidth_body_caps_bytes"]["576"], 431029)
+        self.assertEqual(result["capacity"]["positions"], 576)
+        self.assertEqual(result["selected"]["max_leaf_proof_len_body_bytes"], 524288)
+        self.set_all_proof_sizes(524289)
+        result = self.validate()
+        self.assertEqual(result["decision"], "blocked-proof-cap")
+        self.assertIsNone(result["selected"])
+        self.assertEqual(result["capacity"]["proposed_fallback_positions"], 544)
+        self.assertTrue(result["capacity"]["requires_owner_report"])
+        self.assertEqual(result["capacity"]["fixed_max_leaf_proof_len_bytes"], 524288)
+
+    def test_large_codec_can_only_propose_544_without_raising_wire_cap(self):
+        self.bundle.manifest["tx_fixed_len"] = 30000
+        self.set_all_proof_sizes(524288)
+        result = self.validate()
+        self.assertEqual(result["capacity"]["positions"], 544)
+        self.assertEqual(result["decision"], "capacity-proposed-544")
+        self.assertTrue(result["capacity"]["requires_owner_report"])
+        self.assertEqual(result["selected"]["max_leaf_proof_len_body_bytes"], 524288)
+        self.assertFalse(result["network_activation"])
+
+    def test_smaller_codec_preserves_fixed_512_kib_wire_cap(self):
+        self.bundle.manifest["tx_fixed_len"] = 1790
+        self.set_all_proof_sizes(431030)
+        result = self.validate()
+        self.assertEqual(result["capacity"]["positions"], 576)
+        self.assertEqual(result["capacity"]["proof_body_cap_at_576_bytes"], 524288)
+        self.assertGreater(result["capacity"]["actual_bandwidth_body_caps_bytes"]["576"], 524288)
+        self.assertEqual(result["selected"]["measured_proof_body_bytes_max"], 431030)
+        self.assertEqual(result["selected"]["max_leaf_proof_len_body_bytes"], 524288)
 
     def test_no_under_two_second_row_is_blocked(self):
         for row in self.bundle.manifest["rows"]:

@@ -95,11 +95,12 @@ and imports no retained notes or proofs. See the
 | Security screening | Classical conjectured at least 128 bits; every Fiat–Shamir Johnson term, including queries and enforced grinding, at least 80 bits after quantum halving; challenge-domain terms at least 80 bits after halving; BHT commitment collision resistance at least 80 bits |
 | Anchor | Depth-12 recent-root membership checked inside the transaction AIR; only the recent-root tree root is public |
 | Fee tiers | Reward-linked standard and four-times-standard priority; Scheme B confidential settlement is selected for evaluation and remains a production gate ([design](fee-settlement.md), [evaluation](fee-settlement-evaluation.md)) |
-| Public-data encoding | Selected 1,742-byte layout with 208-byte padded note bodies; fee/proof/envelope ledger requires review |
+| Public-data encoding | 1,742-byte body plus 48-byte confidential fee commitment (1,790 bytes); sidecar and envelope additional |
 | Change encryption | ChaCha20-Poly1305 with a 256-bit key and domain-separated BLAKE3 derivation |
-| Blocks | Groups of 16; 64–576 positions; 300-second target; 20-Mbps minimum node link |
+| Blocks | Groups of 16; 64–576 positions; 300-second target; 25-Mbps minimum node uplink |
 | Reorganization bound | New-route local `MAX_REORG_DEPTH = 24`; existing implementation remains at 100 |
 | Proof retention | Transaction and settlement proofs plus private fee sidecars are retained for four weeks after final confirmation, then deleted online; public fee commitments remain permanent and archive/checkpoint trust is required |
+| Proof-body maximum | `MAX_LEAF_PROOF_LEN = 524288` (512 KiB); prefer larger blowup if exceeded, then report a 544-position fallback without raising this bound |
 | Production parameter choice | Smallest eligible proof with four-core generation at most two seconds, measured on the actual AIR |
 
 Nodes verify proofs on mempool admission. Blocks use compact references and

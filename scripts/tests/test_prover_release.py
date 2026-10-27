@@ -90,6 +90,21 @@ class ReleaseBuildTests(unittest.TestCase):
                 BUILD.package([worker], output)
             self.assertFalse(output.exists())
 
+    def test_native_d8_workers_require_inspected_avx2_packages(self):
+        launcher = (ROOT / "scripts/prover-launcher.rs").read_text()
+        for name in ("v1-transaction-scan", "fee-settlement-bench"):
+            with self.subTest(name=name):
+                self.assertIn(name, BUILD.PROOF_WORKERS)
+                self.assertIn('"' + name + '"', launcher)
+                with tempfile.TemporaryDirectory() as directory:
+                    worker = Path(directory) / name
+                    worker.write_bytes(b"\x7fELF\x02\x01" + bytes(12) + b"\x3e\x00" + bytes(8))
+                    worker.chmod(0o755)
+                    with patch.object(BUILD, "validate_platform"), \
+                         patch.object(BUILD, "inspect_proof", side_effect=ValueError("no AVX2")), \
+                         self.assertRaisesRegex(ValueError, "no AVX2"):
+                        BUILD.package([worker], Path(directory) / "release")
+
     def test_rejects_wrong_architecture_and_non_executable(self):
         with tempfile.TemporaryDirectory() as directory:
             worker = Path(directory) / 'composition-bench'

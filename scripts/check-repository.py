@@ -13,6 +13,7 @@ ROOT_FILES = {
     "SECURITY.md",
 }
 DOCUMENTS = {
+    "00-decisions.md", "bht-security-accounting.md",
     "README.md", "whitepaper.md", "architecture.md", "protocol.md",
     "cryptography.md", "security-model.md", "node-operations.md", "rpc.md",
     "benchmarks.md", "testing.md", "development.md",

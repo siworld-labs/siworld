@@ -187,9 +187,10 @@ requirements.
 
 The per-transaction accounting must list the 48-byte `F_i` commitment and the
 fixed-size fee-opening sidecar separately from the 1,742-byte permanent public
-transaction encoding. The selected `MAX_LEAF_PROOF_LEN`, mempool byte caps,
-concurrent-verification limits, and relay capacity cannot be set until this
-ledger and the 576-position settlement result are available.
+transaction encoding, totaling 1,790 permanent bytes. Preserve the fixed
+`MAX_LEAF_PROOF_LEN = 524288` (512 KiB). Mempool byte caps, concurrent-verification
+limits and complete relay capacity require the production codec ledger and
+qualified transaction/576-position settlement measurements.
 
 ## Mempool and block validation flow
 

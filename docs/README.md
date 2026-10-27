@@ -21,3 +21,6 @@ and its [evaluation gate](fee-settlement-evaluation.md) are selected for
 research, but do not close the fee, root-lifetime, encryption-binding or
 checkpoint-trust gates. Recursive aggregation is deferred to V2 and its
 experiments are paused.
+
+- [Current protocol decisions](00-decisions.md)
+- [Commitment collision accounting](bht-security-accounting.md)

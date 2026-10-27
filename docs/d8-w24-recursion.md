@@ -486,7 +486,7 @@ quotient chunks and 97 public values. Three macOS trials with four native
 workers measured approximately 0.709--0.853 seconds for generation (median
 approximately 0.744 seconds), approximately 11.6 milliseconds for single-core
 verification, and approximately 415,000--419,000 proof bytes. Every observed
-proof is below the provisional 431,029-byte comparison threshold.
+proof is below the adopted 524,288-byte comparison threshold.
 
 The corresponding diagnostic report gives 185 conjectured bits, 163.8 Johnson
 bits, 81.9 bits for the quantum-halved Johnson challenge union, and 123.3 BHT

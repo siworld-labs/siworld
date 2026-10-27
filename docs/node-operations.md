@@ -46,6 +46,19 @@ profiles are measurement references, not a claim of dedicated host cores or
 acceptance of an unimplemented suite. See the [qualification procedure](linux-proof-measurement.md#baseline-and-comparison-hardware)
 and [production acceptance plan](prover-acceptance.md).
 
+## Native V1 bandwidth target
+
+The selected native V1 route requires at least **25 Mbps uplink** per node.
+At 576 positions per 300 seconds, a 524,288-byte proof maximum plus 1,790-byte
+public data and three relay copies use 24.24167424 Mbps, leaving 3.0333% for
+additional traffic. Settlement, sidecar, envelope, framing and recovery costs
+must fit that margin; payload arithmetic alone is not network acceptance.
+Preserve the 512-KiB `MAX_LEAF_PROOF_LEN`. If the frozen production proof cannot
+fit after evaluating larger blowups, report the proposed 544-position fallback.
+The [native design](route-a-v1.md#production-parameter-scan-and-capacity-gate)
+specifies the calculation and activation gates. These targets do not alter the
+retained seven-node network or establish a production RAM requirement.
+
 ## Wallet initialization
 
 ```sh

@@ -25,7 +25,7 @@ No network launch is authorized by this specification. Historical verifier
 activation is deferred until before mainnet.
 
 The engineering block target is 300 seconds, with 64 through 576 transaction
-positions in groups of 16. The minimum node link is 20 Mbps. Node integration,
+positions in groups of 16. The minimum node uplink is 25 Mbps. Node integration,
 block validity changes, pruning and checkpoint synchronization remain design
 work until the production transaction AIR and parameter scan pass.
 
@@ -44,6 +44,11 @@ Pin `p3-security` to `0.9.0-rc.2`. For the actual transaction AIR, require:
 | Fiat–Shamir terms | At least 80 bits after halving the Johnson-bound term, including FRI queries and each enforced grinding site |
 | Challenge-domain terms | At least 80 bits after halving, including OOD, DEEP, ALI and FRI folding |
 | Merkle and commitment collisions | At least 80 bits under the selected BHT model |
+
+The current diagnostic profile's approximately 81.9 quantum-halved Johnson bits
+meets the selected 80-bit screen. Every future parameter change must retain at
+least 80 bits; this screen does not complete production acceptance. See
+[BHT accounting](bht-security-accounting.md) for the separate collision model.
 
 Record every term, the weakest term, model assumptions, actual AIR dimensions,
 constraint degrees, hiding rows, quotient chunks and batched-opening geometry.
@@ -285,26 +290,29 @@ verification, actual worker settings, stage times, charged-memory peaks and
 failure attempts. Select the smallest canonical encoded proof whose four-core
 generation is at most two seconds. Freeze source, dependencies, AIR shape,
 trusted key, codec, security report and binary identities with the result.
-No current proxy row is eligible for `MAX_LEAF_PROOF_LEN`.
+Diagnostic rows do not freeze production parameters or admission budgets.
 
-At 576 positions per 300 seconds, the position rate is 1.92/s. At three relay
-copies and a 20-Mbps link, the total per-position relay allowance is
-approximately 434,027.78 bytes before protocol reserve. The earlier provisional
-431,029-byte proof threshold reserves 2,998 bytes for other data; that reserve
-must be replaced with the actual production envelope ledger. Keep this
-threshold as a conservative comparison until that ledger is fixed, and reserve
-additional capacity for missing-proof requests, retransmissions and other peer
-traffic.
+`MAX_LEAF_PROOF_LEN` remains **524,288 bytes (512 KiB)**. It is a fixed
+proof-body wire maximum, independent of the largest observed sample. Bound
+proof and transaction envelopes separately. The public-data ledger is
+1,742 bytes plus the 48-byte confidential fee commitment, or **1,790 bytes**
+per position; private sidecars and transport envelopes are additional.
 
-If eligible production proofs exceed 431,029 bytes, prefer a larger-blowup
-configuration that meets the security and generation gates. If none meets the
-threshold, reduce the proposed ceiling to 512 positions and report the revised
-bandwidth and queue budget. At 512 positions per 300 seconds, the gross
-per-position relay allowance is 488,281.25 bytes before non-proof data and
-protocol reserve. Neither threshold authorizes activation or capacity increases.
+At 576 positions per 300 seconds and three relay copies, maximum-size proofs
+plus 1,790-byte public data require **24.24167424 Mbps**. Transfer takes
+290.90009088 seconds on a 25-Mbps uplink, leaving 0.75832576 Mbps (3.0333%)
+or 9.09990912 seconds per interval. This is a transaction-payload budget,
+not full-network acceptance. Settlement proofs, sidecars, envelopes, framing,
+missing-proof traffic and retransmissions outside the relay allowance must fit
+the remaining margin and be measured before activation.
 
-Set `MAX_LEAF_PROOF_LEN` from the selected canonical encoded production proof,
-with a reviewed explicit bound. Bound the transaction envelope separately.
+After the production relation and codec are frozen, if no eligible profile fits
+524,288 bytes, first select a larger blowup from the complete scan. If none
+fits, report a proposed reduction to **544 positions** with revised resource
+budgets. This does not raise the proof maximum or activate a capacity change.
+At 544 positions, the same maximum-size payload ledger requires 22.89491456 Mbps
+and 274.73897472 seconds on 25 Mbps. No increase above 576 is adopted.
+
 Mempool admission must enforce global/per-peer byte caps, bounded concurrent
 verification, work/CPU admission and eviction before expensive verification.
 No byte count alone bounds verification work or allocation on malformed proofs.

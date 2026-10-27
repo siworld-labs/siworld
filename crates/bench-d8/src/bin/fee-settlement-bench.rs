@@ -138,6 +138,20 @@ fn main() {
         .and_then(|i| args.get(i + 1))
         .map(|value| vec![value.parse().expect("invalid capacity")])
         .unwrap_or_else(|| CAPACITIES.to_vec());
+    let requested_trials: usize = args
+        .iter()
+        .position(|arg| arg == "--trials")
+        .map(|i| {
+            args.get(i + 1)
+                .expect("--trials requires a value")
+                .parse()
+                .expect("invalid trial count")
+        })
+        .unwrap_or(3);
+    assert!(
+        (1..=3).contains(&requested_trials),
+        "trial count must be 1..=3"
+    );
     let fast = args.iter().any(|arg| arg == "--fast");
     let legacy_candidate = args.iter().any(|arg| arg == "--legacy-candidate");
     let fri_params = if fast {
@@ -184,7 +198,7 @@ fn main() {
             .expect("serialize preprocessed verifier commitment");
         let key_hash = sha256(&key_bytes);
         let mut trials = Vec::new();
-        for _ in 0..3 {
+        for _ in 0..requested_trials {
             let start = Instant::now();
             let (proof, pis) = prover.prove(&witness);
             let generation_ms = start.elapsed().as_millis() as u64;

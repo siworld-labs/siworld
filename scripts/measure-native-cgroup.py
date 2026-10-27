@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""Collect six independent hosted Linux proof cgroup diagnostics.
+
+The root recorder stays in each systemd scope until kernel counters are saved.
+The proof runs without root privileges and cannot migrate out of that scope.
+Only an allowlisted summary is exported; proof fixtures and raw logs stay local.
+"""
+import argparse
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+ROOT = Path(__file__).resolve().parents[1]
+MEMORY_MAX = 5 * 1024**3
+SUITE = 'KoalaBear-D8-Poseidon2-W24-digest12'
+PARAMETERS = {'log_blowup': 8, 'num_queries': 36, 'query_pow_bits': 20,
+              'batch_pow_bits': 20, 'commit_pow_bits': 0, 'max_log_arity': 1}
+EVENTS = ('max', 'oom', 'oom_kill', 'oom_group_kill')
+
+
+def write_json(path, value):
+    with Path(path).open('x') as stream:
+        json.dump(value, stream, indent=2, allow_nan=False)
+        stream.write('\n')
+
+
+def read_numbers(path):
+    return {key: int(value) for key, value in
+            (line.split() for line in path.read_text().splitlines())}
+
+
+def integer(value, label, positive=False):
+    if type(value) is not int or value < (1 if positive else 0):
+        raise ValueError('Invalid nonnegative measurement: ' + label)
+    return value
+
+
+def scoped_group(membership, unit, mount=Path('/sys/fs/cgroup')):
+    if not re.fullmatch(r'siworld-native-[a-f0-9]{32}\.scope', unit):
+        raise ValueError('Unexpected scope unit')
+    rows = [line[3:] for line in membership.splitlines() if line.startswith('0::')]
+    if len(rows) != 1:
+        raise ValueError('Unified cgroup v2 membership required')
+    relative = Path(rows[0])
+    if not relative.is_absolute() or '..' in relative.parts or relative.name != unit:
+        raise ValueError('Recorder is outside its exact independent systemd scope')
+    group = mount / str(relative).lstrip('/')
+    if group == mount:
+        raise ValueError('Root cgroup cannot be measured')
+    return group
+
+
+def snapshot(group):
+    names = ('memory.max', 'memory.swap.max', 'memory.oom.group', 'memory.peak',
+             'memory.current', 'memory.swap.current')
+    data = {name: int((group / name).read_text().strip()) for name in names}
+    for name in ('memory.events', 'memory.events.local', 'cpu.stat'):
+        data[name] = read_numbers(group / name)
+    data['cpu.max'] = (group / 'cpu.max').read_text().strip()
+    if data['memory.max'] != MEMORY_MAX or data['memory.swap.max'] != 0:
+        raise ValueError('Systemd memory limit readback mismatch')
+    if data['memory.oom.group'] != 0:
+        raise ValueError('Recorder must survive a proof-only OOM')
+    return data
+
+
+def assess(before, after, exit_code, timed_out, remaining):
+    delta = {key: after['memory.events'].get(key, 0) - before['memory.events'].get(key, 0)
+             for key in set(before['memory.events']) | set(after['memory.events'])}
+    if any(value < 0 for value in delta.values()):
+        raise ValueError('Memory event counters regressed')
+    peak = after['memory.peak']
+    return {'event_deltas': delta, 'resource_control_pass': (
+        exit_code == 0 and not timed_out and not remaining and 0 < peak <= MEMORY_MAX
+        and after['memory.swap.current'] == 0
+        and all(delta.get(event, 0) == 0 for event in EVENTS)),
+        'acceptance': False, 'production_parameters_frozen': False}
+
+
+def proof_metrics(kind, report):
+    if report.get('suite') != SUITE:
+        raise ValueError('Unexpected proof suite')
+    if kind == 'transaction':
+        if (report.get('verified') is not True or report.get('workers') != 4
+                or report.get('operation') != 'four_worker'
+                or report.get('production_selection_allowed') is not False):
+            raise ValueError('Transaction diagnostic did not generate and verify with four workers')
+        params = report['parameters']
+        if any(params.get(key) != value for key, value in PARAMETERS.items()):
+            raise ValueError('Unexpected transaction diagnostic parameters')
+        names = ('setup_ns', 'generation_ns', 'verification_ns', 'proof_body_bytes')
+        return {name: integer(report[name], name, positive=True) for name in names}
+    if kind != 'settlement' or (report.get('capacities') != [576]
+            or report.get('worker_count') != 4
+            or report.get('fri_profile') != 'transaction-candidate-diagnostic'):
+        raise ValueError('Unexpected settlement diagnostic profile')
+    records = report['records']
+    if len(records) != 1 or records[0]['capacity'] != 576 or len(records[0]['trials']) != 1:
+        raise ValueError('Each settlement process must contain exactly one 576-slot proof')
+    trial = records[0]['trials'][0]
+    return {'generation_ns': integer(trial['generation_ms'], 'generation_ms', True) * 1_000_000,
+            'verification_ns': integer(trial['verification_ms'], 'verification_ms') * 1_000_000,
+            'proof_body_bytes': integer(trial['proof_bytes'], 'proof_bytes', True),
+            'air_shape': {key: integer(value, key, True) for key, value in records[0]['shape'].items()}}
+
+
+def child_command(kind, executable, output, index, run_id):
+    if kind == 'transaction':
+        return [str(executable), '--log-blowup', '8', '--queries', '36', '--grinding', '20',
+                '--operation', 'four_worker', '--trial-index', str(index), '--run-id', run_id,
+                '--machine-id', 'github-hosted-ubuntu-24.04-diagnostic', '--output', str(output)]
+    if kind == 'settlement':
+        return [str(executable), '--capacity', '576', '--trials', '1', '--output', str(output)]
+    raise ValueError('Unknown diagnostic kind')
+
+
+def scope_command(unit, config):
+    return ['sudo', '--non-interactive', 'systemd-run', '--scope', '--quiet', '--unit=' + unit,
+            '-p', 'MemoryAccounting=yes', '-p', 'MemoryMax=5G', '-p', 'MemorySwapMax=0',
+            '-p', 'MemoryOOMGroup=no', '/usr/bin/python3', str(Path(__file__).resolve()),
+            '--worker-config', str(config)]
+
+
+def member_pids(group):
+    return {int(value) for file in group.rglob('cgroup.procs')
+            for value in file.read_text().split()} - {os.getpid()}
+
+
+def run_in_scope(config):
+    if os.geteuid() != 0 or config['uid'] <= 0 or config['gid'] <= 0:
+        raise ValueError('Root recorder and nonroot proof UID/GID required')
+    group = scoped_group(Path('/proc/self/cgroup').read_text(), config['unit'])
+    # The proof inherits score 0, not this recorder's OOM immunity. Keeping the
+    # tiny recorder alive preserves final kernel counters after proof OOMs.
+    Path('/proc/self/oom_score_adj').write_text('-1000')
+    before = snapshot(group)
+    raw = Path(config['private_output'])
+    command = child_command(config['kind'], config['executable'], raw,
+                            config['trial'], config['run_id'])
+
+    def unprivileged():
+        Path('/proc/self/oom_score_adj').write_text('0')
+        os.setgroups([])
+        os.setgid(config['gid'])
+        os.setuid(config['uid'])
+
+    started = time.monotonic_ns()
+    timed_out = False
+    with Path(config['private_log']).open('xb') as log:
+        process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL,
+            stdout=log, stderr=log, start_new_session=True, preexec_fn=unprivileged,
+            env={'PATH': '/usr/bin:/bin', 'RAYON_NUM_THREADS': '4',
+                 'SIWORLD_COMPOSITION_HIDING_WORKERS': '2'})
+        try:
+            code = process.wait(timeout=config['timeout'])
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            os.killpg(process.pid, signal.SIGKILL)
+            code = process.wait()
+    elapsed = time.monotonic_ns() - started
+    remaining = member_pids(group)
+    # Only this exact UUID scope is inspected. Nonroot proof processes cannot
+    # migrate to another scope; terminate surviving members before collection.
+    for pid in remaining:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    until = time.monotonic() + 5
+    while member_pids(group) and time.monotonic() < until:
+        time.sleep(0.05)
+    after = snapshot(group)
+    report = {'schema': 1, 'kind': config['kind'], 'trial': config['trial'],
+        'scope_id': config['unit'], 'suite': SUITE, 'parameters': PARAMETERS,
+        'exit_code': code, 'timed_out': timed_out, 'process_wall_ns': elapsed,
+        'memory': {'before': before, 'after': after},
+        'remaining_proof_processes': len(remaining),
+        'peak_scope': 'fresh process-tree lifetime including setup, proof and verification; recorder included',
+        'timing_scope': 'proof generation measured by the executable; process lifetime recorded separately',
+        **assess(before, after, code, timed_out, remaining)}
+    try:
+        report['proof'] = proof_metrics(config['kind'], json.loads(raw.read_text()))
+        report['proof_report_valid'] = True
+    except (OSError, ValueError, TypeError, KeyError):
+        report['proof_report_valid'] = False
+        report['resource_control_pass'] = False
+    write_json(config['result'], report)
+    return 0 if report['resource_control_pass'] else 1
+
+
+def collect(args):
+    if args.output.exists():
+        raise ValueError('Refusing to overwrite measurement evidence')
+    args.output.mkdir(parents=True)
+    spec = importlib.util.spec_from_file_location('proof_cgroup', ROOT / 'scripts/measure-proof-cgroup.py')
+    hardware_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hardware_module)
+    hardware, evidence = hardware_module.qualify()
+    write_json(args.output / 'hardware.json', {'hardware': hardware,
+        'lscpu': evidence['lscpu_json'], 'lscpu_text': evidence['lscpu_text'],
+        'hardware_profile': 'github-hosted-diagnostic', 'reserved_reference_machine': False})
+    executables = {'transaction': args.transaction.resolve(strict=True),
+                   'settlement': args.settlement.resolve(strict=True)}
+    hashes = {kind: {
+        'launcher_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+        'worker_sha256': hashlib.sha256((path.parent.parent / 'libexec' / path.name).read_bytes()).hexdigest()
+        } for kind, path in executables.items()}
+    outcomes = []
+    # Config, raw fixture/digest reports, absolute paths and stderr are never
+    # copied to the uploaded artifact directory.
+    with tempfile.TemporaryDirectory(prefix='native-cgroup-', dir=args.private_parent) as temporary:
+        private = Path(temporary)
+        for kind in ('transaction', 'settlement'):
+            for trial in range(1, 4):
+                unit = 'siworld-native-' + uuid.uuid4().hex + '.scope'
+                result = args.output.resolve() / f'{kind}-{trial}.json'
+                config = {'unit': unit, 'uid': os.getuid(), 'gid': os.getgid(), 'kind': kind,
+                    'trial': trial, 'run_id': uuid.uuid4().hex, 'timeout': args.timeout,
+                    'executable': str(executables[kind]), 'result': str(result),
+                    'private_output': str(private / f'{kind}-{trial}-raw.json'),
+                    'private_log': str(private / f'{kind}-{trial}.log')}
+                config_file = private / f'{kind}-{trial}-config.json'
+                write_json(config_file, config)
+                try:
+                    completed = subprocess.run(scope_command(unit, config_file),
+                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, timeout=args.timeout + 30, check=False)
+                    returncode = completed.returncode
+                except subprocess.TimeoutExpired:
+                    returncode = 124
+                finally:
+                    # This invocation owns only its UUID unit. A failed startup
+                    # or killed recorder must not leave a proof process running.
+                    subprocess.run(['sudo', '--non-interactive', 'systemctl', 'stop', unit],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=20)
+                saved = json.loads(result.read_text()) if result.exists() else None
+                outcomes.append({'kind': kind, 'trial': trial,
+                    **hashes[kind], 'scope_exit_code': returncode,
+                    'result_present': saved is not None,
+                    'resource_control_pass': bool(saved and saved['resource_control_pass']
+                                                  and returncode == 0)})
+    report = {'schema': 1, 'suite': SUITE, 'parameters': PARAMETERS,
+        'trials': outcomes, 'memory_max_bytes': MEMORY_MAX, 'memory_swap_max_bytes': 0,
+        'resource_control_pass': all(row['resource_control_pass'] for row in outcomes),
+        'production_air_frozen': False, 'production_parameters_frozen': False,
+        'acceptance': False, 'hardware_profile': 'github-hosted-diagnostic',
+        'resource_scope': '5-GiB limit applies only to these diagnostics; no production budget is selected'}
+    write_json(args.output / 'summary.json', report)
+    return 0 if report['resource_control_pass'] else 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--transaction', type=Path)
+    parser.add_argument('--settlement', type=Path)
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--private-parent', type=Path, default=Path('.local'))
+    parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--worker-config', type=Path, help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    try:
+        if args.worker_config:
+            return run_in_scope(json.loads(args.worker_config.read_text()))
+        if not all((args.transaction, args.settlement, args.output)) or args.timeout <= 0:
+            parser.error('transaction, settlement, output and positive timeout are required')
+        return collect(args)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        # Do not expose proof log contents or private host paths in CI output.
+        print(json.dumps({'event': 'native-cgroup-diagnostic-failed',
+                          'classification': type(error).__name__, 'acceptance': False}))
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())

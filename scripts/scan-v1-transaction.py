@@ -42,10 +42,11 @@ REQUIRED_JOHNSON_TERMS = {"air-composition", "deep-ali", "low-degree-test",
     "batch-combination", "commitment-collision"}
 REQUIRED_DOMAIN_TERMS = {"ood-deep-ali-domain", "fri-folding-domain"}
 MAX_GENERATION_NS = 2_000_000_000
-LINK_BPS = 20_000_000
+LINK_BPS = 25_000_000
 BLOCK_SECONDS = 300
 RELAY_FACTOR = 3
-DIRECTED_BODY_CAPS = {576: 431029, 512: 485283}
+MAX_LEAF_PROOF_LEN = 524288
+CAPACITIES = (576, 544)
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 APPLICATION_BINDING = {
     "algorithm": "BLAKE3-256",
@@ -376,11 +377,10 @@ def evaluate(manifest, base):
             "measurements": measurements, "eligible": not rejections,
             "rejections": rejections})
     fixed = manifest["tx_fixed_len"]
-    actual_caps = {n: body_capacity(n, fixed) for n in (576, 512)}
-    # Retain the explicitly directed 431,029-byte trigger even when the new
-    # fixed codec saves bytes. A codec reduction is protocol headroom, not an
-    # automatic authorization to raise the selected proof-body threshold.
-    caps = {n: min(DIRECTED_BODY_CAPS[n], actual_caps[n]) for n in (576, 512)}
+    actual_caps = {n: body_capacity(n, fixed) for n in CAPACITIES}
+    # Bandwidth cannot raise the fixed wire cap. A reduced capacity is a
+    # proposal requiring review, never permission to accept an oversized proof.
+    caps = {n: min(MAX_LEAF_PROOF_LEN, actual_caps[n]) for n in CAPACITIES}
     eligible = [row for row in rows if row["eligible"]]
     # Larger blowups have all been measured before a capacity reduction is
     # allowed. Size is the primary objective; deterministic tie-breaks favor
@@ -389,26 +389,28 @@ def evaluate(manifest, base):
                         row["measurements"]["four_worker"]["median_ns"],
                         row["parameters"]["query_pow_bits"])
     selected, positions, decision = None, None, "blocked-no-eligible-parameter"
-    for n in (576, 512):
+    for n in CAPACITIES:
         fits = [row for row in eligible if row["proof_body_bytes_max"] <= caps[n]]
         if fits:
             selected, positions = min(fits, key=order), n
-            decision = "candidate-selected" if n == 576 else "capacity-reduced-to-512"
+            decision = "candidate-selected" if n == 576 else "capacity-proposed-544"
             break
     if eligible and selected is None:
-        decision = "blocked-bandwidth"
+        decision = ("blocked-proof-cap" if all(row["proof_body_bytes_max"] >
+                    MAX_LEAF_PROOF_LEN for row in eligible) else "blocked-bandwidth")
     choice = None
     if selected:
         p = selected["proof_body_bytes_max"]
         verify = selected["measurements"]["verification"]
         choice = {"parameters": selected["parameters"],
-            "max_leaf_proof_len_body_bytes": p, "tx_max_len_bytes": fixed + p,
+            "max_leaf_proof_len_body_bytes": MAX_LEAF_PROOF_LEN,
+            "measured_proof_body_bytes_max": p, "tx_max_len_bytes": fixed + MAX_LEAF_PROOF_LEN,
             "generation_four_worker_median_ns": selected["measurements"]["four_worker"]["median_ns"],
             "generation_four_worker_peak_bytes": selected["measurements"]["four_worker"]["memory_peak_bytes"],
             "verification_median_ns": verify["median_ns"],
             "verification_max_ns": verify["max_ns"],
             "verification_peak_bytes": verify["memory_peak_bytes"],
-            "mempool_transactions_per_gib_of_encoded_bytes": (1 << 30) // (fixed + p),
+            "mempool_transactions_per_gib_of_encoded_bytes": (1 << 30) // (fixed + MAX_LEAF_PROOF_LEN),
             "verification_workers_per_gib_of_measured_peak": (1 << 30) // verify["memory_peak_bytes"],
             "verification_cpu_seconds_per_transaction": verify["median_ns"] / 1_000_000_000,
             "security": selected["security"],
@@ -419,13 +421,14 @@ def evaluate(manifest, base):
         "manifest_sha256": canonical_digest(manifest), "p3_security_version": P3_SECURITY,
         "accounting": ACCOUNTING, "decision": decision, "selected": choice,
         "capacity": {"positions": positions, "block_interval_seconds": BLOCK_SECONDS,
-            "link_mbps": 20, "relay_factor": RELAY_FACTOR, "tx_fixed_len": fixed,
-            "proof_body_cap_at_576_bytes": caps[576], "proof_body_cap_at_512_bytes": caps[512],
-            "directed_body_caps_bytes": {str(n):DIRECTED_BODY_CAPS[n] for n in (576,512)},
-            "actual_bandwidth_body_caps_bytes": {str(n):actual_caps[n] for n in (576,512)},
+            "link_mbps": 25, "relay_factor": RELAY_FACTOR, "tx_fixed_len": fixed,
+            "proof_body_cap_at_576_bytes": caps[576], "proof_body_cap_at_544_bytes": caps[544],
+            "fixed_max_leaf_proof_len_bytes": MAX_LEAF_PROOF_LEN,
+            "proposed_fallback_positions": 544 if decision != "candidate-selected" else None,
+            "actual_bandwidth_body_caps_bytes": {str(n):actual_caps[n] for n in CAPACITIES},
             "relay_mbps": (positions * (fixed + choice["max_leaf_proof_len_body_bytes"]) *
                 8 * RELAY_FACTOR / BLOCK_SECONDS / 1_000_000) if choice else None,
-            "protocol_headroom_mbps": (20 - positions * (fixed + choice["max_leaf_proof_len_body_bytes"]) *
+            "protocol_headroom_mbps": (25 - positions * (fixed + choice["max_leaf_proof_len_body_bytes"]) *
                 8 * RELAY_FACTOR / BLOCK_SECONDS / 1_000_000) if choice else None,
             "requires_owner_report": decision != "candidate-selected"},
         "rows": rows, "cryptographic_approval": False, "network_activation": False,
@@ -433,9 +436,9 @@ def evaluate(manifest, base):
         "limitations": ["Selected-model quantum accounting requires independent review",
             "p3-security does not analyze the external BLAKE3-256 ciphertext-byte binding; its nominal classical collision exponent is 128 and nominal BHT exponent is 256/3",
             "The full relation/PCS/application-hash composition and the external binding assumptions require review; a nominal minimum of hash exponents is not a composition theorem",
-            "The largest observed encoded body is a candidate cap; the versioned codec must prove a deterministic maximum",
+            "The fixed 524288-byte wire maximum remains enforced independently of observed proof size; the versioned codec must prove a deterministic shape bound",
             "Measured proof size and wall time do not establish mempool or verifier memory bounds",
-            "The 20 Mbps calculation has no protocol-traffic reserve; report remaining bandwidth margin"]}
+            "The 25 Mbps calculation covers transaction payloads only; settlement, sidecars, envelopes and traffic beyond the relay allowance consume the remaining margin"]}
 
 
 def schema_description():

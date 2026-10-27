@@ -136,9 +136,9 @@ diagnostic evidence and neither run is a qualified-host result.
 
 The individual samples were retained in the private measurement bundle. The
 576-position proof was 448,059--459,627 bytes across the three trials and
-therefore exceeds the 431,029-byte transaction-proof screening threshold; the
-settlement proof has a separate capacity budget and is not substituted for the
-transaction proof limit. The benchmark now resolves the process's cgroup v2
+is below the separate 524,288-byte transaction-proof maximum. Settlement
+proofs have their own capacity budget; their size does not select or replace
+the transaction proof limit. The benchmark now resolves the process's cgroup v2
 membership from `/proc/self/cgroup` before reading `memory.max`,
 `memory.swap.max`, `memory.peak`, and `memory.events`; a fallback to `VmHWM`
 is labeled as non-cgroup diagnostic evidence.
@@ -155,5 +155,7 @@ No qualified EPYC 7763 Ubuntu 24.04 cgroup result is included in this
 evaluation. The available diagnostic host is macOS and reports no delegated
 cgroup, so it cannot supply the required three `memory.peak` and
 `memory.events` samples for either the transaction proof or the 576-position
-settlement proof. Existing D4 measurements and generic CI runners are not
-substitutes for that baseline.
+settlement proof. Existing D4 measurements and generic CI runners do not establish that baseline.
+The hosted native cgroup workflow collects a separate three-trial diagnostic
+series on Ubuntu 24.04 and records its actual CPU; it does not wait for or claim
+to reproduce the reference VM. See [the measurement procedure](linux-proof-measurement.md#hosted-native-diagnostics).
