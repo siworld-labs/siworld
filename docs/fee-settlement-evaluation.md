@@ -152,10 +152,10 @@ available, Scheme B remains a V1 evaluation candidate and must not be
 described as production-ready or activated on the retained network.
 
 No qualified EPYC 7763 Ubuntu 24.04 cgroup result is included in this
-evaluation. The available diagnostic host is macOS and reports no delegated
-cgroup, so it cannot supply the required three `memory.peak` and
-`memory.events` samples for either the transaction proof or the 576-position
-settlement proof. Existing D4 measurements and generic CI runners do not establish that baseline.
-The hosted native cgroup workflow collects a separate three-trial diagnostic
-series on Ubuntu 24.04 and records its actual CPU; it does not wait for or claim
-to reproduce the reference VM. See [the measurement procedure](linux-proof-measurement.md#hosted-native-diagnostics).
+evaluation. The macOS series above cannot supply Linux kernel charged-memory
+evidence. The hosted native cgroup workflow provides a separate three-trial
+process-tree diagnostic series on Ubuntu 24.04, with kernel `memory.peak`,
+`memory.events`, exact limit readback and actual CPU identity retained in its
+sanitized artifact. A fresh hosted allocation does not establish the EPYC 7763
+reference baseline or isolated verifier-memory bounds. See
+[the measurement procedure](linux-proof-measurement.md#hosted-native-diagnostics).
