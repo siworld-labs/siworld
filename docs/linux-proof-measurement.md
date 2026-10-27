@@ -133,8 +133,9 @@ comparison remains required; a second unrelated VM is not the same machine.
 
 Runner-local logs and raw samples are not uploaded. Only synthetic phase and
 resource aggregates are printed for CI inspection; source commits contain no
-run evidence or local audit output. Complete D8 acceptance requires three
-prepared-service trials and the [full timing boundary](prover-acceptance.md#timing-boundary-and-service-readiness).
+run evidence or local audit output. These controls use the paused
+[recursive timing boundary](proof-composition.md#timing-boundary-and-retained-result-interpretation).
+Native V1 instead requires [native full-path acceptance](prover-acceptance.md).
 
 ## Checkpoint time and memory reporting
 

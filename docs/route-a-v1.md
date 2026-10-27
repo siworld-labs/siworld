@@ -1,15 +1,17 @@
 # Native Transaction Proof Design
 
-Status: selected V1 direction with isolated native AIR, codec and prover
-implementations. Requirements below do not describe an activated network.
-V1 uses Scheme B confidential fee settlement, documented in
-[fee-settlement.md](fee-settlement.md). Proof-parameter freeze records the
-tested relation, canonical codecs, trusted verifier, security reports and
-resource results. It is separate from independent cryptographic review and
-node, wallet or network activation. Incomplete node or durable-wallet
-integration does not by itself prevent a proof-parameter freeze.
-The [engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
-records the selected native profile and reproducible verifier/security artifacts.
+Status: reopened V1 multi-asset design with isolated native two-input/three-output
+AIR, codec, issuance and SI-reward settlement implementations in
+`crates/bench-multi-asset`. The new profile is not frozen or activated; the
+four-core two-second transaction-generation qualification is not met. See the
+[actual multi-asset evaluation](v1-multi-asset-evaluation.md) for the matching
+security, encoding and resource evidence. Node and durable-wallet integration,
+independent review and activation remain separate gates.
+
+The prior two-output [engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
+remains an unchanged diagnostic baseline. Its key and parameter freeze do not
+freeze or accept the new multi-asset relation. V1 uses Scheme B confidential
+fee settlement, documented in [fee-settlement.md](fee-settlement.md).
 
 ## Scope and network boundary
 
@@ -27,7 +29,7 @@ No network launch is authorized by this specification. Historical verifier
 activation is deferred until before mainnet.
 
 The engineering block target is 300 seconds, with 64 through 576 transaction
-positions in groups of 16. The minimum node uplink is 25 Mbps. Node integration,
+positions in groups of 16. The minimum node uplink is 30 Mbps; 100 Mbps is recommended. Node integration,
 block validity changes, pruning and checkpoint synchronization follow the
 [node and network integration plan](v1-node-network-plan.md). Proof parameters
 may be frozen before those implementations are complete; activation requires
@@ -49,9 +51,9 @@ Pin `p3-security` to `0.9.0-rc.2`. For the actual transaction AIR, require:
 | Challenge-domain terms | At least 80 bits after halving, including OOD, DEEP, ALI and FRI folding |
 | Merkle and commitment collisions | At least 80 bits under the selected BHT model |
 
-The current diagnostic profile's approximately 81.9 quantum-halved Johnson bits
-meets the selected 80-bit screen. Every future parameter change must retain at
-least 80 bits; this screen does not complete production acceptance. See
+Every parameter profile must retain at least 80 bits under the actual
+relation-specific screen; passing that screen does not complete production
+acceptance. See the [multi-asset evaluation](v1-multi-asset-evaluation.md) and
 [BHT accounting](bht-security-accounting.md) for the separate collision model.
 
 Record every term, the weakest term, model assumptions, actual AIR dimensions,
@@ -83,14 +85,16 @@ milestones do not establish complete AIR coverage or production acceptance.
 
 ### Isolated implementation boundary
 
-The native experiment includes a prepared proof-shape decoder that validates
+The two-output diagnostic baseline includes a prepared proof-shape decoder that validates
 canonical fields, fixed vector dimensions, FRI paths and complete byte
 consumption before dependency deserialization. The body limit is 524,288 bytes;
 a separate 4-MiB declared-vector budget bounds requested payloads and vector
 headers, not process RSS. Structural acceptance always requires subsequent
-cryptographic verification against the locally reconstructed statement.
+cryptographic verification against the locally reconstructed statement. The
+new profile must bind the decoder to its own dimensions and verifier identity
+before admission; the old prepared decoder does not qualify that integration.
 
-The canonical snapshot pool resolves trusted roots, checks proofs, reserves both
+The baseline canonical snapshot pool resolves trusted roots, checks proofs, reserves both
 nullifiers and applies atomic expiry/reorganization eviction. Its caller still
 validates canonical blocks, enforces reorganization depth and confirmed-state
 conflicts, and supplies authoritative refill history. Integration into the node,
@@ -98,16 +102,19 @@ byte/CPU/in-flight quota enforcement remain node integration work. The
 [integration plan](v1-node-network-plan.md) specifies the envelope ledger and
 initial local budgets; those budgets are not measured verifier-memory bounds.
 
-Wallet helpers authenticate both constructed outputs before returning a checked
-pair, retain a zeroizing per-payment opening and generate genuine ephemeral-key
-padding ciphertexts. The diagnostic scanner exercises those helpers with
-synthetic notes and temporary keys. Durable protected receipt storage,
-recoverable change-key management, receipt disclosure controls and the wallet
-broadcast path remain integration requirements.
+Native encryption helpers perform recipient and indexed-change encryption,
+local decryption and commitment checks, retain a zeroizing per-payment opening,
+and generate genuine ephemeral-key ciphertexts. The three-output measurement
+path uses the implemented multi-asset codec with synthetic notes and temporary
+keys. Durable protected receipt storage, recoverable change-key management,
+receipt disclosure controls and the complete wallet broadcast path remain
+integration requirements.
 
 ## Fixed transaction relation
 
-Each transaction has two inputs and two outputs. The relation must constrain
+Each V1 transaction has two inputs and three outputs, with per-asset
+conservation and SI-only fees. This relation is implemented in the isolated
+crate under [the multi-asset design](v1-multi-asset.md). It constrains
 both inputs independently, including ownership, nullifier derivation, value
 ranges and unlock conditions. A positive-amount input must prove commitment-tree
 membership; a zero-amount input uses a canonical dummy witness and skips the
@@ -159,9 +166,10 @@ replay use the snapshot window at the candidate block's canonical parent, not
 the current live window. Reproof uses fresh proof randomness and the canonical
 transaction/nullifier conflict rules.
 
-Root selectors remain outside the 1,790-byte public-body ledger. The permanent
-record includes the 40-byte selector, totaling 1,830 bytes per position. Count
-unamortized envelope bytes separately in relay/admission budgets.
+The implemented three-output codec has a 2,027-byte body, a 48-byte fee
+commitment and a 40-byte canonical snapshot selector, totaling 2,115 permanent
+bytes per position. Count unamortized envelope bytes separately in
+relay/admission budgets.
 Tests must accept the 4,096th-newest snapshot, reject the 4,097th, reject orphaned
 identities, preserve state on invalid chain replacement and evict affected
 pending transactions atomically.
@@ -198,9 +206,9 @@ verification time, and per-stage peak memory. The four required rejection
 cases are explicit:
 wrong commitment sum versus the miner reward, forged fee opening, non-zero
 padding fee, and zero-fee real transaction. A ciphertext or unbound private
-fee witness is insufficient. The 1,742-byte target must not silently exclude
-the 48-byte commitment, fee sidecar, proof statement, or relay-envelope
-bytes.
+fee witness is insufficient. The implemented 2,027-byte body excludes the
+48-byte fee commitment, fee sidecar, proof statement and relay-envelope context;
+the complete ledger must include each component.
 Standard and priority amounts remain reward-linked: standard is
 `floor(reward / 1,000)` and priority is four times standard. Variable bids are
 outside scope. The parameter freeze must bind the implemented private fee
@@ -211,8 +219,8 @@ for recording the proof parameters.
 
 ## Encryption and ciphertext binding
 
-The recipient output uses one ML-KEM-768 ciphertext per transaction. The change
-output uses ChaCha20-Poly1305 under a 256-bit key derived from sender secret
+The recipient output uses one ML-KEM-768 ciphertext per transaction. Both change
+outputs use ChaCha20-Poly1305 under 256-bit keys derived from sender secret
 material with a domain-separated BLAKE3 KDF. The sender secret must use its own
 wallet derivation domain and must not reuse an ML-KEM shared secret.
 
@@ -220,14 +228,14 @@ The selected change derivation is:
 
 ```text
 change_key = BLAKE3-derive_key(
-    "siworld route-a change-v1",
+    "siworld multi-asset change-v1",
     sender_change_secret || change_commitment || output_index)
 ```
 
 The result is exactly 32 bytes. Use a fresh 12-byte change nonce and authenticate
 network, format version, output index and commitment as associated data. Freeze
 canonical associated-data framing, nonce generation, recipient KDF domains and
-secret erasure behavior before implementation. The recipient's fresh KEM secret
+secret erasure behavior before activation. The recipient's fresh KEM secret
 may use the existing one-use zero-nonce construction only under a separately
 pinned domain and key-use rule.
 
@@ -244,7 +252,7 @@ research. AEAD associated data must not be described as node-verifiable
 encryption correctness. The recipient verifies the tag, decodes the note and
 recomputes its output commitment before accepting a payment.
 
-Before broadcast, the sender must decrypt and check both locally constructed
+Before broadcast, the sender must decrypt and check all three locally constructed
 outputs and compare the recovered note commitments. For the recipient output,
 the sender uses the shared secret obtained during encapsulation; it does not
 possess or require the recipient's private decapsulation key. A failed self-check
@@ -268,59 +276,43 @@ recipient, while the transaction remains subject to the same commitment,
 conservation and nullifier checks. It does not make ciphertext decryptability a
 consensus rule or cause unrelated state to become invalid.
 
-## Public-data codec target
+## Implemented public-data codec
 
-The native wire layout is 1,742 public bytes per transaction, excluding the
-native proof and proof/relay-envelope context. The retained implementation's
-32-byte digests, two 1,344-byte ciphertexts and 2,818-byte slot belong to the
-unchanged seven-node network.
-
-Under Scheme B, each transaction statement adds one canonical 48-byte `F_i`
-commitment (twelve base-field elements). The commitment is public in the proof
-statement and relay envelope, while the fee opening remains in the private
-mempool sidecar. It is not part of the 1,742-byte base encoding, but it
-is retained in the on-chain transaction statement after the proof body is
-pruned; the public body is 1,790 bytes. Each position also permanently retains
-its 40-byte snapshot selector, for a **1,830-byte permanent record** before
-amortized block context. Capacity and
-denial-of-service accounting must include the 48-byte commitment, sidecar,
-proof body, settlement proof, and retransmission reserve as separate ledger
-entries.
-
-Keeping the existing 240-byte encrypted plaintext padding while changing four
-public digests to 48 bytes and replacing the second KEM ciphertext with a
-12-byte-nonce symmetric ciphertext gives **1,806 bytes**. The selected exact
-1,742-byte layout instead reduces both padded plaintext bodies to 208 bytes:
+The isolated three-output codec encodes a 2,027-byte public body, excluding
+the native proof and proof/relay-envelope context. Its fields are:
 
 | Field | Count | Bytes each | Total bytes |
 | --- | ---: | ---: | ---: |
 | Input nullifier | 2 | 48 | 96 |
-| Output commitment | 2 | 48 | 96 |
+| Output commitment | 3 | 48 | 144 |
 | Recipient ML-KEM-768 ciphertext | 1 | 1,088 | 1,088 |
-| Encrypted padded note body | 2 | 208 | 416 |
-| Poly1305 authentication tag | 2 | 16 | 32 |
-| Change nonce | 1 | 12 | 12 |
-| Output view tag | 2 | 1 | 2 |
-| **Total** | | | **1,742** |
+| Encrypted padded note body | 3 | 208 | 624 |
+| Poly1305 authentication tag | 3 | 16 | 48 |
+| Symmetric change nonce | 2 | 12 | 24 |
+| Output view tag | 3 | 1 | 3 |
+| **Total** | | | **2,027** |
 
-A D8 note body has an 8-byte value, 8-byte unlock height, 48-byte rho and
-48-byte rseed: 112 bytes, with owner reconstructed by the recipient. The
-208-byte format includes exactly 96 canonical zero-padding bytes. The recipient
-ML-KEM output uses a zero nonce only with a fresh encapsulated secret for each
-output; the change output carries the explicit 12-byte nonce above. Version,
-suite and network identifiers live in the proof/relay envelope rather than
-these 1,742 bytes. Freeze byte order, output roles, canonical scalar
-encoding and reserved bytes in the codec. Fee-settlement fields, proof root,
-framing and transport overhead require a separate byte ledger; they cannot be
-omitted from relay or DoS accounting. If those decisions require extra permanent
-fields, revise the target rather than claim a false fixed length.
+A fee commitment adds 48 bytes and the canonical snapshot selector adds 40,
+for 2,115 permanent bytes per position. The proof cap remains 524,288 bytes.
+With the proposed 2,184-byte envelope prefix and 78-byte sidecar, the maximum
+combined transaction payload is 526,550 bytes. The body and permanent-record
+lengths are implemented and tested; the 2,184-byte production envelope prefix
+remains proposed. A 32-byte private asset ID consumes
+existing note padding, leaving 144 meaningful bytes and 64 zero-padding bytes
+inside each 208-byte plaintext. See [the multi-asset design](v1-multi-asset.md).
 
-The recipient-KEM output and symmetric-change output have fixed roles in every
-transaction, including filler transactions. Verify that these roles do not
-identify real versus filler positions. The codec rejects truncation, trailing
-bytes and noncanonical field elements, and the envelope rejects unsupported
-versions before costly verification. Invalid AEAD tags are detected by the key
-holder unless the final relation explicitly proves encryption correctness.
+### Retained formats and baseline separation
+
+The two-output diagnostic codec remains in `crates/bench-d8` with its original
+freeze bundle and reproducible measurements. It does not define the new
+three-output byte ledger. The unchanged seven-node network retains its own
+32-byte digests, two 1,344-byte ciphertexts and 2,818-byte slot. Neither format
+is silently reinterpreted as multi-asset history.
+
+The new codec rejects truncation, trailing bytes and noncanonical field
+encodings. Public nodes verify the byte binding, while key holders verify
+AEAD tags and reconstructed commitments. Production envelope decoding,
+resource quotas and node admission remain integration work.
 
 ## Rejection tests before implementation
 
@@ -350,7 +342,7 @@ independent network identities.
 
 ## Production parameter scan and capacity gate
 
-After the production relation and codec are complete, scan every
+The isolated native relation and codec are implemented. The reopened scan covers every
 `log_blowup` in 4 through 8 with grinding in 16, 20 and 24. Select the smallest
 query count satisfying all security terms for each actual configuration. Record
 folding, commitment and batch grinding separately; varying one does not credit
@@ -363,38 +355,37 @@ verification, actual worker settings, stage times, charged-memory peaks and
 failure attempts. Select the smallest canonical encoded proof whose four-core
 generation is at most two seconds. Freeze source, dependencies, AIR shape,
 trusted key, codec, security report and binary identities with the result.
-The manifest and matching security/resource reports establish parameter freeze.
-Node/wallet integration and external review remain separate gates. Initial
+The manifest and matching security/resource reports establish parameter freeze
+only after every qualification gate passes. The current three-output profile
+does not meet the two-second generation criterion and remains unfrozen; see the
+[measured evaluation](v1-multi-asset-evaluation.md). Node/wallet integration and
+external review remain separate gates. Initial
 byte/CPU/in-flight policies are specified in the
 [node integration plan](v1-node-network-plan.md); local resource timeouts cannot
 invalidate an otherwise valid transaction or block.
 
 `MAX_LEAF_PROOF_LEN` remains **524,288 bytes (512 KiB)**. It is a fixed
 proof-body wire maximum, independent of the largest observed sample. Bound
-proof and transaction envelopes separately. The public-data ledger is
-1,742 bytes plus the 48-byte confidential fee commitment, or **1,790 bytes**
-per position. Its 40-byte snapshot selector makes the permanent record 1,830
-bytes; sidecars and transport framing are additional. Bound the complete
-canonical transaction envelope separately from the proof body.
+proof and transaction envelopes separately. The implemented public body is
+2,027 bytes; the 48-byte confidential fee commitment and 40-byte snapshot
+selector make the permanent record 2,115 bytes per position. Sidecars and
+transport framing are additional. Bound the complete canonical transaction
+envelope separately from the proof body.
 
-The canonical envelope prefix is 1,899 bytes; with the maximum proof its
-length is 526,187 bytes. The private fee sidecar is 78 bytes, for a combined
-maximum of **526,265 bytes**. At 576 positions per 300 seconds and three relay
-copies this requires **24.25029120 Mbps** and 291.00349440 seconds on a 25-Mbps
-uplink. The remaining 28,114,080 bytes per interval, about 3.00%, must cover
-settlement proofs, block headers, inventories, framing, missing-proof traffic,
-handshakes and retransmissions beyond the three-copy allowance. This is a
-payload calculation, not full-network acceptance. The
-[complete ledger and local limits](v1-node-network-plan.md) distinguish
-permanent bytes, relay bytes and private sidecars.
+The old two-output 1,899-byte envelope prefix is a diagnostic baseline,
+not the multi-asset wire limit. The proposed three-output prefix is 2,184 bytes;
+with the proof cap and 78-byte sidecar, relay uses 526,550 bytes per position.
+The [complete conditional wire budget](v1-network-budget.md) accounts for
+settlement, inventories, framing, hybrid records, TCP/IP/link overhead, ACKs,
+handshakes, issuance and recovery. At 576 positions it uses approximately
+29.252 Mbps against the 30-Mbps minimum; 100 Mbps is recommended. Qualification
+requires actual packet and resource evidence, not this planning fit.
 
 After the production relation and codec are frozen, if no eligible profile fits
 524,288 bytes, first select a larger blowup from the complete scan. If none
-fits, report a proposed reduction to **544 positions** with revised resource
-budgets. This does not raise the proof maximum or activate a capacity change.
-At 544 positions, the same maximum-size envelope/sidecar ledger requires
-22.90305280 Mbps and 274.83663360 seconds on 25 Mbps. No increase above 576 is
-adopted.
+fits, report the proposed 544-position fallback with revised resource budgets.
+This does not raise the proof maximum or activate a capacity change. The
+current maximum remains 576 positions.
 
 Mempool admission must enforce global/per-peer byte caps, bounded concurrent
 verification, work/CPU admission and eviction before expensive verification.
@@ -417,43 +408,93 @@ The following changes are proposed and are not implemented by this document:
 - Set the new route's local `MAX_REORG_DEPTH` to 24. Test depth 23/24/25,
   root-window boundaries and conflict re-admission. A deeper fork requires
   explicit checkpoint recovery rather than silent partial rollback.
-- Retain transaction and settlement proofs, together with private fee sidecars,
-  for four weeks **after final confirmation**, then delete them from the online
-  proof store. Retain each public `F_i` commitment permanently with the
-  confirmed transaction. At a 300-second target, 24 blocks correspond to
-  two hours nominally; actual finality is a deterministic depth rule, not a
-  wall-clock guarantee. Specify four-week expiry using deterministic chain
-  metadata and a local deletion policy that cannot shorten required evidence.
-- Preserve public transaction data and accepted state. Optional archival nodes
-  retain the complete native proofs beyond online expiry. Independent replay
-  from genesis requires the complete historical proof set, including its
-  authenticated transaction data and trusted verifier identities. Archive
-  availability is not a theorem that these data remain obtainable from every
-  node.
-- Define checkpoint bootstrap: authenticate network/genesis and checkpoint
-  roots, identify who vouches for the checkpoint, verify included state
-  commitments and cumulative work, and validate every subsequent block. Once
-  historical proofs are deleted, a new pruned node must trust an authenticated
-  checkpoint source or an already fully verified node; it does not gain
-  trustless genesis verification from public data alone. Header work and matching
-  public roots do not independently prove the deleted transactions. Test stale,
-  conflicting, incomplete and wrong-network checkpoints and archive
-  unavailability.
+- Retain transaction proofs, settlement proofs and private fee sidecars until
+  three elapsed days **after final confirmation**, then delete them from the
+  online proof store. At a 300-second target, depth 24 is two hours nominally,
+  so the steady-state retention window is 888 blocks: 24 unresolved blocks and
+  864 finalized blocks. Finality is a deterministic depth rule rather than a
+  wall-clock guarantee; persist finality/retention metadata and extend the
+  window after uncertain clocks, reorganizations or recovery. Never shorten it
+  by a nominal block count.
+- Preserve public data on every node without pruning: block headers and PoW,
+  output commitments and commitment-tree state, ciphertexts, nullifiers, fee
+  commitments, block settlement declarations without proofs, miner reward
+  notes, development-fund records and ML-DSA signatures, and recent-root
+  snapshots, plus signed public asset-issuance declarations. The implemented
+  three-output permanent position record is 2,115 bytes. A permissionless
+  asset registry must bound metadata size, records per block, initial notes
+  per issuance and issuance work so permanent storage remains measurable.
+- V1 has no archive-node role. New nodes use a release checkpoint authenticated
+  with genesis/network identity, cumulative PoW, accepted-state commitments,
+  complete snapshot window, verifier manifest and permanent-data roots, then
+  validate every later block. Full proof replay from genesis, using an optional
+  proof archive or asynchronous V2 history compression, is a future upgrade.
+  Checkpoint bootstrap is an explicit trust assumption; header work or matching
+  peer roots cannot prove proofs that have been deleted. Test stale, conflicting,
+  incomplete and wrong-network checkpoints fail closed.
+- Back up permanent public data to versioned object storage at least every six
+  hours, publish a signed daily manifest and create a weekly full checkpoint
+  snapshot. Restore in an isolated node by verifying object hashes/signatures,
+  replaying blocks and PoW, rebuilding indexes and comparing roots/work before
+  promotion. Run monthly restore checks and quarterly replacement-host tests.
+  Wallet creation requires explicit mnemonic backup confirmation and a local
+  recovery check. Restored wallets rescan permanent ciphertexts from genesis or
+  an authenticated wallet birth height, including pre-checkpoint segments,
+  and reconcile notes, nullifiers and payment journals exactly once. The node's
+  bootstrap checkpoint does not bound the wallet's recovery history.
 
 ## Remaining implementation milestones
 
-The isolated AIR, native proving/verification, fixed public codec, snapshot
-pool and output self-check helpers are implemented in the engineering crate.
+The isolated multi-asset AIR, native transaction/issuance/settlement proofs,
+fixed public codec and encryption primitives are implemented in the new
+engineering crate. The earlier snapshot-pool and bounded-decoder work remains
+a baseline whose integration must be updated for this profile.
 Their security and resource reports must match the exact frozen source,
 dependency, relation and verifier identities. A surrogate AIR, diagnostic row
 or unrelated CI smoke test cannot replace those artifacts.
 
 The [node and network integration plan](v1-node-network-plan.md) gives concrete
 admission budgets and remaining milestones: shared block transition,
-verification service and padding pool, compact relay, retention and
-archive/checkpoint synchronization, hybrid transport, source-hiding relay and
-new-network acceptance. Estimates span 3–10 engineering days per milestone;
-the independent cryptographic review is separate. Node implementation follows
+verification service and padding pool, compact relay, three-day retention,
+public-data backup and checkpoint-plus-PoW synchronization, hybrid transport,
+source-hiding relay and
+new-network acceptance. The [network design](v1-network-design.md) fixes the
+engineering identity, source-relay and explicit checkpoint-trust direction;
+the [deployment profiles](v1-deployment.md) and [acceptance gates](prover-acceptance.md)
+define resource and recovery qualification. Milestone estimates span 3–17
+engineering days, with wallet and monitoring work listed separately; review,
+infrastructure and elapsed observation windows are excluded. Node implementation follows
 proof-parameter freeze and does not redefine its boundary. Network privacy is
 required before launching the independent engineering network. N=32 and
 recursive V2 work remain outside this V1 implementation scope.
+
+## Multi-asset reopening
+
+The private asset ID, third output and issuance-supply relation change the
+transaction AIR, encrypted plaintext, statement digest and trusted verifier key.
+The isolated implementation includes the actual three-output codec, per-asset
+balance AIR, native fixed-supply issuance proof with ML-DSA-65 verification, and
+an SI-only reward constraint inside the settlement AIR. The two-output baseline
+is unchanged. The new profile remains unfrozen because its full acceptance
+gates, including the two-second generation qualification, are not met.
+
+See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md),
+[V1 Multi-Asset Transaction Format](v1-multi-asset.md), and
+[V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md). Node issuance
+application and the issuance-fee amount/destination remain open integration
+and policy work; a valid signature cannot replace the supply proof or verified
+SI fee payment.
+
+## Backup checkpoint freshness
+
+A weekly full snapshot alone is insufficient once proofs expire after
+three days. Export an authenticated, consistent confirmed-state checkpoint
+(full or a complete authenticated delta chain) at least every six hours,
+together with the public-data manifest. Weekly full snapshots remain a
+compaction/recovery convenience. Before replaying a restored checkpoint's
+proof tail, confirm every required proof is still available. If not, obtain a
+newer quorum-authenticated checkpoint under the explicit trust policy, or
+stop recovery; public records and PoW cannot replace deleted proof validity.
+The checkpoint binds the asset registry, fund state, permanent-data manifests
+and complete accepted root window. Never synthesize missing state or silently
+trust an unauthenticated peer.

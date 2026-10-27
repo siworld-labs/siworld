@@ -3,17 +3,21 @@
 Status: selected V1 design with an isolated native AIR/prover implementation. This
 document specifies Scheme B, a confidential settlement mechanism for the
 native, non-recursive transaction route. The direction is selected for V1, but
-it is not an activated consensus rule. Proof-parameter freeze is established by
-the checked manifest, security reports and resource gates; independent review
-and node integration remain separate prerequisites for activation. The
+it is not an activated consensus rule. The multi-asset extension reopens the
+previous proof profile; the new profile is not frozen. Its isolated settlement
+AIR constrains the reward asset to SI and uses the five-block asset-bound note
+commitment. See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md).
+Independent review and node integration remain activation gates, and the
 retained seven-node network is unchanged.
 
 ## Goals and boundaries
 
 Route A broadcasts one native proof with each fixed-shape transaction. Nodes
 verify the proof before mempool admission, and a block carries compact
-references to those transactions. A transaction always has two inputs and two
-outputs. Real and padding transactions use the same public byte length and the
+references to those transactions. The required V1 transaction has two inputs and three outputs with
+private per-asset balances and SI-only fees. The isolated multi-asset AIR and
+codec implement this shape; the earlier two-output code is an unchanged
+baseline. Real and padding transactions use the same public byte length and the
 same proof envelope shape. A real transaction commits either the standard or
 priority fee; a padding transaction commits zero. The commitment, rather than
 the fee amount, is the only fee value exposed on chain, so the two cases remain
@@ -59,11 +63,13 @@ It computes a fixed-width field digest:
 
 ```text
 F = Poseidon2_W24(
-      fee_u16_limbs[4] || blinding_field_elements[8] || 6 || 1 || zero[10])[0..12]
+      fee_u16_limbs[4] || blinding_field_elements[8] || 136 || 1 || zero[10])[0..12]
 ```
 
 The permutation input is the native one-block overwrite sponge: a twelve-
-element rate, fee-domain tag 6, block count 1 and ten zero capacity elements.
+element rate, multi-asset fee-domain tag 136, block count 1 and ten zero
+capacity elements. The earlier two-output diagnostic used tag 6; it is not
+the new multi-asset commitment domain.
 Network, snapshot and transaction bytes are not part of this fee-commitment
 preimage. The transaction proof separately binds `F` to its canonical public
 data and fixed proof context, including the selected snapshot identity. The
@@ -81,13 +87,15 @@ The proof statement publishes only `F` in a fixed-size statement slot and omits
 the fee limbs, tier bit, dummy bit, and `r`. With the D8/W24/12-element suite,
 the canonical commitment occupies 48 bytes (twelve little-endian 32-bit
 elements). This is an incremental proof-statement/relay-envelope field; it is
-not part of the 1,742-byte permanent transaction encoding. The 48-byte `F` field
+not part of the implemented 2,027-byte three-output body. The 48-byte `F` field
 must nevertheless remain in the retained on-chain transaction statement after
 the proof body is pruned. Together with the 40-byte canonical snapshot selector
-the permanent per-position record is 1,830 bytes before amortized block
-context. The AIR proves all of the following:
+the implemented permanent per-position record is 2,115 bytes before amortized
+block context. The isolated AIR proves the following; node acceptance remains
+separate work:
+following:
 
-- the two inputs and two outputs satisfy the transaction relation;
+- the two inputs and three outputs satisfy independent per-asset balances and SI-only fees;
 - every positive-amount input proves ownership and commitment-tree membership;
   a zero-amount dummy input uses the canonical dummy witness and skips that
   membership check;
@@ -113,8 +121,8 @@ network context. The raw commitment alone is not context bound. A proof or
 sidecar cannot be moved to a different public transaction, network, suite or
 snapshot without changing the authenticated statement. Wallets must sample
 fresh blinding for every commitment; equality of reused commitments can be
-linkable. The 1,742-byte public transaction encoding remains unchanged. `F`
-belongs to the fixed proof statement/envelope and must be included in the
+linkable. The implemented three-output public body is 2,027 bytes. The
+1,742-byte two-output diagnostic remains a separate baseline. `F` belongs to the fixed proof statement/envelope and must be included in the
 proof-size, relay, and denial-of-service ledger; it is not silently added to
 the public transaction bytes.
 
@@ -189,7 +197,10 @@ issuance schedule or fund shares itself.
 `T` is not a public block field. The miner note commitment is the public
 settlement result; its amount and note opening remain private. The standard
 note relation constrains owner, value, height-derived unlock, miner rho and
-random seed. The public Fiat--Shamir transcript binds the network, block height
+random seed. The isolated multi-asset AIR additionally constrains every reward
+asset-ID limb to the reserved SI value and hashes the complete five-block note.
+A host-only SI check is insufficient. The public Fiat--Shamir transcript binds
+the network, block height
 and ordered transaction-list digest. The block transition reconstructs these
 values, the ordered fee commitments and miner issuance share from trusted
 candidate data.
@@ -238,14 +249,16 @@ budget pauses the route and does not silently lower the privacy or proof
 requirements.
 
 The per-transaction accounting must list the 48-byte `F_i` commitment and the
-fixed-size fee-opening sidecar separately from the 1,742-byte permanent public
-transaction encoding, totaling 1,790 public-body bytes. The permanent snapshot
-selector adds 40 bytes, for a 1,830-byte per-position record. Preserve the fixed
+fixed-size fee-opening sidecar separately from the implemented 2,027-byte public
+transaction body, totaling 2,075 bytes with the fee commitment. The permanent
+snapshot selector adds 40 bytes, for a 2,115-byte per-position record. Preserve the fixed
 `MAX_LEAF_PROOF_LEN = 524288` (512 KiB). Mempool byte caps, concurrent-verification
 limits and complete relay capacity require the production codec ledger and
 qualified transaction/576-position settlement measurements. The
-[node integration plan](v1-node-network-plan.md) specifies the 1,899-byte
-envelope prefix, 78-byte sidecar and initial local byte/CPU policies.
+[node integration plan](v1-node-network-plan.md) specifies the proposed
+2,184-byte envelope prefix, 78-byte sidecar and initial local byte/CPU policies.
+Its new reward-note AIR must bind the reserved SI asset ID inside the circuit;
+the diagnostic four-block assetless reward commitment is not the new relation.
 
 ## Mempool and block validation flow
 
@@ -340,11 +353,11 @@ miners must not log or export `f_i` with transaction identifiers.
 
 The fee-binding digest and settlement proof add fixed proof/envelope bytes and
 verification work. Capacity, bandwidth, and mempool budgets must include those
-bytes, plus the fixed sidecar and retransmissions. The existing 1,742-byte
-transaction target alone is not a complete relay budget.
+bytes, plus the fixed sidecar and retransmissions. The implemented 2,027-byte
+transaction body alone is not a complete relay budget.
 
-Settlement proofs and sidecars are retained for four weeks after final
-confirmation to support reorg handling, archive/checkpoint verification, and
+Settlement proofs and sidecars are retained for three elapsed days after final
+confirmation to support reorg handling, checkpoint recovery, and
 operational recovery. After that period, nodes delete the proof bodies and
 sidecars. The public fee commitments `F_i` remain permanently with the
 confirmed transaction; no fee opening is retained in the permanent record.
@@ -385,3 +398,14 @@ activation gates after parameter freeze. The
 milestones. Clear fee limbs in the older recursive AIR remain measurement
 fixtures and are not the native V1 settlement statement. No part of this work
 is enabled on the retained network.
+
+The multi-asset implementation reopens the previous proof freeze. Its actual
+one-recipient/two-change body is 2,027 bytes, plus a 48-byte fee commitment and
+40-byte snapshot selector, giving 2,115 permanent bytes per position. The
+isolated settlement AIR binds SI in the five-block miner reward commitment and
+has matching native proof and rejection tests. The
+[multi-asset evaluation](v1-multi-asset-evaluation.md) records the new relation;
+the transaction's two-second generation qualification is not met, so this is
+not a new parameter freeze. External ML-DSA issuance authentication is paired
+with a separate native fixed-supply proof and verified SI fee-payment gate;
+node issuance integration and the issuance fee policy remain open.

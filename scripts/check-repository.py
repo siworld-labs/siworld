@@ -20,7 +20,9 @@ DOCUMENTS = {
     "proof-composition.md", "worker-control.md", "memory-budgets.md",
     "proof-security-review.md", "prover-acceptance.md", "d8-w24-recursion.md",
     "d4-security-controls.md", "d8-parameter-screen.md", "linux-proof-measurement.md",
-    "v1-node-network-plan.md", "route-a-v1.md", "fee-settlement.md", "fee-settlement-evaluation.md",
+    "v1-node-network-plan.md", "v1-deployment.md", "v1-network-design.md",
+    "route-a-v1.md", "fee-settlement.md", "fee-settlement-evaluation.md",
+    "v1-multi-asset.md", "v1-multi-asset-evaluation.md", "v1-storage-and-sync.md", "v1-network-budget.md",
 }
 PUBLIC_ARTIFACTS = {
     "crates/bench-d8/artifacts/v1-native-freeze.json",
@@ -30,7 +32,7 @@ PUBLIC_ARTIFACTS = {
 }
 CRATES = {
     "core", "crypto", "poseidon2", "state", "circuits", "consensus",
-    "storage", "prover", "node", "bench-stark", "bench-d8",
+    "storage", "prover", "node", "bench-stark", "bench-d8", "bench-multi-asset",
 }
 NON_ENGLISH = re.compile(
     "[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]"

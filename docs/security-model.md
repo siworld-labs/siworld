@@ -2,6 +2,14 @@
 
 ## Deployment status
 
+The implementation behavior below describes the retained proof route. Native
+V1 has a reproducible two-output proof baseline; parameters and codecs are
+reopened for private multi-asset notes and a three-output relation. Node
+integration remains incomplete.
+Its [acceptance plan](prover-acceptance.md) and [network design](v1-network-design.md)
+define distinct review, transport, source-privacy and checkpoint-trust gates;
+they do not make those mechanisms implemented or independently approved.
+
 The code and dependencies are unaudited research software. No production deployment or real funds are supported. Mock-proof networks omit the zero-knowledge relation and allow forged payments. Default node binaries reject those networks; explicit development builds are required.
 
 ## Observers

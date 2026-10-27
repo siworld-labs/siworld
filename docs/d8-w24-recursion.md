@@ -1,14 +1,14 @@
 # D8 W24 Recursive Suite Implementation Plan
 
-Status: experimental implementation with passing primitive, reusable-recursion
+Status: paused V2 experimental implementation with passing primitive, reusable-recursion
 and eight-input application correctness tests. A final-profile checkpoint attempt
 was stopped by a cgroup OOM at the 5-GiB limit during eight-input verifier-circuit
 construction/preprocessing, before eight-input proving. That failure remains
-retained evidence. A follow-up experiment uses a 10-GiB process-tree ceiling
-with zero swap; no result under that ceiling is yet established. Actual-shape
+retained evidence. The paused follow-up proposal specified a 10-GiB
+process-tree ceiling with zero swap; it is not an active V1 requirement. Actual-shape
 screening, performance measurement and security review remain pending. The target is
 KoalaBear D8, standard Plonky3 Poseidon2 W24 and 12-base-element digests.
-The N=16 proof-latency target is 180 seconds. The next experiment enforces
+The paused N=16 research target is 180 seconds. That experiment specified
 10 GiB = 10,737,418,240 bytes across the complete proof process tree. This
 ceiling is not a production acceptance budget; select that budget only after
 actual peak-memory characterization. This proving target does not change the
@@ -271,7 +271,7 @@ discarded as an outlier.
 
 Project the N=16 `16 -> 2 -> 1` schedule with one proof job and two native
 workers, so the two eight-input merges execute serially. Apply the
-[last-package-to-root timing boundary](prover-acceptance.md#timing-boundary-and-service-readiness),
+[recursive timing boundary](proof-composition.md#timing-boundary-and-retained-result-interpretation),
 including all sixteen leaf proofs in controlled trials:
 
 ```text

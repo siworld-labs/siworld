@@ -1,6 +1,8 @@
 # Protocol Specification
 
-This document describes the current SI-only implementation. Constants are in `crates/core/src/params.rs`; executable rules are in `crates/consensus`. Genesis commits network parameters. Mainnet constructors contain placeholders and do not define an activated network.
+This document describes the retained SI-only implementation. Native V1
+requirements are distinguished in the selected-route section below; existing
+constants and recursive behavior are not new-network acceptance criteria. Constants are in `crates/core/src/params.rs`; executable rules are in `crates/consensus`. Genesis commits network parameters. Mainnet constructors contain placeholders and do not define an activated network.
 
 ## Units and issuance
 
@@ -82,8 +84,12 @@ Format v1 carries a 32-byte owner, a 1,184-byte ML-KEM encapsulation key and a f
 
 ## Planned native V1 transaction route
 
-Status: selected design with isolated native AIR, prover, decoder and codec
-implementations; node integration is planned and the route is not activated. The retained
+Status: selected design with isolated native three-output transaction AIR,
+codec, fixed-supply issuance proof and SI-reward settlement implementations.
+The multi-asset profile is reopened and unfrozen: its four-core two-second
+generation qualification is not met. See the
+[actual multi-asset evaluation](v1-multi-asset-evaluation.md). Node integration
+is planned and the route is not activated. The retained
 seven-node N=2 network keeps its current verifier, history, parameters and keys.
 The new route uses independent genesis, network identity, directories and keys
 and imports no retained notes or proofs. See the
@@ -91,22 +97,22 @@ and imports no retained notes or proofs. See the
 
 | Requirement | New-route target |
 | --- | --- |
-| Transaction proof | Native STARK per fixed two-input/two-output transaction; no recursive aggregation in V1 |
+| Transaction proof | Native STARK per fixed two-input/three-output multi-asset transaction; no recursive aggregation in V1 |
 | Suite | KoalaBear D8, standard Plonky3 Poseidon2 W24, 12-base-element (48-byte) digests |
 | Security screening | Classical conjectured at least 128 bits; every Fiat–Shamir Johnson term, including queries and enforced grinding, at least 80 bits after quantum halving; challenge-domain terms at least 80 bits after halving; BHT commitment collision resistance at least 80 bits |
 | Anchor | Depth-12 recent-root membership checked inside the transaction AIR; only the recent-root tree root is public |
 | Snapshot acceptance | Newest 4,096 canonical-chain tree snapshots; reject expired/orphaned identities and evict affected pending transactions for wallet reproof |
 | Output-encryption boundary | V1 byte binding; sender self-check before broadcast, private per-payment receipt material, recipient AEAD/commitment checks; padding uses real ephemeral-key ML-KEM encryption |
 | Fee tiers | Reward-linked standard and four-times-standard priority; Scheme B native confidential settlement ([design](fee-settlement.md), [evaluation](fee-settlement-evaluation.md)); independent review and node integration precede activation |
-| Public-data encoding | 1,742-byte body plus 48-byte confidential fee commitment and 40-byte snapshot selector: 1,830 permanent bytes per position before amortized block context |
-| Relay envelope | 1,899-byte prefix plus proof body; maximum 526,187 bytes; separate fixed private sidecar 78 bytes |
+| Public-data encoding | Implemented isolated three-output codec: 2,027-byte body plus 48-byte fee commitment and 40-byte snapshot selector, or 2,115 permanent bytes |
+| Relay envelope | Reopened three-output prefix: proposed 2,184 bytes plus proof body, maximum 526,472 bytes; private sidecar remains 78 bytes |
 | Change encryption | ChaCha20-Poly1305 with a 256-bit key and domain-separated BLAKE3 derivation |
-| Blocks | Groups of 16; 64–576 positions; 300-second target; 25-Mbps minimum node uplink |
+| Blocks | Groups of 16; 64–576 positions; 300-second target; 30-Mbps minimum node uplink |
 | Reorganization bound | New-route local `MAX_REORG_DEPTH = 24`; existing implementation remains at 100 |
-| Proof retention | Transaction and settlement proofs plus private fee sidecars are retained for four weeks after final confirmation, then deleted online; public fee commitments remain permanent and archive/checkpoint trust is required |
+| Proof retention | Transaction and settlement proofs plus private fee sidecars are retained for three elapsed days after final confirmation, then deleted; all public data remains permanent, no archive role is selected, and release checkpoint-plus-PoW trust is explicit |
 | Proof-body maximum | `MAX_LEAF_PROOF_LEN = 524288` (512 KiB); prefer larger blowup if exceeded, then report a 544-position fallback without raising this bound |
-| Production parameter choice | Smallest eligible proof with four-core generation at most two seconds, measured on the actual AIR |
-| Parameter-freeze boundary | Checked relation, dependency, key, codec, security and resource artifacts; node/wallet integration, independent review and activation are separate gates |
+| Production parameter choice | Smallest eligible proof with four-core generation at most two seconds on the actual AIR; the current multi-asset measurements do not meet this gate |
+| Parameter-freeze boundary | Multi-asset profile reopened and unfrozen; matching relation, dependency, key, codec, security and qualified resource artifacts are required; node/wallet integration, independent review and activation remain separate gates |
 
 Nodes verify proofs on mempool admission. Blocks use compact references and
 public transaction data without duplicating proof bodies. The selected snapshot
@@ -117,16 +123,18 @@ do not prevent recording proof-parameter freeze after the relation, codec,
 verifier, security and resource gates pass. The
 [fee-settlement design](fee-settlement.md) is not an activated rule; its
 [evaluation gate](fee-settlement-evaluation.md), independent review and node
-acceptance must pass before activation. A keyless public node cannot authenticate an
-AEAD tag. None of these proposed properties may be described as implemented
-before their tests and gates pass.
+acceptance must pass before activation. The isolated issuance path verifies
+ML-DSA-65 and a native proof of exact hidden minted supply, with an external
+verified SI fee-payment gate; node application and issuance fee policy remain
+open. A keyless public node cannot authenticate an AEAD tag. Isolated native
+proof implementations do not establish the pending node/network properties.
 
 Recursive aggregation and historical proof compression are deferred to V2.
-The existing [recursive suite plan](d8-w24-recursion.md) and
-[prover acceptance plan](prover-acceptance.md) describe that experimental path;
-its development and checkpoints are paused while the native route is assessed.
-Its 180-second root-proof target and experimental memory ceiling do not apply
-to the native transaction generation gate. N=32 is outside the V1 scope.
-Transport privacy (X25519 + ML-KEM and Dandelion++ or a reviewed relay design)
-follows the production AIR and scan and must be complete before a new engineering
-network is launched.
+The [recursive suite plan](d8-w24-recursion.md) describes paused experimental
+work. Its 180-second root-proof target and experimental memory ceiling do not
+apply to native V1. The [current acceptance plan](prover-acceptance.md) instead
+qualifies native transactions, independent settlement, 24-block reorganization
+boundaries and full-network operation. N=32 is outside the V1 scope.
+The [V1 transport and checkpoint design](v1-network-design.md) selects
+authenticated hybrid identity, Dandelion++ and explicit-trust bootstrap;
+implementation and review must pass before the new network launches.

@@ -1,6 +1,7 @@
 # Commitment and Proof Composition Tree Separation
 
-Status: isolated circuit prototype and design evaluation. No new root key,
+Status: paused V2 recursive research, isolated circuit prototype and design
+evaluation. Native V1 uses [separate acceptance criteria](prover-acceptance.md). No new root key,
 consensus format or parameter suite is activated. The node retains the binary
 tree specified in [Protocol Decisions](protocol.md). D4 q42/q92/B results
 below are historical method evidence. B is no longer a parameter candidate:
@@ -50,7 +51,8 @@ leaf proving and all intervening admission, witness, scheduling and handoff
 work. Controlled comparisons start all sixteen leaf proofs after all package
 inputs are available. Record any production leaf work before the arrival marker
 separately; never move the marker forward until leaf proofs are already ready.
-See the [timing definition](prover-acceptance.md#timing-boundary-and-service-readiness).
+This is the paused recursive experiment timing definition, not a native V1
+transaction or block-acceptance budget.
 
 Prepare all input-independent leaf, aggregation and root circuits and trusted
 keys at service startup and keep them resident. Cold-start duration is recorded
@@ -354,9 +356,9 @@ to uniform q92, while recursive proving and memory decreased. Lowering the
 leaf verifier's query count changes both the eight-input circuit and the root
 circuit that verifies it, despite retaining q92 output-proof parameters.
 
-The [production-path acceptance plan](prover-acceptance.md)
-leaves the production proof-process budget undecided until actual D8 peak
-measurements are available. Uniform q92's observed physical footprint exceeded
+No recursive production proof-process budget is selected. The
+[current native V1 acceptance plan](prover-acceptance.md) does not adopt this
+experiment memory ceiling or timing boundary. Uniform q92's observed physical footprint exceeded
 5 GiB; this historical value is unchanged. Those uncapped D4 observations do
 not establish compliance with any subsequently selected hard limit. The next
 D8 experiment has a 10-GiB ceiling, which is not a production budget. Three
@@ -394,8 +396,8 @@ measurement-method evidence and is not a parameter candidate for external
 review or production integration. Its apparent timing margin is not D8
 headroom. The [D8/W24/12-element implementation](d8-w24-recursion.md)
 needs new instance-specific security screening and three bounded measurements
-before the [independent review](proof-security-review.md) and
-[production-path gates](prover-acceptance.md).
+before [recursive independent review](proof-security-review.md) or any
+separately proposed V2 production integration.
 Preserve the current N=2 network. Use a separate resettable N=16 engineering
 network with independent genesis, keys and directories and no old-note/proof
 imports. Height-activated historical-verifier design is deferred until before

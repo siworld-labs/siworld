@@ -1,228 +1,281 @@
-# Proof Prover Integration and Acceptance Plan
+# Native V1 Testnet Acceptance
 
-Status: selected engineering scope with implementation and security gates still
-open. Production uses the existing binary D4 relation. The target is D8/W24
-with 12-element digests and N=16 `16 -> 2 -> 1`; historical B is methodology
-evidence only. This plan does not claim a completed suite or start a network.
+Status: engineering acceptance requirements for the independent native-proof
+testnet. Transaction and settlement parameter acceptance is reopened for
+the required two-input/three-output multi-asset relation. The earlier
+single-asset freeze is a diagnostic baseline; node, wallet, transport and
+recovery integration remain incomplete. A passed
+standalone benchmark is not testnet acceptance. Operating thresholds below
+are qualification targets, not claims of achieved behavior.
 
-## Network boundary
+## Scope and network isolation
 
-Preserve the current seven-node N=2 network, stores, wallets, payment/fund
-journals, images, keys and recovery evidence. Do not migrate its verifiers,
-capacity, commitments or notes as part of this work.
+Follow [current decisions](00-decisions.md), the [native transaction
+specification](route-a-v1.md), [confidential settlement](fee-settlement.md) and
+the [node integration plan](v1-node-network-plan.md). Use a new genesis,
+network identity, independent directories and keys, with synthetic funds.
+Import no retained-network notes, proofs, wallet state or payment journals.
+Preserve the existing seven-node N=2 network and its deployment guard.
 
-The new N=16 suite uses a separate resettable engineering network from a new
-genesis, independent directories, network identity, peer keys and wallet/fund
-keys. It imports no old tickets, notes or proofs. Use synthetic funds only.
-Prevent cross-network peer, worker, wallet and artifact reuse. Retained-network
-services and resource reservations remain part of host capacity admission.
-An implementation milestone or timing result does not authorize launching an
-incomplete suite. Height-activated v1/v2 design and its historical replay,
-boundary-reorg and mixed-version matrix are deferred until before mainnet.
-Mainnet still requires the independently reviewed launch suite from genesis.
+V1 uses native transaction proofs and one independent fixed-576 settlement
+proof. Blocks contain 64 through 576 positions in groups of 16, with a
+300-second target, depth-24 finality and `MAX_REORG_DEPTH=24`. These rules
+apply only to the new network. Coinbase maturity is a separate rule.
 
-## Gate 1: complete suite and independent security review
+Recursive leaf/merge/root timings, the 180-second recursive proof target,
+10-GiB recursive experiments and 99/100/101 reorganization tests are not V1
+acceptance criteria. [Recursive research](d8-w24-recursion.md) is paused V2
+work. N=32 and retained-history verifier migration are excluded.
 
-Implement the [D8 dependency plan](d8-w24-recursion.md), extract
-actual shapes and screen profiles with pinned `p3-security`. Meet the
-[security review requirements](proof-security-review.md) for every
-layer and composition. Then freeze the full reproducible source/dependency,
-artifact and key set for independent human review. Close findings before
-production adoption. Quotations and review scheduling may proceed in parallel;
-D4/W16 is excluded from external parameter approval.
+## Gate 1: proof identity and independent review
 
-## Gate 2: isolated production integration
+Before refreezing, implement [the multi-asset relation](v1-multi-asset.md),
+including signed issuance-to-note supply linkage, and rerun actual-AIR security,
+proof-size, generation, independent verification and memory measurements.
+The old keys must reject the new format. Reproduce the prior baseline [freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
+from pinned source and dependencies, and compare canonical public verifier
+artifacts, suite identifiers, envelopes and actual-AIR security reports.
+Run `python3 scripts/check-v1-freeze.py`; artifact reproduction is a separate
+cryptographic check, not a consequence of the document check passing.
 
-| Component | Required behavior |
+The prior two-output native profile is KoalaBear D8, standard Poseidon2 W24, twelve-element
+digests, random-codeword hiding, log blowup 8, 36 queries, query grinding 20,
+opening-batch grinding 20, commitment grinding zero, binary folding and
+`log_final_poly_len=0`. Pin `p3-security=0.9.0-rc.2` and the reviewed
+[dependency revision](d8-dependency-patch.md).
+
+Require classical conjectured security of at least 128 bits, quantum-halved
+Johnson Fiat–Shamir terms of at least 80 bits including enforced grinding,
+challenge-domain terms of at least 80 bits after halving, and at least
+80-bit BHT commitment collision resistance. Apply the screen to each native
+AIR and review their protocol composition. The approximately 81.9-bit
+diagnostic ledger and [BHT conversion](bht-security-accounting.md) are model
+accounting, not independent cryptographic approval. Review application hashes,
+transcript binding, hiding, fee privacy, dependency changes and wallet key
+lifecycle separately. Close security-limiting findings before public launch.
+
+Trusted keys come from the local network manifest, never a peer. Reject
+wrong-network, wrong-suite, unknown-key and legacy proofs. Source, AIR, codec,
+key or parameter drift requires renewed freeze checks and affected acceptance.
+
+## Gate 2: shared state transition and wallet correctness
+
+Production, inbound validation, historical replay and audit must call the same
+integer-only, deterministic, atomic transition. Write rejection tests before
+implementing each consensus rule. Cover every public field, digest limb,
+noncanonical encoding, every input, duplicate nullifiers, one-time-key reuse,
+amount/fee carries, issuance and partial-failure rollback.
+
+Validate complete ordered blocks at 64, 80, 544 and 576 positions. Reject
+counts outside the range or not divisible by 16. Bind each statement exactly
+once to settlement and the miner reward commitment. Derive the fixed AIR's
+unused internal tails canonically; do not add extra chain positions. Verify
+transaction proofs independently of settlement, with private anchored fee
+schedules and no public fee total or miner amount.
+
+Exercise both fee tiers, forged/missing/mismatched sidecars, fee openings,
+nonzero padding fees, zero real-transaction fees and reward mismatch. Sidecars
+are required for local pool admission/production, not public block validation.
+No public statistic may classify real or padding transactions or fee tiers.
+
+Accept the newest 4,096 canonical snapshot identities: age 4,095 passes and
+age 4,096 fails. Test orphaning, same-root/different-block substitutions,
+shortened-chain refill and historical validation at the historical window.
+Eviction releases both nullifier reservations and triggers wallet reproof.
+
+Test reorganization depths 23 and 24, reject depth 25, and test the exact
+finalized boundary without off-by-one ambiguity. Verify reward reversal,
+snapshot refill, orphaned admission/padding eviction and shared roots/work.
+A deeper fork requires explicit recovery, not silent rollback or rule changes.
+
+Wallet acceptance covers durable change keys, protected receipt material,
+backup/restore, sender self-check of all three outputs, recipient AEAD and note
+commitment checks, interrupted submission and exactly-once reconciliation.
+V1 proves ciphertext-byte binding; it does not prove encryption correctness.
+Padding must perform genuine ephemeral-recipient ML-KEM encryption and use
+fresh nullifiers with identical public shape. Retain a private usable queue
+target of 64 and cap of 128 under its byte budget; never expose its size.
+
+## Gate 3: isolated verification and bounded admission
+
+Enforce the existing [admission ledger](v1-node-network-plan.md#admission-and-local-resource-policy)
+before allocation: wire limits, decoder budget, byte and entry reservations,
+per-peer limits, two isolated verifier workers, TTLs, caches and bounded block
+reconstruction. Count owned metadata and retained copies as well as payloads.
+
+Independent verification loads only public verifier artifacts. Each worker
+has 128 MiB charged memory, zero swap, a 250-ms CPU allowance and a two-second
+wall watchdog. Record CPU sampling/overshoot and cleanup. Maximum serial CPU
+allowance is 144 seconds for 576 transactions, 144.25 including settlement.
+This allowance is neither an observed valid-block duration nor a consensus
+timeout. Local exhaustion means retryable unavailability, not invalidity.
+
+Fuzz framing, nested declared lengths, canonical re-encoding, partial streams,
+duplicate floods and invalid proofs while measuring allocation/CPU behavior.
+Exercise cancellation and worker crashes; release every reservation, close
+owned streams and leave no child process. Resume bounded valid traffic after
+abuse. An overload must not reject a valid block as cryptographically invalid.
+
+## Gate 4: deployed transport, relay and synchronization
+
+Use the [V1 network design](v1-network-design.md) for authenticated hybrid
+handshakes, source-hiding relay and explicit-trust checkpoints. Its mechanisms
+require implementation and independent review; classical Noise alone fails
+this gate. Test actual TCP listeners, not only in-memory messages.
+
+Cover algorithm negotiation, both identity bindings, transcript mutation,
+key substitution, downgrade, replay, malformed KEM data, key confirmation,
+interrupted/half-open handshakes, reconnect and bounded cleanup. No classical
+fallback is permitted for V1 transaction, wallet or sidecar connections.
+
+Compact reconstruction authenticates the complete ordered statement list and
+all retrieved bodies. Test missing, duplicated, withheld, reordered and
+corrupted responses, bounded requests, reconnect and simultaneous candidates.
+Do not treat short inventories as evidence that proof traffic disappeared.
+
+The default new-node path uses the release checkpoint, its complete
+snapshot/state payload and authenticated cumulative PoW, followed by validation
+of every later block. Wrong-network, incomplete, stale and conflicting
+checkpoints fail closed. A checkpoint quorum remains a trust assumption;
+matching peer roots or header work does not prove already deleted historical
+transactions. Full proof replay from genesis is a future optional archive or
+V2 history-compression upgrade and is not a V1 launch gate.
+
+## Gate 5: deployment resources and timing
+
+Use [deployment qualification profiles](v1-deployment.md); formal minimum RAM
+and disk requirements remain unqualified until sustained integration trials.
+Linux x86_64 uses x86-64-v3 with AVX2 and OS-state checks. Prefer Ubuntu 24.04
+on the EPYC 7763 two-exposed-core/four-vCPU reference; record actual CPU,
+virtualization, ISA, compiler, dependency and resource-controller identities.
+Other CPU allocations and macOS/Windows adapters require their own results.
+
+The hosted 5-GiB zero-swap generation scopes are measurement boundaries, not
+a formal miner RAM requirement. Select and enforce separate node, prover,
+verifier, maintenance and host budgets before integrated qualification.
+Include startup/key loading, resident state, all descendants, pool metadata,
+redb/page cache, serialization, allocator retention and platform/VM reserves.
+Simultaneous resource caps must fit the host; low sampled RSS is insufficient.
+
+On each supported hardware class run three trials of transaction generation,
+settlement generation and independent verification with the same frozen
+commit/profile. Use four workers for the native generation comparison and
+one for independent verifier measurements. Record native hiding-worker
+settings, process-tree limits, CPU quota/throttling, peak charged memory,
+`memory.events`, swap, wall/CPU time and proof bytes. Report every attempt,
+individual values, medians and maxima. No OOM, restart or silent retry passes.
+
+The selected transaction-generation gate remains at most two seconds with
+four workers on the qualified reference. Both proof bodies must fit
+524,288 bytes. Measure independent transaction and settlement verification
+separately. Cold start and readiness are separate timing markers; startup
+memory remains inside the lifetime resource boundary.
+
+Then run three actual end-to-end trials for each capacity class, including a
+576-position block of distinct, conflict-free valid statements and its bound
+settlement. Repeating one proof 576 times is only a verifier microbenchmark.
+Record wallet creation/proving, admission, queueing, assembly, settlement,
+PoW waiting, publication, propagation, full validation, durable acceptance and
+recipient reconciliation separately. Report p50/p95/p99 and maxima over the
+sustained run; three samples alone do not estimate tail latency.
+
+The 300-second block interval is a stochastic protocol target, not an
+upper bound on every PoW wait. Measure non-PoW service work and propagation
+separately and demonstrate that queues do not grow without bound at the
+offered maximum load. Match complete public state roots and cumulative work
+at the same block identity, with explicit idle/completed-state availability.
+Height equality or a cached busy response is insufficient.
+
+At the 30-Mbps uplink floor, the proposed multi-asset three-copy payload
+plus settlement uses 24.30537976 Mbps. The
+[conditional complete wire model](v1-network-budget.md) uses approximately
+29.252 Mbps after explicit control, transport, reciprocal ACK, bounded issuance,
+2% retransmission and 5% recovery reserves. Reconcile each assumption against
+packet/application counters and qualify the floor and recommended 100-Mbps
+profiles with the actual hybrid listener. Include concurrent ingress, losses,
+missing bodies and handshake churn. If the floor cannot sustain 576 positions,
+report the issue; do not silently reduce capacity or raise proof limits.
+
+## Gate 6: sustained observation, retention and recovery
+
+Use at least seven V1 validating processes across at least three independent
+hosts, with two independently hosted miners, plus a separately budgeted
+monitoring service and object-storage backup. A same-host seven-container run is a regression
+stage, not independent-host acceptance. Do not include retained nodes in this
+count. Operate all ordinary services and authenticated private telemetry.
+
+First qualify each hardware profile for 72 continuous hours at maximum-size
+576-position load and the 300-second target. Then require seven continuous
+days of independent-host operation, including at least 72 hours at that load.
+These observations can overlap after the configuration is frozen. Use
+conflict-free synthetic transactions, valid padding and settlement; exercise
+the wire maximum separately when actual proofs are smaller, clearly labeling
+transport-only synthetic stress rather than claiming valid full-size blocks.
+Reset the affected
+observation window after a material fix. Tests must retain diagnostic evidence
+without publishing transaction classification or user-linked fields.
+
+Pass only with stable admitted queues, bounded memory/cache behavior, no
+unplanned OOM/restart, no sustained unexplained root/work divergence, and
+completed-state availability. Report peaks and slopes by phase and process
+epoch. Missing state-category measurements or unexplained growth blocks
+resource qualification; a short flat interval is not a total-state bound.
+
+Three days means at least 259,200 elapsed seconds after depth-24 finality.
+At the target rate, include the 24 unresolved blocks when sizing the proof
+store: the nominal steady-state window is 888 blocks. Require accelerated
+boundary/crash tests and at least one real three-day retention/deletion
+lifecycle before claiming this gate closed. Short burn-in cannot substitute for
+that lifecycle. Delete eligible online proof bodies and sidecars after the full
+three-day interval; uncertainty in clock/finality fails toward longer
+retention. Preserve all public records and accepted state. Test clock changes,
+partial deletion, restart and disk pressure; never shorten retention to recover
+free space.
+
+| Recovery case | Qualification target |
 | --- | --- |
-| Circuit module | Implement reviewed D8 leaf, eight-input and root relations; preserve the experiment as a differential reference and dependency licenses. |
-| Trusted artifacts | Bind one immutable suite/relation/capacity/key set to the new network identity from genesis. Deterministically reproduce keys; reject unknown suite, key, format and configuration. Incoming proofs never select trusted keys. |
-| Shared validation | Production, inbound validation, replay and audit call the same native state transition and trusted verifier selection. Consensus remains integer-only, deterministic and atomic. |
-| State and codecs | Consistently port hashes, notes, nullifiers, anchors, addresses, encryption plaintexts and root layout to reviewed 12-element formats. Do not import or relabel old notes. |
-| Candidate lifecycle | Bind jobs, cached subtrees, cancellation and worker handshakes to network, suite, relation, capacity and key identity; reject stale/incompatible results. |
-| Privacy | Identical real/padding parameters, artifact shapes and hiding; no public per-block classification, individual fees or user-linked telemetry. |
-| Network resources | Keep node and worker limits separate. Admit aggregate hard limits and host/VM reserves before creating any new process; retain the N=2 network unchanged. |
+| Accepted durable block/state and wallet journal | RPO zero for acknowledged durable records; a crash may lose unacknowledged work only |
+| Ordinary restart with intact durable state | Return to the pre-stop validated tip and read service within 10 minutes; replay only the required authenticated tail |
+| Partition with at most 24 missing blocks | Catch up within 30 minutes on the qualified 100-Mbps full-duplex reference while live traffic continues; verify measured spare bandwidth and CPU suffice |
+| Lower-bandwidth catch-up | Publish a separate bound from missing bytes, measured spare bandwidth, serial verification and disk cost; do not promise the 100-Mbps result at 30 Mbps |
+| Beyond-finality fork or corrupt/missing state | Halt affected production, preserve evidence and require explicit authenticated recovery; no automatic rollback to an old database |
+| Monitoring | Sample every five seconds, mark stale after 15 seconds, alert on persistent actionable failures; never use monitor timeouts as consensus verdicts |
 
-Write consensus tests before implementation. Test correct and wrong suite/key,
-all changed public fields, every digest/extension limb, malformed/noncanonical
-encodings, native/circuit equivalence, anchor/ciphertext binding, fee carries,
-omitted/repeated leaves, bad padding and nullifier/key reuse. Invalid input
-must leave state unchanged. A D4 statement comparison does not establish D8
-statement compatibility: width changes require explicit reviewed layouts.
+Recovery trials include process kill, interrupted writes, exhausted disk,
+unavailable peers/checkpoints and replacement hardware from a verified object
+storage backup. Checkpoint bootstrap time and future archive-replay time are
+measured separately; neither inherits the ordinary-restart target. Do not mine
+until verified state, current snapshots, keys and usable padding satisfy
+readiness again.
 
-Test genesis-to-tip replay, restart, shallow and 99/100-block reorg boundaries,
-101-block rejection, job cancellation, disconnect/reconnect, wrong-network
-peers/workers and no legacy-proof fallback. Cross-network fixtures and keys
-must fail admission. Keep all test data independent of retained stores.
+## Release evidence
 
-## Gate 3: miner hardware and resource acceptance
+Identify the exact release/source, build/dependency manifests, trusted verifier
+bundle and independent-review disposition. Preserve private raw resource,
+retention, synchronization and recovery evidence; publish only independently
+written technical summaries and permitted synthetic fixtures. Link each gate
+to a reproducible test and result and list unsupported platforms and open
+findings. A live panel supplements evidence; it cannot approve a release.
 
-### Formal proof-process budget
+No mainnet, real funds, retained-network migration, recursive V2 activation or
+automatic expansion beyond 576 positions is authorized by this plan.
 
-No formal production proof-process memory budget is selected. Determine it
-from actual D8 startup and proving peaks, with reviewed headroom for hardware,
-load and allocator variation, before production acceptance. The selected budget
-must cover the complete process tree: setup, resident circuits/keys, leaf work,
-recursive workspaces, native workers, serialization, caches and allocator
-retention. Use one proof job and at most two native hiding workers unless a
-new reviewed measurement justifies a different schedule.
+## Multi-asset and supply-audit acceptance
 
-The next D8 experiment has a hard ceiling of **10 GiB = 10,737,418,240 bytes**,
-with zero swap. This ceiling permits bounded characterization; it is not a
-production acceptance budget. On Linux, place the worker and all descendants
-in one dedicated cgroup with `memory.max=10737418240` and `memory.swap.max=0`.
-Keep startup and resident preparation inside that same lifetime. Record actual
-limits, `memory.peak`, sampled charged memory, swap and `memory.events` before
-and after every run. Keep all helper descendants inside the boundary. An OOM,
-restart, excess, missing peak or missing enforcement evidence stops progression
-without an automatic retry loop. Enforce the subsequently selected production
-budget separately during production-path acceptance; a sampled-RSS warning is
-not an OS-enforced resource boundary or a worst-case allocation proof.
+Add test-first rejection cases for cross-asset balance mixing, non-SI fees,
+forged IDs, unsigned/wrong-chain/invalid-signature issuance, duplicate issuer
+sequences, incorrect issuance-to-note linkage and minted supply above the
+public declaration. Cover SI-only, token-plus-SI-fee, asset change, two-asset
+inputs and zero-output padding with the same fixed public shape. Verify
+exactly-once supply and registry rollback across depth 23/24 reorganizations.
+Measure the new rows/columns and p3-security terms; no old proof size or timing
+can satisfy this gate.
 
-RSS, virtual size and macOS physical footprint are distinct metrics. A sampler
-or post-allocation watchdog is not a hard cap. Personal machines on other
-operating systems need an equivalent verified process-tree limit, or an
-isolated Linux worker with a separately budgeted VM. Do not label an uncapped
-macOS/Windows sample as passing the enforced-budget gate.
-
-The [current node memory model](memory-budgets.md) remains separate.
-The existing miners have 3-GiB container limits. A worker whose selected limit
-exceeds its node container's admitted capacity requires a separate boundary.
-The 10-GiB experiment does not authorize changing those containers. Plan
-worker placement and retain the node's own resource checks. Do not raise its
-proof-category ceiling to disguise aggregate growth.
-
-Size concurrent hard limits, not only observed usage. Once the production
-worker budget is selected, recompute aggregate node/gateway and worker limits,
-other applications, OS/platform reserves and serialized maintenance allowances
-for the actual placement. The aggregate budget remains unresolved until
-worker-budget selection. A shared worker still requires admission and
-serialization. A different worker host must include its own
-node/OS/application reserves. This plan authorizes no VM or live-container change.
-
-### Personal-machine qualification
-
-The Linux acceptance baseline is the EPYC 7763 Ubuntu 24.04 Microsoft VM
-profile exposing two cores and four vCPUs. EPYC 9V45 is the comparison profile.
-A newly allocated runner must match and record the baseline model and topology;
-a generic Ubuntu runner label does not establish equivalence to that profile.
-The original short-lived CI instance is unavailable. Different allocations are
-not the same machine, and VM-visible cores do not establish physical host core
-count, exclusive access or identical background contention. Run all three
-trials of each reported configuration on one live qualified machine. See the
-[Linux qualification method](linux-proof-measurement.md#baseline-and-comparison-hardware).
-
-On x86_64 the release build baseline is x86-64-v3 rather than a local-native
-CPU target. AVX2 is a minimum requirement; the full x86-64-v3 instruction and
-OS-state support must also be available. The packaged generic-baseline launcher rejects unsupported CPUs before it
-executes the internal v3 worker; direct worker startup is unsupported. It must
-never silently use scalar field arithmetic. See
-[miner hardware requirements](node-operations.md#miner-hardware-requirements).
-
-Before each hardware-class run, record CPU/model/ISA and allocated workers,
-physical and available RAM,
-OS/kernel, storage, virtualization, power/thermal mode, resource-controller
-support, compiler/dependency/image identities and background load policy.
-Record proof-worker and node placement, concurrency, actual hard limits and
-host/VM reserves. Total physical RAM must exceed the selected worker budget
-by enough to cover all admitted node, OS, application and reserve requirements.
-The 10-GiB experimental ceiling alone does not qualify a production machine.
-
-Validate each supported configuration on actual miner hardware. The existing
-M1 Max experiment is a reference, not proof that lower-memory or different-ISA
-personal machines pass. Set a minimum supported hardware profile from these
-results; slower machines may remain non-mining validators. Do not change
-security parameters automatically to accommodate a slower device.
-
-### Timing boundary and service readiness
-
-The target is **at most 180 seconds on qualified target hardware**, defined by
-monotonic markers at arrival of the final package input at the proving service
-and completion of the canonical root-proof artifact. The arrival marker precedes
-queued processing of that input. Include leaf proving and every intervening
-admission, witness, candidate, scheduling, recursive proving and serialization
-cost. Do not start timing after the leaves are already proved. Controlled
-comparison trials make all sixteen package inputs available at the start and
-include all sixteen leaf proofs. If a production service proves earlier packages
-as they arrive, report that pre-marker work and overlap separately.
-
-Complete input-independent preparation of all leaf, eight-input and root
-circuits and trusted keys at service startup, validate their identities, and
-keep them resident before declaring the service ready. Input-dependent witness
-work and lazy preparation after the arrival marker count toward proof latency;
-lazy preparation also fails the declared readiness condition. An external
-helper cannot hold prepared state outside the measured memory boundary.
-
-Measure service cold startup through readiness separately. Its duration is
-excluded from the 180-second latency budget. This timing exclusion does not
-exclude memory: startup preparation, resident state and every proof child stay
-inside the same enforced process-tree boundary. The next experiment uses the
-10-GiB ceiling; production acceptance requires a separately selected budget.
-Record startup and ready-service memory, interval peaks and the lifetime
-kernel peak; do not reset or discard a higher startup peak to manufacture a
-memory pass.
-
-PoW, publication, propagation, standalone root verification, peer durable
-acceptance and recipient receipt have separate timing markers and correctness
-checks. They are outside this proof-latency budget. Recursive verification
-inside the leaf/aggregation/root proving circuits remains part of proving.
-Record payment-submission-to-receipt and PoW waiting independently; the
-180-second target is not a guaranteed block interval or a finality deadline.
-
-### Three complete acceptance runs
-
-After gates 1 and 2 close, run three independent trials per qualified hardware
-class with identical pinned parameters and fresh OS hiding randomness. Each
-trial starts from a prepared, resident, ready service; if it uses a fresh
-worker service, record its startup separately before delivering the package
-inputs. Use the production wallet/prover/node/transport path on an approved
-engineering network with synthetic funds. Preserve retained stores and
-journals; real payments and deployment keys are outside this test plan.
-
-For each trial retain the following private evidence:
-
-1. Configuration, artifacts, resource enforcement, startup duration and
-   preparation/residency verified before the arrival marker.
-2. Final-package arrival, all leaf proofs, both eight-input proofs and root
-   completion. Record individual stage wall/CPU times, worker activity, timed
-   queueing and any pre-arrival work using the boundary above.
-3. Separate PoW, publication, propagation, full peer validation, durable block
-   acceptance and recipient wallet scanning/reconciliation observations. Compare
-   complete public roots and cumulative work at matched tips, not height alone.
-4. Sender reservation/journal and recipient receipt reconciled exactly once;
-   distinguish observed inclusion, confirmation and finality. A scan result is
-   not final settlement; the 100-block finality window has no 180-second gate.
-5. Whole-worker lifetime and interval peaks, charged-memory history, resident
-   preparation, actual limits, zero extra swap, OOM/restart counters, node
-   budgets, host reserves and explicit completed-state availability. Give time
-   and memory equal prominence for startup, leaves, each merge, root and
-   handoffs: report prepared residency, incremental active workspaces, retained
-   proofs/buffers and allocator/cache overlap without double counting. Label
-   component estimates and reconcile them with charged-memory peaks. Capture
-   teardown/cancellation as well.
-
-Select and enforce the production memory budget before these trials. Require
-correctness, compliance with that budget and last-package-to-root latency of
-at most 180 seconds in all three trials. The 10-GiB experimental ceiling does
-not establish production acceptance. Report every failure, individual
-values, medians and maxima, with cold startup separate. Do not substitute the
-fastest run or ignore failed attempts. Restart replay, disconnect/reconnect,
-memory-limit and reorg regressions remain required in addition to the three
-normal-flow trials. Sustained load and hardware variability need further
-evidence before broad deployment.
-
-Historical D4/W16 N=16 measurements include leaf-B and uniform-q92 medians of
-29.591 and 64.04 seconds for setup-excluding proof/verification. Both are below
-180 seconds numerically; neither qualifies because D4/W16 fails the required
-security targets and those records do not establish the new timing markers or
-hard memory limit. See the [retained-result interpretation](proof-composition.md#timing-boundary-and-retained-result-interpretation).
-
-## Closure and remaining decisions
-
-Reserve measured timing margin for hardware, propagation and load variation.
-N=32 is the first separately scoped assessment after the D8 early checkpoint
-passes, excluded from the current work and subject to a separate proposal. No capacity increase or
-retained-network migration is part of this plan. Resolve the reviewed D8
-artifact/codec binding, actual supported hardware
-profiles and isolated network resource admission before launch. Preserve the
-existing deployment guard, seven-node N=2 stores and all historical evidence.
+Run the total-SI-issuance audit over every height and reject tampered subsidy,
+fund credit, signature, fund counter and curve totals. Verify asset declarations
+and issuance relations separately without deriving private holdings. Restore
+a mnemonic-only wallet and rescan every historical ciphertext, including
+payments before the bootstrap checkpoint; reconstruct every unspent SI and
+asset note and reconcile spends against permanent nullifiers. Checkpoint
+bootstrap authenticates state but must not hide or omit the old ciphertext
+segments required by wallet recovery.

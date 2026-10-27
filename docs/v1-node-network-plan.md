@@ -30,8 +30,10 @@ not cryptographic invalidity and must not become consensus rejection rules.
 
 ## Canonical transaction ledger
 
-The relay envelope has a fixed 1,899-byte prefix and one bounded proof body.
-All integer framing is little-endian and encodings are canonical.
+The proposed three-output relay envelope has a 2,184-byte prefix and one
+bounded proof body. All integer framing is little-endian and encodings are
+canonical. The current diagnostic implementation has a 1,899-byte prefix;
+its source and artifact hashes remain baseline evidence only.
 
 | Field | Bytes |
 | --- | ---: |
@@ -39,12 +41,12 @@ All integer framing is little-endian and encodings are canonical.
 | Fixed suite descriptor | 27 |
 | Network identity | 32 |
 | Snapshot height and block identity | 40 |
-| Public transaction body | 1,742 |
+| Public transaction body | 2,027 |
 | Confidential fee commitment | 48 |
 | Proof-body length | 4 |
-| **Fixed envelope prefix** | **1,899** |
+| **Fixed envelope prefix** | **2,184** |
 | Proof-body maximum | 524,288 |
-| **Maximum envelope** | **526,187** |
+| **Maximum envelope** | **526,472** |
 
 The separate fee sidecar is 78 bytes: four-byte magic, two-byte version,
 32-byte transaction identity, eight-byte fee and eight canonical field-element
@@ -65,9 +67,11 @@ same statement therefore preserves the identity. A verification cache also
 keys on the proof digest and locally trusted verifier identity; statement
 identity alone cannot authenticate a replacement proof.
 
-The maximum envelope plus sidecar is **526,265 bytes** before stream framing.
-The permanent per-position record is **1,830 bytes**: 1,742 public bytes,
-48 fee-commitment bytes and a 40-byte snapshot selector. Version, suite and
+The proposed maximum envelope plus sidecar is **526,550 bytes** before stream
+framing. The proposed permanent record is **2,115 bytes**: 2,027 public bytes,
+48 fee-commitment bytes and a 40-byte snapshot selector. Recheck both values
+against the actual three-output codec and AIR; they are not measured artifacts.
+Version, suite and
 network context may be amortized in the authenticated block header. A full
 32-byte compact reference is additional transmission data when sent, rather
 than an additional independent permanent transaction field. The transaction
@@ -200,22 +204,15 @@ the public fee commitments and settlement proof establish its validity.
 Sidecar recovery is a private relay operation over the hybrid connection;
 it must not publish fee openings to an explorer or public block endpoint.
 
-| Positions per 300 seconds | Maximum envelope plus sidecar bytes | Uplink with three copies | Transfer time at 25 Mbps |
-| --- | ---: | ---: | ---: |
-| 576 | 303,128,640 | 24.25029120 Mbps | 291.00349440 s |
-| 544 | 286,288,160 | 22.90305280 Mbps | 274.83663360 s |
-
-At 576 positions this leaves 28,114,080 bytes per interval, about 3.00% of the
-25-Mbps budget. Settlement proofs, block headers, inventories, stream framing,
-missing-data requests, handshake traffic and any relay copies beyond three
-must fit in that remainder. A 576-entry full-ID inventory is 18,432 bytes per
-copy before framing. Reserve and measure the actual settlement envelope
-separately; its canonical prefix is 159 bytes and its bounded proof body is
-at most 524,288 bytes, for a maximum of 524,447 bytes. Three copies add
-0.04195576 Mbps, bringing transaction/sidecar plus settlement payload to
-**24.29224696 Mbps** and leaving 26,540,739 bytes per interval before inventory,
-framing and other traffic. No unmeasured allowance establishes full-network
-capacity.
+The proposed multi-asset transaction plus sidecar is 526,550 bytes at the
+proof cap; 576 positions and three relay copies plus capped settlement use
+24.30537976 Mbps before transport/control costs. The minimum uplink is 30 Mbps;
+100 Mbps is recommended. The [complete conditional wire budget](v1-network-budget.md)
+adds explicit inventories, requests, AEAD/multiplexing, IPv6/TCP/link framing,
+reciprocal ACKs, handshakes, keepalive, bounded issuance, retransmission and
+recovery allowances: approximately 29.252 Mbps, leaving 2.49% additional margin
+at the floor. Validate and measure each assumption with the actual listener.
+Neither a payload fit nor this planning envelope is network acceptance.
 
 Retain `MAX_LEAF_PROOF_LEN=524288`. If no eligible final relation fits the
 bound, select a larger blowup first, then report the 544-position fallback if
@@ -224,45 +221,64 @@ automatic increase above 576 positions.
 
 ## Proof retention and synchronization
 
-Keep transaction and settlement proofs for four weeks after depth-24 finality,
-then delete their online proof bodies. Keep private fee sidecars for the same
-operational retention period where received; they are not part of public
-historical verification. Permanent records retain canonical public data,
-snapshot selectors and public fee commitments. Deletion must not erase those
-records, current accepted state or the trusted verifier manifest.
+Keep transaction proofs, settlement proofs and received private fee sidecars
+until three elapsed days after final confirmation, then delete them from the
+online proof store. The nominal depth-24 finality delay is two hours, so a
+target-rate node retains 888 blocks in steady state: 24 unresolved blocks plus
+864 finalized blocks. Persist finality and retention metadata and extend the
+window when clocks, reorganization state or recovery are uncertain. Never use a
+fixed block count to shorten the elapsed-time requirement.
 
-Four weeks means at least 2,419,200 elapsed seconds after finality. The local
-deletion schedule is not a consensus clock. Persist finality/retention metadata
-and fail toward longer retention after uncertain clocks or recovery. At the
-300-second target this is nominally 8,064 additional blocks, but a faster chain
-must not shorten the elapsed retention minimum. Test restart, clock adjustment,
-reorganization near finality and incomplete deletion recovery.
+Every node permanently retains public data without pruning: block headers and
+PoW, output commitments and commitment-tree state, ciphertexts, nullifiers,
+fee commitments, per-block settlement declarations without proofs, miner reward
+notes, development-fund records and ML-DSA signatures, public asset issuance
+records and recent-root snapshots. Proof deletion must not remove these records, accepted state,
+snapshot selectors or the trusted verifier manifest. Keep proof and sidecar
+stores bounded separately from memory pools and test interrupted deletion,
+restart, clock adjustment and reorganization near finality.
 
-Size the online proof store separately from memory pools. At continuous
-576-position blocks, maximum-size proofs and the nominal 300-second target,
-four weeks plus depth-24 finality span 8,088 blocks. Transaction proof bodies
-alone require approximately 2.44 TB; settlement proofs, permanent public data,
-sidecars, indexes, recovery reserve and archival growth are additional. Faster
-blocks can increase the elapsed-time retention requirement. Disk pressure must
-not silently shorten proof retention: stop affected admission/production and
-report local unavailability before losing required evidence.
+V1 has no archive-node role and does not retain proof bodies beyond the three-day
+window. A release checkpoint distributed with the node and authenticated PoW is
+the default new-node synchronization path. The checkpoint binds the network and
+genesis identity, block identity, cumulative work, accepted state commitments,
+complete snapshot window, verifier manifest and permanent-data roots. Verify
+every later block with the normal transition. Full proof replay from genesis,
+using an optional proof archive or asynchronous V2 history compression, is a
+future upgrade and is not a V1 launch dependency. Checkpoint bootstrap is an
+explicit trust assumption; unauthenticated peer agreement, matching roots or
+header work cannot prove deleted transaction proofs. Test wrong-network, stale,
+conflicting, incomplete and unavailable checkpoints fail closed.
 
-An archive node retains public transaction and settlement proofs beyond online
-expiry. Full validation from genesis requires an authentic complete archive,
-the corresponding public records and every trusted verifier needed for replay.
-Header work and matching state roots alone cannot prove deleted transactions.
-Fee openings are unnecessary for verifying either public proof and must not be
-made an archive bootstrap requirement.
+At 576 positions per 300 seconds, three-day post-finality retention including
+the nominal finality delay is 268,672,484,352 bytes for capped transaction
+proofs, settlement proofs and sidecars. The proposed 2,115-byte multi-asset
+position adds 128,061,388,800 permanent bytes/year. Use [the storage component
+model](v1-storage-and-sync.md) for year-1/3/5 and 10k/50k demand estimates.
+Measure indexes, full state, amortized records, issuance, WAL/compaction and
+recovery space before qualifying the 500-GB floor or 1-TB recommendation.
 
-A pruned new node must instead trust an authenticated checkpoint authority or
-an already fully validating node. Its checkpoint authenticates genesis/network,
-height/block identity, cumulative work, accepted state commitments and a
-complete snapshot window. Verify every later block with the normal transition.
-Document who vouches for the checkpoint and the consequence of that trust;
-agreement among unauthenticated peers does not remove it. Test wrong-network,
-stale, conflicting, incomplete and unavailable checkpoints and archives.
+Project-operated object storage backs up permanent public data but is not an
+archive for deleted proofs. Upload finalized block segments at least every six
+hours with immutable versioning, publish a signed daily manifest, and create a
+weekly full checkpoint snapshot. Restore into an isolated node by verifying
+object hashes/signatures, replaying blocks and PoW, rebuilding indexes, and
+comparing roots, work and state before promotion. Run monthly restore checks and
+quarterly replacement-host recovery tests. Wallet creation requires an explicit
+mnemonic backup; a restored wallet rescans all permanent ciphertexts from genesis or
+an authenticated wallet birth height, including pre-checkpoint segments, verifies note and asset ownership, and reconciles balances and
+payment journals exactly once.
 
 ## Transport privacy work
+
+The [network design](v1-network-design.md) selects dual Ed25519/ML-DSA-65
+identity authentication for ephemeral X25519 plus ML-KEM-768 and Dandelion++.
+Its reviewed combiner/library profile and routing parameters must be frozen
+before deployment. Pruned bootstrap uses explicit opt-in two-of-three
+checkpoint trust with genesis-pinned authority identities; the release
+checkpoint-plus-PoW path is the V1 default. Full proof replay remains a future
+independently verifying alternative. Neither mechanism is implemented or
+independently approved by selecting this design.
 
 The workspace currently uses libp2p 0.56 with TCP, DNS, Noise, Yamux and
 request-response. The live service constructs `noise::Config::new` in its TCP
@@ -281,8 +297,8 @@ receive its own quantum-security review; hybrid key exchange alone does not
 upgrade a classical long-term signature.
 
 Hybrid encryption addresses recorded-content confidentiality. It cannot hide
-the network endpoints from a passive observer. Dandelion++ or a reviewed relay
-design must separately address origin-to-transaction correlation before launch.
+the network endpoints from a passive observer. The selected Dandelion++
+path must separately address origin-to-transaction correlation before launch.
 This requires bounded stem/fluff queues, loop/failure handling, randomized
 relay selection and reconnect behavior without emitting source addresses or
 transaction-time associations in diagnostics.
@@ -296,21 +312,55 @@ in-memory messages alone do not cover the deployed transport.
 ## Implementation milestones
 
 Estimates are engineering days for one engineer familiar with the codebase,
-excluding independent review and infrastructure procurement. Parallel work
-can shorten elapsed time; unresolved security decisions can extend it.
+excluding independent review, infrastructure procurement and elapsed soak or
+retention windows. Parallel work can shorten elapsed time; security findings
+can extend it. N1–N7 sum to 33–56 days; wallet durability and private monitoring
+are separate N8/N9 work, for a combined planning range of 42–71 days.
 
 | Milestone | Work | Estimate | Exit condition |
 | --- | --- | ---: | --- |
 | N1 | Versioned block/public-record codec and common producer/validator transition | 4–7 days | Groups, counts, fee settlement, integer bounds and atomic rejection tests pass |
 | N2 | Admission service, isolated verifier workers, quotas and padding proof pool | 4–7 days | Byte accounting, adversarial decode, exhaustion, expiry and reorg tests pass |
 | N3 | Compact inventories, bounded missing-data recovery and block reconstruction | 3–5 days | Collision/missing-data/reconnect tests and full-capacity relay measurement pass |
-| N4 | Four-week retention, archival replay and explicit-trust checkpoint bootstrap | 4–7 days | Recovery/pruning tests and verified archive/checkpoint synchronization pass |
-| N5 | Reviewed hybrid handshake and actual-listener failure tests | 6–10 days | Negotiation, downgrade, key confirmation, erasure and reconnect tests pass |
-| N6 | Dandelion++ or reviewed relay integration and source-privacy analysis | 5–8 days | Bounded origin-hiding relay, failures and leakage review pass |
-| N7 | Independent engineering-network acceptance | 3–5 days | New-genesis end-to-end payments, capacity, memory and recovery gates pass |
+| N4 | Three-day proof retention, permanent public-data backup and explicit-trust checkpoint bootstrap | 4–7 days | Recovery/pruning tests and verified checkpoint-plus-PoW synchronization pass |
+| N5 | Reviewed hybrid handshake, dual identities and actual-listener failure tests | 10–17 days | Identity binding/rotation, negotiation, downgrade, key confirmation, erasure and reconnect tests pass |
+| N6 | Dandelion++ integration and source-privacy analysis | 5–8 days | Bounded stem/fluff routing, failures and leakage review pass |
+| N7 | Independent engineering-network acceptance harness and execution | 3–5 days | Reproducible native acceptance and fault injection; elapsed observation windows complete separately |
+| N8 | Durable wallet integration and recovery | 6–10 days | Change keys, receipts, output self-check, reproof and exactly-once backup/recovery tests pass |
+| N9 | Private multi-host telemetry and live panel | 3–5 days | Authenticated read-only feeds, five-second samples, stale markers and durable incidents pass loss/restart tests |
 
 N1/N2 may proceed after proof-parameter freeze. N3 depends on their codecs;
 N4 can develop against their authenticated records. N5/N6 follow the native
 AIR/scan work and can proceed in parallel with node integration. N7 requires
-all preceding gates and independent review of the relevant security changes.
+N1–N6, N8/N9 and independent review of the relevant security changes.
+Apply the [native acceptance matrix](prover-acceptance.md), including
+[host/storage qualification](v1-deployment.md), 72-hour maximum-load hardware
+trials, seven-day independent-host observation, real retention lifecycle and
+explicit recovery targets. No short standalone proof run closes those gates.
 None of these milestones imports or migrates retained seven-node state.
+
+## Reopened multi-asset capacity
+
+Measurements of the two-output implementation remain baseline evidence only.
+The proposed three-output codec uses 2,027 public body bytes and 2,115
+permanent bytes per position. At capped proof sizes and three relay copies,
+including one capped settlement per block, the payload is approximately
+24.3054 Mbps at 576 positions/300 seconds, before framing, recovery and public
+issuance traffic. Updated year-1/3/5 capacity and low-use tables are in
+[V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md); reproduce them
+with `python3 scripts/v1-storage-budget.py`. The final encoded artifact and
+actual-AIR scan must replace these estimates before acceptance.
+
+## Backup checkpoint freshness
+
+A weekly full snapshot alone is insufficient once proofs expire after
+three days. Export an authenticated, consistent confirmed-state checkpoint
+(full or a complete authenticated delta chain) at least every six hours,
+together with the public-data manifest. Weekly full snapshots remain a
+compaction/recovery convenience. Before replaying a restored checkpoint's
+proof tail, confirm every required proof is still available. If not, obtain a
+newer quorum-authenticated checkpoint under the explicit trust policy, or
+stop recovery; public records and PoW cannot replace deleted proof validity.
+The checkpoint binds the asset registry, fund state, permanent-data manifests
+and complete accepted root window. Never synthesize missing state or silently
+trust an unauthenticated peer.

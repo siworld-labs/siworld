@@ -70,7 +70,9 @@ The all-features build is for verification and includes development capabilities
 | [Protocol](docs/protocol.md) | Notes, block rules, units, rewards and parameters |
 | [Cryptography](docs/cryptography.md) | Primitives, statement binding and accumulator assumptions |
 | [Security model](docs/security-model.md) | Adversaries, privacy limits and deployment restrictions |
-| [Node operations](docs/node-operations.md) | Builds, genesis, peer setup and wallet access |
+| [Node operations](docs/node-operations.md) | Implemented builds, legacy node setup and wallet access |
+| [Native V1 acceptance](docs/prover-acceptance.md) | Proof, resource, privacy and independent-network qualification gates |
+| [V1 deployment](docs/v1-deployment.md) | Candidate hardware, storage accounting and private live monitoring |
 | [RPC and recovery](docs/rpc.md) | Capabilities, key custody and durable submission |
 | [Benchmarks](docs/benchmarks.md) | Reproducible commands and measurement requirements |
 | [Testing](docs/testing.md) | Regression coverage and validation commands |

@@ -1,0 +1,144 @@
+name: Native multi-asset hosted diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      grid_mode:
+        description: Full requested grid, or a limited b8 plus conditional b9 diagnostic
+        type: choice
+        options: [full, b8-only]
+        default: full
+  push:
+    branches: ["codex/v1-multi-asset"]
+    paths:
+      - ".github/workflows/multi-asset-native.yml"
+      - "crates/bench-multi-asset/**"
+      - "scripts/measure-multi-asset.py"
+      - "scripts/tests/test_multi_asset_measurement.py"
+      - ".cargo/config.toml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multi-asset-native-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-multi-asset:
+    name: Native relations, screened profiles and cgroup measurements
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.local/multi-asset-ci-target
+      RAYON_NUM_THREADS: 4
+      SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+      GRID_MODE: ${{ inputs.grid_mode || 'full' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install the repository toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/bench-multi-asset -> ../../.local/multi-asset-ci-target
+          cache-on-failure: true
+      - name: Validate collector contracts and unchanged baseline
+        run: |
+          python3 -m unittest discover -s scripts/tests -p test_multi_asset_measurement.py -v
+          python3 -m unittest discover -s scripts/tests -p test_native_cgroup_measurement.py -v
+          python3 scripts/check-v1-freeze.py
+          test -e /sys/fs/cgroup/cgroup.controllers
+          sudo --non-interactive systemctl --version
+          rustc scripts/prover-launcher.rs --edition=2021 -O -D warnings -C target-cpu=x86-64 -o /tmp/multi-asset-cpu-check
+          /tmp/multi-asset-cpu-check --check-cpu
+      - name: Build and test the isolated native relations
+        run: |
+          python3 - <<'PY_CONFIG'
+          import importlib.util
+          import os
+          spec = importlib.util.spec_from_file_location('controlled', 'scripts/build-composition-intra.py')
+          controlled = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(controlled)
+          controlled.controlled_configuration(os.environ)
+          PY_CONFIG
+          cargo fmt --manifest-path crates/bench-multi-asset/Cargo.toml --check
+          cargo clippy --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --all-targets -- -D warnings
+          cargo test --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --lib
+          cargo build --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --bin native-scan
+      - name: Inspect actual AVX2 instructions and package a baseline CPU guard
+        run: |
+          python3 - <<'PY_PACKAGE'
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+          spec = importlib.util.spec_from_file_location('isa', 'scripts/check-prover-isa.py')
+          isa = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(isa)
+          worker = Path(os.environ['CARGO_TARGET_DIR']) / 'release/native-scan'
+          inspected = isa.inspect(worker)
+          target = Path('.local/multi-asset-build')
+          (target / 'bin').mkdir(parents=True)
+          (target / 'libexec').mkdir()
+          # The unchanged baseline guard recognizes this local alias. Its paired
+          # worker is the native-scan binary; both identities enter the summary.
+          shutil.copy2(worker, target / 'libexec/v1-transaction-scan')
+          subprocess.run(['rustc', 'scripts/prover-launcher.rs', '--edition=2021', '-O',
+              '-D', 'warnings', '-C', 'target-cpu=x86-64', '-o',
+              str(target / 'bin/v1-transaction-scan')], check=True)
+          output = Path('.local/multi-asset-results')
+          output.mkdir(parents=True)
+          (output / 'isa.json').write_text(json.dumps({
+              'diagnostic_binary': 'native-scan', 'required_isa': 'x86-64-v3',
+              'binary_sha256': inspected['binary_sha256'],
+              'avx2_packed_multiply_instructions': inspected['avx2_packed_multiply_instructions'],
+              'repository_config_sha256': hashlib.sha256(Path('.cargo/config.toml').read_bytes()).hexdigest(),
+              'cryptographic_approval': False, 'network_activation': False}, indent=2) + '\n')
+          PY_PACKAGE
+          .local/multi-asset-build/bin/v1-transaction-scan --check-cpu
+      - name: Screen actual transaction, settlement and issuance AIRs
+        run: |
+          mkdir -p .local/multi-asset-private
+          .local/multi-asset-build/bin/v1-transaction-scan screen .local/multi-asset-private/screen.json
+      - name: Measure fresh process trees under a diagnostic 5-GiB limit and zero swap
+        run: |
+          python3 scripts/measure-multi-asset.py \
+            --executable .local/multi-asset-build/bin/v1-transaction-scan \
+            --worker .local/multi-asset-build/libexec/v1-transaction-scan \
+            --screen .local/multi-asset-private/screen.json \
+            --output .local/multi-asset-results/measurements \
+            --grid-mode "$GRID_MODE"
+      - name: Retain an explicit outcome on build or scope failure
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          python3 - <<'PY_STATUS'
+          import json
+          import os
+          from pathlib import Path
+          output = Path('.local/multi-asset-results')
+          output.mkdir(parents=True, exist_ok=True)
+          (output / 'workflow-status.json').write_text(json.dumps({
+              'job_status_before_upload': os.environ['JOB_STATUS'],
+              'measurement_summary_present': (output / 'measurements/summary.json').is_file(),
+              'diagnostic_memory_max_bytes': 5368709120,
+              'diagnostic_swap_max_bytes': 0,
+              'memory_boundary_is_miner_requirement': False,
+              'cryptographic_approval': False, 'network_activation': False,
+              'acceptance': False}, indent=2) + '\n')
+          PY_STATUS
+      - name: Upload sanitized CPU identity, security terms and kernel memory counters
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: multi-asset-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/multi-asset-results/**/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

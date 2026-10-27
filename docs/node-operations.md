@@ -31,33 +31,46 @@ for AVX2 instructions.
 
 AArch64 has a separate build target and requires its own hardware/resource
 qualification. Historical M1 measurements do not qualify every AArch64 machine.
-The next D8 experiment has a 10-GiB (10,737,418,240-byte) hard ceiling for the
-proof process and all children, with zero swap. This is an experimental ceiling,
-not production acceptance. The production memory budget remains undecided
-until actual peak measurements are available. Recompute host admission once
-that budget is selected: total RAM must also cover the node, operating system,
-other admitted processes and reserves. Do not place a worker beyond a node
-container's admitted capacity or change retained-network resources to fit it.
+Native V1 hosted proof measurements used a 5-GiB zero-swap cgroup; that
+boundary does not set minimum miner RAM. The [deployment profiles](v1-deployment.md)
+start qualification at 16 GiB for a full validator, 32 GiB for a miner and
+500 GB usable SSD minimum and 1 TB recommended, with 100-Mbps uplink
+recommended over the 30-Mbps floor.
+These are candidate profiles, not accepted minimums. Account separately for
+prover, node, verifier, OS, caches, maintenance and reserves, then qualify the
+aggregate under sustained maximum load. macOS and Windows require separate
+packaging and resource/recovery qualification. Do not change retained-network
+container or VM limits to accommodate new workers.
 
 Linux D8 acceptance uses the EPYC 7763 Ubuntu 24.04 Microsoft VM profile with
 two exposed cores and four vCPUs as the baseline; EPYC 9V45 is a comparison.
 Record and validate the actual machine before each three-trial series. These
 profiles are measurement references, not a claim of dedicated host cores or
-acceptance of an unimplemented suite. See the [qualification procedure](linux-proof-measurement.md#baseline-and-comparison-hardware)
+full-node integration acceptance. See the [qualification procedure](linux-proof-measurement.md#baseline-and-comparison-hardware)
 and [production acceptance plan](prover-acceptance.md).
 
 ## Native V1 bandwidth target
 
-The selected native V1 route requires at least **25 Mbps uplink** per node.
-At 576 positions per 300 seconds, a 524,288-byte proof maximum plus 1,790-byte
-public data and three relay copies use 24.24167424 Mbps, leaving 3.0333% for
-additional traffic. Settlement, sidecar, envelope, framing and recovery costs
-must fit that margin; payload arithmetic alone is not network acceptance.
-Preserve the 512-KiB `MAX_LEAF_PROOF_LEN`. If the frozen production proof cannot
-fit after evaluating larger blowups, report the proposed 544-position fallback.
-The [native design](route-a-v1.md#production-parameter-scan-and-capacity-gate)
-specifies the calculation and activation gates. These targets do not alter the
-retained seven-node network or establish a production RAM requirement.
+The selected native V1 route requires at least **30 Mbps uplink** per node;
+**100 Mbps** is the deployment recommendation. Capacity stays 576 positions
+per 300-second target block. At the proposed three-output codec and proof cap,
+three transaction/sidecar copies plus settlement use 24.30537976 Mbps.
+The [complete conditional wire model](v1-network-budget.md) includes bounded
+issuance, control, authenticated-channel framing, IPv6/TCP/link overhead,
+reciprocal ACKs, retransmission and recovery allowances: approximately
+29.252 Mbps. Its narrow 30-Mbps margin must be qualified using the actual
+listener; it is not a throughput measurement. Bulk backup/checkpoint traffic
+requires separate scheduling or bandwidth. Re-extract final codec sizes after
+the multi-asset scan. Preserve the 512-KiB `MAX_LEAF_PROOF_LEN` and report any
+capacity failure rather than silently changing consensus limits. These targets
+do not alter the retained network or establish production RAM requirements.
+
+## Retained implementation commands
+
+The commands below describe the existing node and its legacy proof route.
+They do not activate the independent native V1 testnet. V1 deployment requires
+the [native acceptance gates](prover-acceptance.md), separate genesis and
+qualified platform packaging.
 
 ## Wallet initialization
 
@@ -108,3 +121,15 @@ Bundled sends additionally require an independent encrypted order ledger and wit
 ## Maintenance
 
 Stop the node before offline key migration, reconciliation or credential rotation. Startup replays full stored blocks including proofs. Pruning is not implemented. Monitor disk use and test restart/recovery on disposable networks. Proving memory, history growth and the local reorganization bound limit the operating envelope.
+
+## Reopened multi-asset capacity
+
+Measurements of the two-output implementation remain baseline evidence only.
+The proposed three-output codec uses 2,027 public body bytes and 2,115
+permanent bytes per position. At capped proof sizes and three relay copies,
+including one capped settlement per block, the payload is approximately
+24.3054 Mbps at 576 positions/300 seconds, before framing, recovery and public
+issuance traffic. Updated year-1/3/5 capacity and low-use tables are in
+[V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md); reproduce them
+with `python3 scripts/v1-storage-budget.py`. The final encoded artifact and
+actual-AIR scan must replace these estimates before acceptance.
