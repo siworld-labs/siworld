@@ -20,11 +20,10 @@ Every node permanently retains the following public data without pruning:
 - public asset issuance records, declared supplies and metadata; and
 - recent-root tree snapshots and canonical block identities.
 
-Only transaction proofs, settlement proofs and private fee-opening sidecars
-expire. A proposed native issuance proof is a transaction-proof kind with the
-same lifecycle; its signed declaration and initial note commitments remain
-permanent. Keep them for at least 259,200 elapsed seconds after final
-confirmation, then delete them. Persist the finality/deletion metadata and
+Only transaction, settlement and native issuance proofs and private fee-opening
+sidecars expire. Signed issuance declarations and initial note commitments
+remain permanent. Keep these proof bodies and sidecars for at least 259,200
+elapsed seconds after final confirmation, then delete them. Persist the finality/deletion metadata and
 extend retention on clock or recovery uncertainty. Age alone cannot delete an
 unfinalized block's proof. At a five-minute target and depth-24 finality, the
 nominal rolling store covers 888 blocks: 24 unresolved blocks plus three days

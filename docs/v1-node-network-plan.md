@@ -233,9 +233,9 @@ freeze and cannot reduce bandwidth requirements without new measurements.
 
 ## Proof retention and synchronization
 
-Keep transaction proofs, settlement proofs and received private fee sidecars
-until three elapsed days after final confirmation, then delete them from the
-online proof store. The nominal depth-24 finality delay is two hours, so a
+Keep transaction, settlement and native issuance proofs and received private
+fee sidecars until three elapsed days after final confirmation, then delete
+them from the online proof store. The nominal depth-24 finality delay is two hours, so a
 target-rate node retains 888 blocks in steady state: 24 unresolved blocks plus
 864 finalized blocks. Persist finality and retention metadata and extend the
 window when clocks, reorganization state or recovery are uncertain. Never use a
@@ -263,9 +263,11 @@ header work cannot prove deleted transaction proofs. Test wrong-network, stale,
 conflicting, incomplete and unavailable checkpoints fail closed.
 
 At 576 positions per 300 seconds, three-day post-finality retention including
-the nominal finality delay is 268,672,484,352 bytes for capped transaction
-proofs, settlement proofs and sidecars. The proposed 2,115-byte multi-asset
-position adds 128,061,388,800 permanent bytes/year. Use [the storage component
+the nominal finality delay uses 335,714,239,488 bytes for capped transaction
+proofs, settlement proofs and sidecars. Reserving one additional capped native
+issuance proof per block adds 465,567,744 bytes, for a conditional total of
+336,179,807,232 bytes. The 2,115-byte multi-asset position adds
+128,061,388,800 permanent bytes/year. Use [the storage component
 model](v1-storage-and-sync.md) for year-1/3/5 and 10k/50k demand estimates.
 Measure indexes, full state, amortized records, issuance, WAL/compaction and
 recovery space before qualifying the 500-GB floor or 1-TB recommendation.
@@ -292,7 +294,7 @@ checkpoint-plus-PoW path is the V1 default. Full proof replay remains a future
 independently verifying alternative. Neither mechanism is implemented or
 independently approved by selecting this design.
 
-The workspace currently uses libp2p 0.56 with TCP, DNS, Noise, Yamux and
+The workspace currently uses libp2p 0.57.1 with TCP, DNS, Noise, Yamux and
 request-response. The live service constructs `noise::Config::new` in its TCP
 upgrade; its transaction announcements flood peers. It has no implemented
 X25519 + ML-KEM handshake or Dandelion++ source-hiding path. The output

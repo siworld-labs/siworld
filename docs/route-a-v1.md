@@ -407,9 +407,9 @@ The following changes are proposed and are not implemented by this document:
 - Set the new route's local `MAX_REORG_DEPTH` to 24. Test depth 23/24/25,
   root-window boundaries and conflict re-admission. A deeper fork requires
   explicit checkpoint recovery rather than silent partial rollback.
-- Retain transaction proofs, settlement proofs and private fee sidecars until
-  three elapsed days **after final confirmation**, then delete them from the
-  online proof store. At a 300-second target, depth 24 is two hours nominally,
+- Retain transaction, settlement and native issuance proofs and private fee
+  sidecars until three elapsed days **after final confirmation**, then delete
+  them from the online proof store. At a 300-second target, depth 24 is two hours nominally,
   so the steady-state retention window is 888 blocks: 24 unresolved blocks and
   864 finalized blocks. Finality is a deterministic depth rule rather than a
   wall-clock guarantee; persist finality/retention metadata and extend the
