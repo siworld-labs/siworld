@@ -253,7 +253,9 @@ impl ProofShape {
         Ok(proof)
     }
 
-    fn validate_encoding(&self, bytes: &[u8]) -> Result<(), ProofDecodeError> {
+    /// Allocation-free schema preflight for bounded framing and admission.
+    /// This establishes neither proof validity nor a typed proof allocation.
+    pub fn validate_encoding(&self, bytes: &[u8]) -> Result<(), ProofDecodeError> {
         if bytes.len() > MAX_NATIVE_PROOF_BODY_LEN {
             return Err(ProofDecodeError::BodyTooLarge);
         }

@@ -47,6 +47,7 @@ const EXECUTABLES: &[&str] = &[
     "d8-checkpoint",
     "v1-transaction-scan",
     "fee-settlement-bench",
+    "native-verifier-bench",
     "leaf_params",
     "d8-security-screen",
     "quantum_prerequisites",

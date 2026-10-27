@@ -7,7 +7,7 @@
 //! while the settlement AIR and the wallet-to-miner witness channel remain
 //! under design.
 
-use crate::common::{Digest, F, FEE_BASE, FEE_PRIORITY, Hasher};
+use crate::common::{Digest, F, FEE_BASE, FEE_BLIND_LEN, FEE_PRIORITY, Hasher};
 
 /// The private fee opening carried by a wallet/mempool witness.
 ///
@@ -18,7 +18,7 @@ use crate::common::{Digest, F, FEE_BASE, FEE_PRIORITY, Hasher};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeeOpening {
     pub fee: u64,
-    pub blind: [F; 4],
+    pub blind: [F; FEE_BLIND_LEN],
     pub dummy: bool,
     pub priority: bool,
 }
@@ -66,7 +66,7 @@ pub fn validate_sidecar<'a>(
 }
 
 impl FeeOpening {
-    pub fn dummy(blind: [F; 4]) -> Self {
+    pub fn dummy(blind: [F; FEE_BLIND_LEN]) -> Self {
         Self {
             fee: 0,
             blind,
@@ -75,7 +75,7 @@ impl FeeOpening {
         }
     }
 
-    pub fn standard(blind: [F; 4]) -> Self {
+    pub fn standard(blind: [F; FEE_BLIND_LEN]) -> Self {
         Self {
             fee: FEE_BASE,
             blind,
@@ -84,7 +84,7 @@ impl FeeOpening {
         }
     }
 
-    pub fn priority(blind: [F; 4]) -> Self {
+    pub fn priority(blind: [F; FEE_BLIND_LEN]) -> Self {
         Self {
             fee: FEE_PRIORITY,
             blind,
@@ -96,7 +96,12 @@ impl FeeOpening {
     /// Construct an opening for a caller-supplied base fee. This is used by
     /// the reference model and tests; production fee schedules must remain
     /// anchored to the accepted snapshot in the transaction AIR.
-    pub fn for_base_fee(base_fee: u64, dummy: bool, priority: bool, blind: [F; 4]) -> Self {
+    pub fn for_base_fee(
+        base_fee: u64,
+        dummy: bool,
+        priority: bool,
+        blind: [F; FEE_BLIND_LEN],
+    ) -> Self {
         let fee = if dummy {
             0
         } else if priority {
@@ -150,6 +155,7 @@ pub enum SettlementError {
     CommitmentMismatch { index: usize },
     FeeSumOverflow,
     RewardOverflow,
+    MinerUnlockOverflow,
     MinerAmountMismatch { expected: u64, actual: u64 },
 }
 
@@ -254,7 +260,7 @@ mod tests {
     use crate::common::{DIGEST, F};
     use p3_field::PrimeCharacteristicRing;
 
-    fn blind(seed: u32) -> [F; 4] {
+    fn blind(seed: u32) -> [F; FEE_BLIND_LEN] {
         core::array::from_fn(|i| F::from_u32(seed + i as u32))
     }
 

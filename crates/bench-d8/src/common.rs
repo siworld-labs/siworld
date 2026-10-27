@@ -37,6 +37,8 @@ pub const RATE: usize = 12;
 pub const DIGEST: usize = 12;
 pub const TREE_DEPTH: usize = 40;
 pub const LIMBS: usize = 4;
+/// Eight independent canonical field elements: approximately 248 bits of entropy.
+pub const FEE_BLIND_LEN: usize = 8;
 pub const LIMB_BITS: usize = 16;
 
 pub type Digest = [F; DIGEST];
@@ -184,7 +186,7 @@ impl Hasher {
         self.sponge(TAG_RHO + j as u32, &[*nf0, *nf1])
     }
 
-    pub fn fee_commit(&self, fee: u64, blind: &[F; 4]) -> Digest {
+    pub fn fee_commit(&self, fee: u64, blind: &[F; FEE_BLIND_LEN]) -> Digest {
         self.sponge(TAG_FEE, &[fee_block(fee, blind)])
     }
 
@@ -256,11 +258,11 @@ pub fn pack_dct(d_ct: &[u8; DCT_BYTES]) -> [F; DCT_LEN] {
     core::array::from_fn(|k| F::from_u32(u32::from(d_ct[2 * k]) | u32::from(d_ct[2 * k + 1]) << 8))
 }
 
-pub fn fee_block(fee: u64, blind: &[F; 4]) -> Block {
-    let l = limbs(fee);
-    padded_block(&[
-        l[0], l[1], l[2], l[3], blind[0], blind[1], blind[2], blind[3],
-    ])
+pub fn fee_block(fee: u64, blind: &[F; FEE_BLIND_LEN]) -> Block {
+    let mut block = [F::ZERO; RATE];
+    block[..LIMBS].copy_from_slice(&limbs(fee));
+    block[LIMBS..].copy_from_slice(blind);
+    block
 }
 
 #[derive(Clone, Debug)]
@@ -314,7 +316,7 @@ pub struct SlotWitness {
     pub inputs: [InputWitness; 2],
     pub outputs: [OutputWitness; 2],
     pub fee: u64,
-    pub fee_blind: [F; 4],
+    pub fee_blind: [F; FEE_BLIND_LEN],
     pub fee_is_priority: bool,
 }
 
@@ -746,7 +748,10 @@ impl SlotWitness {
         };
         let outputs = [output(&mut r)?, output(&mut r)?];
         let fee = r.u64()?;
-        let fee_blind = [r.felt()?, r.felt()?, r.felt()?, r.felt()?];
+        let mut fee_blind = [F::ZERO; FEE_BLIND_LEN];
+        for element in &mut fee_blind {
+            *element = r.felt()?;
+        }
         let fee_is_priority = r.bool()?;
         (r.pos == words.len()).then_some(Self {
             anchor,
@@ -886,7 +891,7 @@ pub fn sample_slot(seed: u64, dummy_second: bool) -> SlotWitness {
         inputs: [in0, in1],
         outputs,
         fee,
-        fee_blind: [rng.felt(), rng.felt(), rng.felt(), rng.felt()],
+        fee_blind: core::array::from_fn(|_| rng.felt()),
         fee_is_priority: false,
     }
 }
@@ -915,6 +920,26 @@ pub fn sample_priority_slot(seed: u64) -> SlotWitness {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fee_blinding_uses_all_eight_independent_elements() {
+        use p3_field::PrimeCharacteristicRing;
+        assert_eq!(super::FEE_BLIND_LEN, 8);
+        let hasher = super::Hasher::new();
+        let blind = [super::F::ONE; super::FEE_BLIND_LEN];
+        let expected = hasher.fee_commit(super::FEE_BASE, &blind);
+        for k in 0..super::FEE_BLIND_LEN {
+            let mut changed = blind;
+            changed[k] += super::F::ONE;
+            assert_ne!(hasher.fee_commit(super::FEE_BASE, &changed), expected);
+        }
+        let witness = super::sample_slot(994, false);
+        assert_eq!(
+            super::SlotWitness::from_words(&witness.to_words())
+                .unwrap()
+                .fee_blind,
+            witness.fee_blind
+        );
+    }
     use super::*;
 
     #[test]

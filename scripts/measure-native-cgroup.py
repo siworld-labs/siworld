@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect six independent hosted Linux proof cgroup diagnostics.
+"""Collect independent hosted Linux proving and verification diagnostics.
 
 The root recorder stays in each systemd scope until kernel counters are saved.
 The proof runs without root privileges and cannot migrate out of that scope.
@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import resource
 import signal
 import subprocess
 import sys
@@ -21,6 +22,10 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 MEMORY_MAX = 5 * 1024**3
+VERIFIER_MEMORY_MAX = 128 * 1024**2
+VERIFIER_CPU_ALLOWANCE_NS = 250_000_000
+CPU_POLL_SECONDS = 0.01
+VERIFIER_KINDS = frozenset(('verify-transaction', 'verify-settlement', 'verify-block576'))
 SUITE = 'KoalaBear-D8-Poseidon2-W24-digest12'
 PARAMETERS = {'log_blowup': 8, 'num_queries': 36, 'query_pow_bits': 20,
               'batch_pow_bits': 20, 'commit_pow_bits': 0, 'max_log_arity': 1}
@@ -112,7 +117,69 @@ def validate_events(counters):
             raise ValueError('Invalid kernel memory event counter')
 
 
-def snapshot(group):
+def memory_limit(kind):
+    return VERIFIER_MEMORY_MAX if kind in VERIFIER_KINDS else MEMORY_MAX
+
+
+def process_cpu_ns(before, after):
+    """Account child user+system CPU, including startup; cpu.max is only a rate quota."""
+    elapsed = ((after.ru_utime - before.ru_utime) + (after.ru_stime - before.ru_stime))
+    if elapsed < 0:
+        raise ValueError('Child CPU counters regressed')
+    return round(elapsed * 1_000_000_000)
+
+
+def verification_cpu_budget(kind):
+    return VERIFIER_CPU_ALLOWANCE_NS * (576 if kind == 'verify-block576' else 1)
+
+
+def diagnostic_timeout(kind, requested):
+    if kind not in VERIFIER_KINDS:
+        return requested
+    return min(requested, 180 if kind == 'verify-block576' else 2)
+
+
+def kill_owned_tree(process, group):
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    for pid in member_pids(group):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def wait_with_cpu_budget(process, group, initial_usage_usec, timeout, budget_ns):
+    """Kill the owned process tree on sampled aggregate cgroup CPU exhaustion.
+
+    Sampling has an explicit maximum 10-ms wait interval, so final counters may
+    exceed the budget. Such overshoot fails the diagnostic; it is never hidden
+    or represented as a nanosecond-precision kernel CPU quota.
+    """
+    deadline = time.monotonic() + timeout
+    samples = 0
+    observed = 0
+    while True:
+        current = read_numbers(group / 'cpu.stat')['usage_usec']
+        if current < initial_usage_usec:
+            raise ValueError('Scope CPU counters regressed')
+        observed = (current - initial_usage_usec) * 1000
+        samples += 1
+        limited = observed > budget_ns
+        timed_out = time.monotonic() >= deadline
+        if limited or timed_out:
+            kill_owned_tree(process, group)
+            return process.wait(), timed_out, limited, observed, samples
+        try:
+            code = process.wait(timeout=min(CPU_POLL_SECONDS, max(0.001, deadline - time.monotonic())))
+            return code, False, False, observed, samples
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def snapshot(group, maximum=MEMORY_MAX):
     names = ('memory.max', 'memory.swap.max', 'memory.oom.group', 'memory.peak',
              'memory.current', 'memory.swap.current')
     data = {name: int((group / name).read_text().strip()) for name in names}
@@ -121,7 +188,7 @@ def snapshot(group):
     for name in ('memory.events', 'memory.events.local'):
         validate_events(data[name])
     data['cpu.max'] = (group / 'cpu.max').read_text().strip()
-    if data['memory.max'] != MEMORY_MAX or data['memory.swap.max'] != 0:
+    if data['memory.max'] != maximum or data['memory.swap.max'] != 0:
         raise ValueError('Systemd memory limit readback mismatch')
     # systemd 255 does not accept a transient MemoryOOMGroup assignment.
     # Require the kernel's default per-process OOM policy before any proof starts.
@@ -130,7 +197,7 @@ def snapshot(group):
     return data
 
 
-def assess(before, after, exit_code, timed_out, remaining):
+def assess(before, after, exit_code, timed_out, remaining, maximum=MEMORY_MAX):
     validate_events(before['memory.events'])
     validate_events(after['memory.events'])
     delta = {key: after['memory.events'].get(key, 0) - before['memory.events'].get(key, 0)
@@ -139,15 +206,37 @@ def assess(before, after, exit_code, timed_out, remaining):
         raise ValueError('Memory event counters regressed')
     peak = after['memory.peak']
     return {'event_deltas': delta, 'resource_control_pass': (
-        exit_code == 0 and not timed_out and not remaining and 0 < peak <= MEMORY_MAX
+        exit_code == 0 and not timed_out and not remaining and 0 < peak <= maximum
         and after['memory.swap.current'] == 0
         and all(delta.get(event, 0) == 0 for event in EVENTS)),
-        'acceptance': False, 'production_parameters_frozen': False}
+        'acceptance': False}
 
 
 def proof_metrics(kind, report):
     if report.get('suite') != SUITE:
         raise ValueError('Unexpected proof suite')
+    if kind in VERIFIER_KINDS:
+        calls = 576 if kind == 'verify-block576' else 1
+        if (report.get('verification_only') is not True or report.get('workers') != 1
+                or report.get('setup_performed') is not False or report.get('generation_calls') != 0
+                or report.get('verification_calls') != calls or report.get('unique_proof_count') != 1
+                or report.get('stateful_block_validation') is not False
+                or report.get('statement_reconstructed') is not True
+                or report.get('wire_codec') != ('SWST-v1' if kind == 'verify-settlement' else 'SWTX-v1')
+                or report.get('verified') is not True):
+            raise ValueError('Independent verifier performed unexpected work')
+        params = report['parameters']
+        if any(params.get(key) != value for key, value in PARAMETERS.items()):
+            raise ValueError('Unexpected independent verifier parameters')
+        public = {name: integer(report[name], name, positive=True) for name in
+            ('loading_ns', 'verification_ns', 'proof_body_bytes', 'verification_calls',
+             'per_proof_wall_min_ns', 'per_proof_wall_median_ns', 'per_proof_wall_max_ns')}
+        public.update({'unique_proof_count': 1, 'stateful_block_validation': False,
+                       'generation_calls': 0, 'setup_performed': False, 'workers': 1,
+                       'statement_reconstructed': True, 'wire_codec': report['wire_codec'],
+                       'workload_basis': ('576 cryptographic verifications of one repeated transaction fixture; no valid-block claim'
+                           if calls == 576 else 'one independent native proof verification')})
+        return public
     if kind == 'transaction':
         if (report.get('verified') is not True or report.get('workers') != 4
                 or report.get('operation') != 'four_worker'
@@ -158,7 +247,9 @@ def proof_metrics(kind, report):
             raise ValueError('Unexpected transaction diagnostic parameters')
         names = ('setup_ns', 'generation_ns', 'verification_ns', 'proof_body_bytes')
         return {name: integer(report[name], name, positive=True) for name in names}
-    if kind != 'settlement' or (report.get('capacities') != [576]
+    if kind != 'settlement' or (report.get('schema') != 2
+            or report.get('settlement_statement') != 'confidential-miner-note-v1'
+            or report.get('capacities') != [576]
             or report.get('worker_count') != 4
             or report.get('fri_profile') != 'transaction-candidate-diagnostic'):
         raise ValueError('Unexpected settlement diagnostic profile')
@@ -172,9 +263,15 @@ def proof_metrics(kind, report):
             'air_shape': {key: integer(value, key, True) for key, value in records[0]['shape'].items()}}
 
 
-def child_command(kind, executable, output, index, run_id):
+def child_command(kind, executable, output, index, run_id, fixtures=None, fixture_manifest_sha256=None):
     if kind == 'scope-smoke':
         return ['/usr/bin/true']
+    if kind in VERIFIER_KINDS:
+        if fixtures is None or not re.fullmatch(r'[a-f0-9]{64}', fixture_manifest_sha256 or ''):
+            raise ValueError('Independent verifier requires trusted fixtures')
+        return [str(executable), '--kind', kind.removeprefix('verify-'),
+                '--fixtures', str(fixtures), '--fixture-manifest-sha256', fixture_manifest_sha256,
+                '--output', str(output)]
     if kind == 'transaction':
         return [str(executable), '--log-blowup', '8', '--queries', '36', '--grinding', '20',
                 '--operation', 'four_worker', '--trial-index', str(index), '--run-id', run_id,
@@ -184,10 +281,13 @@ def child_command(kind, executable, output, index, run_id):
     raise ValueError('Unknown diagnostic kind')
 
 
-def scope_command(unit, config):
+def scope_command(unit, config, maximum=MEMORY_MAX):
+    if maximum not in (MEMORY_MAX, VERIFIER_MEMORY_MAX):
+        raise ValueError('Unsupported diagnostic memory limit')
+    property_value = '5G' if maximum == MEMORY_MAX else '128M'
     return ['sudo', '--non-interactive', 'systemd-run', '--scope', '--quiet', '--unit=' + unit,
             '-p', 'MemoryAccounting=yes', '-p', 'CPUAccounting=yes',
-            '-p', 'MemoryMax=5G', '-p', 'MemorySwapMax=0',
+            '-p', 'MemoryMax=' + property_value, '-p', 'MemorySwapMax=0',
             '/usr/bin/python3', str(Path(__file__).resolve()),
             '--worker-config', str(config)]
 
@@ -208,10 +308,11 @@ def run_in_scope(config):
     CURRENT_STAGE = 'recorder-oom-protection'
     Path('/proc/self/oom_score_adj').write_text('-1000')
     CURRENT_STAGE = 'initial-counters'
-    before = snapshot(group)
+    maximum = memory_limit(config['kind'])
+    before = snapshot(group, maximum)
     raw = Path(config['private_output'])
     command = child_command(config['kind'], config['executable'], raw,
-                            config['trial'], config['run_id'])
+                            config['trial'], config['run_id'], config.get('fixtures'), config.get('fixture_manifest_sha256'))
 
     def unprivileged():
         Path('/proc/self/oom_score_adj').write_text('0')
@@ -220,21 +321,31 @@ def run_in_scope(config):
         os.setuid(config['uid'])
 
     started = time.monotonic_ns()
+    cpu_before = resource.getrusage(resource.RUSAGE_CHILDREN)
     timed_out = False
+    cpu_limited = False
+    cpu_samples = 0
     with Path(config['private_log']).open('xb') as log:
         CURRENT_STAGE = 'proof-launch'
         process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL,
             stdout=log, stderr=log, start_new_session=True, preexec_fn=unprivileged,
-            env={'PATH': '/usr/bin:/bin', 'RAYON_NUM_THREADS': '4',
+            env={'PATH': '/usr/bin:/bin', 'RAYON_NUM_THREADS': '1' if config['kind'] in VERIFIER_KINDS else '4',
                  'SIWORLD_COMPOSITION_HIDING_WORKERS': '2'})
         CURRENT_STAGE = 'proof-wait'
-        try:
-            code = process.wait(timeout=config['timeout'])
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            os.killpg(process.pid, signal.SIGKILL)
-            code = process.wait()
+        if config['kind'] in VERIFIER_KINDS:
+            code, timed_out, cpu_limited, _, cpu_samples = wait_with_cpu_budget(
+                process, group, before['cpu.stat']['usage_usec'],
+                diagnostic_timeout(config['kind'], config['timeout']),
+                verification_cpu_budget(config['kind']))
+        else:
+            try:
+                code = process.wait(timeout=config['timeout'])
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                kill_owned_tree(process, group)
+                code = process.wait()
     elapsed = time.monotonic_ns() - started
+    child_cpu = process_cpu_ns(cpu_before, resource.getrusage(resource.RUSAGE_CHILDREN))
     remaining = member_pids(group)
     # Only this exact UUID scope is inspected. Nonroot proof processes cannot
     # migrate to another scope; terminate surviving members before collection.
@@ -247,15 +358,38 @@ def run_in_scope(config):
     while member_pids(group) and time.monotonic() < until:
         time.sleep(0.05)
     CURRENT_STAGE = 'final-counters'
-    after = snapshot(group)
+    after = snapshot(group, maximum)
     report = {'schema': 1, 'kind': config['kind'], 'trial': config['trial'],
         'scope_id': config['unit'], 'suite': SUITE, 'parameters': PARAMETERS,
         'exit_code': code, 'timed_out': timed_out, 'process_wall_ns': elapsed,
+        'process_cpu_ns': child_cpu, 'process_cpu_basis': 'resource.getrusage RUSAGE_CHILDREN user+system delta',
+        'memory_max_bytes': maximum, 'memory_swap_max_bytes': 0,
+        'source_commit': config.get('source_commit'),
+        **config.get('freeze_evidence', {'engineering_profile_frozen': False}),
         'memory': {'before': before, 'after': after},
         'remaining_proof_processes': len(remaining),
-        'peak_scope': 'fresh process-tree lifetime including setup, proof and verification; recorder included',
-        'timing_scope': 'proof generation measured by the executable; process lifetime recorded separately',
-        **assess(before, after, code, timed_out, remaining)}
+        'peak_scope': ('fresh verification process-tree lifetime including startup, public key loading and bounded decoding; recorder included'
+            if config['kind'] in VERIFIER_KINDS else
+            'fresh process-tree lifetime including setup, proof and verification; recorder included'),
+        'timing_scope': ('verification wall time measured by the executable; child startup CPU and wall lifetime recorded separately'
+            if config['kind'] in VERIFIER_KINDS else
+            'proof generation measured by the executable; process lifetime recorded separately'),
+        **assess(before, after, code, timed_out, remaining, maximum)}
+    if config['kind'] in VERIFIER_KINDS:
+        calls = 576 if config['kind'] == 'verify-block576' else 1
+        report['cpu_allowance_per_proof_ns'] = VERIFIER_CPU_ALLOWANCE_NS
+        report['cpu_allowance_basis'] = 'entire child CPU including startup divided by cryptographic verification calls'
+        scope_cpu = (after['cpu.stat']['usage_usec'] - before['cpu.stat']['usage_usec']) * 1000
+        if scope_cpu < 0:
+            raise ValueError('Scope CPU counters regressed')
+        budget = verification_cpu_budget(config['kind'])
+        report['scope_cpu_ns'] = scope_cpu
+        report['cpu_watchdog'] = {'budget_ns': budget, 'poll_interval_ns': round(CPU_POLL_SECONDS * 1_000_000_000),
+            'samples': cpu_samples, 'killed_on_budget': cpu_limited,
+            'observed_overshoot_ns': max(0, scope_cpu - budget),
+            'scope': 'all processes in the owned cgroup including recorder and startup'}
+        report['cpu_allowance_pass'] = child_cpu <= budget and scope_cpu <= budget and not cpu_limited
+        report['resource_control_pass'] &= report['cpu_allowance_pass']
     try:
         report['proof'] = ({} if config['kind'] == 'scope-smoke'
             else proof_metrics(config['kind'], json.loads(raw.read_text())))
@@ -266,6 +400,35 @@ def run_in_scope(config):
     CURRENT_STAGE = 'result-write'
     write_json(config['result'], report)
     return 0 if report['resource_control_pass'] else 1
+
+
+def freeze_evidence(manifest):
+    """Authenticate the engineering profile independently of diagnostic success."""
+    manifest = manifest.resolve(strict=True)
+    subprocess.run([sys.executable, str(ROOT / 'scripts/check-v1-freeze.py'),
+                    '--manifest', str(manifest)], check=True, cwd=ROOT)
+    data = manifest.read_bytes()
+    value = json.loads(data)
+    if (value.get('schema') != 1 or value.get('status') != 'engineering-frozen'
+            or value.get('cryptographic_approval') is not False
+            or value.get('network_activation') is not False):
+        raise ValueError('Unexpected engineering freeze status')
+    keys = {kind: value['profiles'][kind]['verifier_artifact_sha256']
+            for kind in ('transaction', 'settlement')}
+    if any(not re.fullmatch(r'[a-f0-9]{64}', digest) for digest in keys.values()):
+        raise ValueError('Invalid frozen verifier identity')
+    return {'engineering_profile_frozen': True, 'verifier_artifact_sha256': keys,
+            'freeze_manifest_sha256': hashlib.sha256(data).hexdigest(),
+            'cryptographic_approval': False, 'network_activation': False}
+
+
+def validate_fixture_keys(fixtures, frozen):
+    data = (fixtures / 'manifest.json').read_bytes()
+    manifest = json.loads(data)
+    for kind, expected in frozen['verifier_artifact_sha256'].items():
+        if manifest[kind].get('vk_sha256') != expected:
+            raise ValueError('Fixture key differs from frozen public verifier')
+    return hashlib.sha256(data).hexdigest()
 
 
 def collect(args):
@@ -281,12 +444,19 @@ def collect(args):
         'hardware_profile': 'github-hosted-diagnostic', 'reserved_reference_machine': False})
     executables = ({'scope-smoke': Path('/usr/bin/true')} if args.smoke_scope else
         {'transaction': args.transaction.resolve(strict=True),
-         'settlement': args.settlement.resolve(strict=True)})
+         'settlement': args.settlement.resolve(strict=True),
+         **{kind: args.verifier.resolve(strict=True) for kind in sorted(VERIFIER_KINDS)}})
     hashes = {kind: {
         'launcher_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
         'worker_sha256': hashlib.sha256((path if args.smoke_scope else
             path.parent.parent / 'libexec' / path.name).read_bytes()).hexdigest()
         } for kind, path in executables.items()}
+    source_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, cwd=ROOT).strip()
+    if not re.fullmatch(r'[a-f0-9]{40}', source_commit):
+        raise ValueError('Invalid source commit identity')
+    frozen = ({'engineering_profile_frozen': False} if args.smoke_scope
+              else freeze_evidence(args.freeze_manifest))
+    fixture_sha = None if args.smoke_scope else validate_fixture_keys(args.fixtures, frozen)
     outcomes = []
     # Config, raw fixture/digest reports, absolute paths and stderr are never
     # copied to the uploaded artifact directory.
@@ -299,6 +469,9 @@ def collect(args):
                 config = {'unit': unit, 'uid': os.getuid(), 'gid': os.getgid(), 'kind': kind,
                     'trial': trial, 'run_id': uuid.uuid4().hex, 'timeout': args.timeout,
                     'executable': str(executables[kind]), 'result': str(result),
+                    'source_commit': source_commit, 'freeze_evidence': frozen,
+                    'fixture_manifest_sha256': fixture_sha if kind in VERIFIER_KINDS else None,
+                    'fixtures': str(args.fixtures.resolve(strict=True)) if kind in VERIFIER_KINDS else None,
                     'private_output': str(private / f'{kind}-{trial}-raw.json'),
                     'private_log': str(private / f'{kind}-{trial}.log')}
                 config_file = private / f'{kind}-{trial}-config.json'
@@ -306,7 +479,7 @@ def collect(args):
                 scope_log = private / f'{kind}-{trial}-scope.log'
                 try:
                     with scope_log.open('xb') as log:
-                        completed = subprocess.run(scope_command(unit, config_file),
+                        completed = subprocess.run(scope_command(unit, config_file, memory_limit(kind)),
                             stdin=subprocess.DEVNULL, stdout=log,
                             stderr=subprocess.STDOUT, timeout=args.timeout + 30, check=False)
                     returncode = completed.returncode
@@ -326,11 +499,14 @@ def collect(args):
                     'resource_control_pass': bool(saved and saved['resource_control_pass']
                                                   and returncode == 0)})
     report = {'schema': 1, 'suite': SUITE, 'parameters': PARAMETERS,
-        'trials': outcomes, 'memory_max_bytes': MEMORY_MAX, 'memory_swap_max_bytes': 0,
+        'trials': outcomes, 'source_commit': source_commit,
+        'prover_memory_max_bytes': MEMORY_MAX, 'verifier_memory_max_bytes': VERIFIER_MEMORY_MAX,
+        'verifier_cpu_allowance_per_proof_ns': VERIFIER_CPU_ALLOWANCE_NS,
+        'memory_swap_max_bytes': 0,
         'resource_control_pass': all(row['resource_control_pass'] for row in outcomes),
-        'production_air_frozen': False, 'production_parameters_frozen': False,
+        **frozen,
         'acceptance': False, 'hardware_profile': 'github-hosted-diagnostic',
-        'resource_scope': '5-GiB limit applies only to these diagnostics; no production budget is selected'}
+        'resource_scope': '5-GiB proving scopes; 128-MiB verification scopes including startup; zero swap; diagnostic only'}
     report['measurement_kind'] = ('scope-smoke-only' if args.smoke_scope else 'native-proof-diagnostic')
     write_json(args.output / 'summary.json', report)
     if args.smoke_scope:
@@ -342,6 +518,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--transaction', type=Path)
     parser.add_argument('--settlement', type=Path)
+    parser.add_argument('--verifier', type=Path)
+    parser.add_argument('--fixtures', type=Path)
+    parser.add_argument('--freeze-manifest', type=Path,
+                        default=ROOT / 'crates/bench-d8/artifacts/v1-native-freeze.json')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--private-parent', type=Path, default=Path('.local'))
     parser.add_argument('--timeout', type=int, default=600)
@@ -353,8 +533,8 @@ def main():
         if args.worker_config:
             return run_in_scope(json.loads(args.worker_config.read_text()))
         if (not args.output or args.timeout <= 0
-                or (not args.smoke_scope and not all((args.transaction, args.settlement)))):
-            parser.error('output and positive timeout are required; proof mode also needs both executables')
+                or (not args.smoke_scope and not all((args.transaction, args.settlement, args.verifier, args.fixtures)))):
+            parser.error('output and positive timeout are required; proof mode also needs proving/verifier executables and trusted fixtures')
         return collect(args)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         # Do not expose proof log contents or private host paths in CI output.

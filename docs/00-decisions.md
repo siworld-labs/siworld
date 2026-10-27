@@ -1,8 +1,11 @@
 # Current Protocol Decisions
 
-Status: selected V1 design direction. The native transaction route is not
-activated and its production relation, parameter freeze and node admission
-budgets remain subject to the gates in [the specification](route-a-v1.md).
+Status: engineering-frozen native V1 proof profile, bound to the source,
+public verifier keys and security reports in the
+[freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json).
+Independent cryptographic approval, hosted resource acceptance and network
+activation remain separate requirements. Resource artifacts identify the
+measured commit and actual CPU.
 
 ## Network and proof architecture
 
@@ -65,12 +68,16 @@ encryption-correctness circuits remain future research.
 The block target is 300 seconds with 64 through 576 positions in groups of 16.
 Minimum node uplink is 25 Mbps. Preserve `MAX_LEAF_PROOF_LEN = 524288`
 (512 KiB); do not derive a larger maximum from bandwidth or observed samples.
-Each position has 1,742 bytes of public transaction body and a 48-byte fee
-commitment, totaling 1,790 bytes, before sidecar/envelope traffic.
+Each position permanently retains 1,742 public body bytes, a 48-byte fee
+commitment and a 40-byte snapshot selector: 1,830 bytes. The relay prefix is
+1,899 bytes and the private sidecar is 78 bytes. Maximum combined payload is
+526,265 bytes. Statement identity excludes proof randomness and sidecars.
+The settlement prefix is 159 bytes with a 524,288-byte proof cap.
 
-At 576 positions and three relay copies the maximum-size transaction payload
-requires 24.24167424 Mbps, leaving 3.0333% uplink margin. Full-network acceptance
-must additionally account for settlement, sidecars, framing and recovery.
+At 576 positions and three copies, transaction traffic requires 24.25029120 Mbps,
+or 291.00349440 seconds at 25 Mbps. The remaining 28,114,080 bytes per interval
+must cover settlement, headers, framing and recovery. This is not measured
+full-network capacity.
 If the frozen production proof exceeds the cap, first evaluate larger blowup.
 If no eligible profile fits, report a proposed 544-position capacity and revised
 budgets; this fallback does not increase the proof cap or authorize activation.
@@ -83,16 +90,58 @@ before admission; no additional sidecar signature or encryption layer is
 selected. Planned hybrid X25519 + ML-KEM transport handles connection secrecy.
 Transaction and settlement proofs and private sidecars remain online for four
 weeks after final confirmation, then are deleted. Public fee commitments remain
-permanent. See [fee settlement](fee-settlement.md) for unresolved production gates.
+permanent. Openings use eight independent canonical KoalaBear elements,
+approximately 247.91 bits of entropy. The corrected settlement AIR keeps the
+fee total and miner amount private and proves the ordinary reward-note
+commitment, height-derived rho and maturity. Network, height and the ordered
+transaction list enter its public context. Transaction proofs enforce private
+anchor fee schedules; settlement opens and sums commitments without imposing
+one current tier on old-snapshot transactions. See [fee settlement](fee-settlement.md).
 
-## Release gates
+## Frozen profile and operational resource policy
 
-Freeze the production AIR, deterministic codec maximum, dependency revision,
-trusted key and full security report before selecting production parameters.
-Pin the modified Plonky3-recursion source by the full revision and tree recorded
-in [the dependency lineage](d8-dependency-patch.md); no upstream merge is required.
-Choose the smallest eligible proof with four-worker generation at most two
-seconds. Measure generation and verification memory independently and bound
-malformed-input work before adopting mempool/DoS constants. A hosted cgroup
-measurement is resource evidence, not proof of complete relation coverage,
-cryptographic approval, dedicated target hardware performance or node activation.
+Both native proofs use `log_blowup=8`, 36 queries, query grinding 20,
+opening-batch grinding 20, commitment grinding 0, binary folding and
+`log_final_poly_len=0`. The bundle records actual AIR shapes, fixed
+`p3-security=0.9.0-rc.2` reports, source/dependency hashes and canonical public
+verifier artifacts. Source, envelope, key or parameter drift fails CI.
+A new profile requires review. The dependency revision is fixed in
+[its lineage](d8-dependency-patch.md); upstream merging is not required.
+
+Independent verifiers load public keys without prover setup. The local policy
+is 128 MiB charged memory, zero swap, 250 ms CPU per proof, a two-second wall
+watchdog and two concurrent workers. CPU accounting is sampled at intervals
+of at most 10 ms; overshoot fails the resource check. This is not a fractional
+kernel CPU quota. The serial allowance is 144 seconds for 576 transaction
+checks, or 144.25 seconds including settlement. Actual measurements are
+reported separately; repeated-proof work is not valid stateful block validation.
+Local exhaustion is retryable unavailability, never consensus invalidity.
+
+Verified pool: 512 MiB/2,048 entries. Unverified queue: 64 MiB/128 entries.
+Per peer: 2 MiB/four unverified and 16 MiB/64 verified entries. Apply byte
+limits first, including owned metadata, and reserve before reading. The codec
+has a separate 4-MiB declared-vector budget, not an RSS bound. Negative and
+abuse caches are 1 MiB each; reconstruction is 640 MiB/two blocks. TTLs and
+admission rules are in [the integration plan](v1-node-network-plan.md).
+
+Maintain at least 64 usable pregenerated padding transactions when ready,
+with at most 128 entries and 65 MiB of serialized payload. Account metadata
+separately. Use fresh nullifiers, genuine ephemeral-recipient ML-KEM encryption
+and the same proof profile. Expiry, orphaning, inclusion and confirmed/pending
+nullifier conflicts invalidate entries before selection and release their
+reservations. Refill below 64; shortages delay production rather than permit
+invalid padding or exceeding caps.
+
+## Node and network implementation
+
+The [integration plan](v1-node-network-plan.md) covers the shared atomic block
+transition, bounded admission, compact relay, four-week retention, archive and
+checkpoint synchronization, X25519 + ML-KEM transport and Dandelion++ or a
+reviewed relay. Use groups of 16, 64–576 positions and `MAX_REORG_DEPTH=24`.
+The fixed settlement AIR has 576 openings; smaller blocks derive canonical
+zero-fee internal tails without additional chain transactions. Checkpoint
+bootstrap has an explicit trust assumption after historical proof deletion.
+Estimated effort is 29–49 engineering days excluding independent review;
+parallel work is possible. New-network launch requires payment, resource,
+transport, privacy and recovery acceptance. The retained seven-node network,
+history and keys remain unchanged.

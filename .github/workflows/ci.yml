@@ -192,7 +192,7 @@ jobs:
           build = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(build)
           command = ['cargo', 'test', '--release', '--manifest-path', '.local/native-transaction/application/Cargo.toml', '--features', 'security-report', '--lib']
-          for module, minimum in [('transaction', 8), ('codec', 7), ('encryption', 12), ('fee_settlement', 5), ('proof_codec', 14)]:
+          for module, minimum in [('transaction', 8), ('codec', 7), ('encryption', 12), ('fee_settlement', 5), ('fee_settlement_air', 10), ('proof_codec', 14), ('common', 1), ('envelope', 6), ('padding_pool', 1), ('native_verifier', 2), ('native_security', 1)]:
               selected = [*command, module + '::tests']
               if module == 'codec':
                   selected += ['--', '--skip', 'proof_codec::tests']
@@ -200,9 +200,18 @@ jobs:
           build.run_logged([*command[:-1], '--test', 'snapshots'], Path('.local/native-transaction/snapshot-tests.log'), nonempty_tests=True, minimum_tests=15)
           build.run_logged([*command, 'proof_codec::tests::candidate_profile_roundtrips_the_actual_transaction_air', '--', '--ignored'], Path('.local/native-transaction/candidate-codec-test.log'), nonempty_tests=True, minimum_tests=1)
           build.run_logged([*command[:-1], '--bin', 'v1-transaction-scan'], Path('.local/native-transaction/diagnostic-tests.log'), nonempty_tests=True, minimum_tests=2)
+          build.run_logged([*command[:-1], '--bin', 'native-verifier-bench'], Path('.local/native-transaction/verifier-worker-tests.log'), nonempty_tests=True, minimum_tests=2)
           PY_NATIVE_TEST
-          cargo clippy --release --manifest-path .local/native-transaction/application/Cargo.toml --features security-report --lib --bin v1-transaction-scan -- -D warnings
-          cargo build --release --manifest-path .local/native-transaction/application/Cargo.toml --features security-report --bin v1-transaction-scan
+          cargo clippy --release --manifest-path .local/native-transaction/application/Cargo.toml --features security-report --lib --bin v1-transaction-scan --bin native-verifier-bench --bin v1-freeze-artifacts -- -D warnings
+          cargo build --release --manifest-path .local/native-transaction/application/Cargo.toml --features security-report --bin v1-transaction-scan --bin v1-freeze-artifacts
+          python3 scripts/check-v1-freeze.py
+          prepare_unit="siworld-native-freeze-$(cat /proc/sys/kernel/random/uuid)"
+          sudo --non-interactive systemd-run --scope --quiet --unit="$prepare_unit" \
+            -p MemoryMax=5G -p MemorySwapMax=0 \
+            /usr/sbin/runuser --user "$(id -un)" -- \
+            /usr/bin/env RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
+            .local/native-transaction/application/target/release/v1-freeze-artifacts \
+            --root "$GITHUB_WORKSPACE" --check crates/bench-d8/artifacts/v1-native-freeze.json
           .local/native-transaction/application/target/release/v1-transaction-scan --security-only --log-blowup 4 --queries 80 --grinding 16 --output .local/native-transaction/security-diagnostic.json
       - name: Preserve registry dependency pins
         run: |

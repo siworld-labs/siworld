@@ -15,12 +15,14 @@ not qualify the selected suite.
 shapes and unimplemented grinding requirements. [Linux measurement](linux-proof-measurement.md)
 defines the process-tree resource-control method.
 
-The selected [native V1 transaction route](route-a-v1.md) defines the D8 native
-AIR, codec and parameter-scan gates. [Confidential fee settlement](fee-settlement.md)
-and its [evaluation gate](fee-settlement-evaluation.md) are selected for
-research, but do not close the fee, root-lifetime, encryption-binding or
-checkpoint-trust gates. Recursive aggregation is deferred to V2 and its
-experiments are paused.
+The selected [native V1 transaction route](route-a-v1.md) and
+[confidential fee settlement](fee-settlement.md) define the implemented native
+relations and codecs. The [engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
+binds their parameters, source hashes, public verifier keys and actual-instance
+security reports. Independent review and network activation remain separate.
+The [node and network plan](v1-node-network-plan.md) covers bounded admission,
+compact relay, retention, synchronization and hybrid transport. Recursive
+aggregation is deferred to V2 and its experiments are paused.
 
 - [Current protocol decisions](00-decisions.md)
 - [Commitment collision accounting](bht-security-accounting.md)

@@ -110,16 +110,22 @@ fn witness(capacity: usize) -> FixedSettlementWitness {
         FeeOpening::standard(core::array::from_fn(|i| common::F::from_u32(i as u32 + 1))),
     ));
     for i in 1..capacity {
-        let blind = core::array::from_fn(|k| common::F::from_u32(1000 + (i * 4 + k) as u32));
+        let blind = core::array::from_fn(|k| {
+            common::F::from_u32(1000 + (i * common::FEE_BLIND_LEN + k) as u32)
+        });
         slots.push(SettlementSlot::from_opening(
             &hasher,
             FeeOpening::dummy(blind),
         ));
     }
     FixedSettlementWitness {
-        base_fee: FEE_BASE,
         issuance_reward: 100,
         miner_amount: 100 + FEE_BASE,
+        block_height: 1000,
+        network: [9; 32],
+        transaction_list_digest: [11; 32],
+        miner_owner: core::array::from_fn(|k| common::F::from_u32(800 + k as u32)),
+        miner_rseed: core::array::from_fn(|k| common::F::from_u32(900 + k as u32)),
         slots,
     }
 }
@@ -238,7 +244,8 @@ fn main() {
         }));
     }
     let report = json!({
-        "schema": 1,
+        "schema": 2,
+        "settlement_statement": "confidential-miner-note-v1",
         "suite": "KoalaBear-D8-Poseidon2-W24-digest12",
         "fri_profile": fri_profile,
         "compiler_profile": "release",

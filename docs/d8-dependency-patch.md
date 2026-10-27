@@ -4,7 +4,8 @@ Status: experimental source implementation with fixed project-fork revisions.
 The native application directly pins the source revision and registry lock graph;
 the earlier local-path adapter is retired. The upstream proposal is
 [Plonky3-recursion #479](https://github.com/Plonky3/Plonky3-recursion/pull/479). No retained node
-or production proof parameter is changed by this work.
+is changed by this work. Parameter freeze for the isolated native V1 proof is
+separate from node/network activation and independent cryptographic review.
 
 ## Source lineage
 
@@ -85,18 +86,29 @@ inputs to review, not an independent soundness theorem.
 These are effort estimates for remaining verification and distribution work,
 not a production-readiness claim. Cryptographic review duration is separate.
 
-## Production freeze dependencies
+## Proof-parameter freeze and activation
 
-A passing resource diagnostic does not complete node integration of the selected
-4,096-canonical-snapshot policy, checked wallet outputs or bounded untrusted-proof
-admission. The isolated implementations are described in the native specification.
-The current scanner deliberately emits `actual_production_air=false` and
-`production_selection_allowed=false`; these flags may change only after the
-corresponding [relation and codec gates](route-a-v1.md) are implemented and tested.
+The native proof freeze records fixed dependency revisions, the implemented
+transaction and fixed-576 settlement AIRs, trusted verifier identities,
+canonical public/proof/envelope/sidecar codecs, actual-instance security reports
+and successful resource measurements. It does not depend on an upstream merge or
+completion of the node/wallet/network implementation. A diagnostic scanner row
+alone is insufficient; its source, shape and artifacts must match the checked
+freeze manifest. Independent cryptographic review remains separate.
+The [native engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
+contains both actual-instance reports and public verifier artifacts.
 
-The 524,288-byte wire maximum is selected independently of that freeze.
-Mempool byte/CPU/in-flight limits need deterministic decoding bounds, the final
-sidecar/envelope ledger, single-core verifier memory and malformed-input work
-measurements. Generation memory from a combined setup/prove/verify process
-cannot be mislabeled as an isolated verifier-memory bound. These gaps prevent
-freezing measurement-derived production admission constants today.
+The 524,288-byte proof-body maximum is selected independently of measured sample
+lengths. The canonical envelope adds a 1,899-byte prefix; the private sidecar is
+78 bytes. The [node and network plan](v1-node-network-plan.md) defines initial
+byte/CPU/in-flight policies and the remaining shared transition, compact relay,
+retention, synchronization and hybrid-transport milestones.
+
+A passing resource diagnostic does not complete integration of trusted
+4,096-canonical-snapshot selection or durable wallet receipt/change-key storage.
+Node admission still needs isolated single-core verifier-memory and
+malformed-input work measurements. Generation memory from a combined
+setup/prove/verify process cannot establish a verifier-memory bound. These
+remaining measurements may revise local operational policies without changing
+the frozen proof parameters. They and independent review precede activation,
+not recording the proof-parameter freeze.

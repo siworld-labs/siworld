@@ -1,13 +1,15 @@
 # Native Transaction Proof Design
 
-Status: selected V1 direction; production AIR, codec, parameter selection and
-node integration are not complete. Requirements below do not describe an
-activated network. V1 selects Scheme B confidential fee settlement as its
-direction; the mechanism is documented in [fee-settlement.md](fee-settlement.md)
-and has a research reference model and fixed-capacity AIR/prover, but it is not
-integrated into node or consensus paths. Witness delivery, security and
-qualified-host capacity evaluation remain open. Open design issues explicitly
-block a production AIR freeze and V1 inclusion.
+Status: selected V1 direction with isolated native AIR, codec and prover
+implementations. Requirements below do not describe an activated network.
+V1 uses Scheme B confidential fee settlement, documented in
+[fee-settlement.md](fee-settlement.md). Proof-parameter freeze records the
+tested relation, canonical codecs, trusted verifier, security reports and
+resource results. It is separate from independent cryptographic review and
+node, wallet or network activation. Incomplete node or durable-wallet
+integration does not by itself prevent a proof-parameter freeze.
+The [engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
+records the selected native profile and reproducible verifier/security artifacts.
 
 ## Scope and network boundary
 
@@ -26,8 +28,10 @@ activation is deferred until before mainnet.
 
 The engineering block target is 300 seconds, with 64 through 576 transaction
 positions in groups of 16. The minimum node uplink is 25 Mbps. Node integration,
-block validity changes, pruning and checkpoint synchronization remain design
-work until the production transaction AIR and parameter scan pass.
+block validity changes, pruning and checkpoint synchronization follow the
+[node and network integration plan](v1-node-network-plan.md). Proof parameters
+may be frozen before those implementations are complete; activation requires
+their separate acceptance gates.
 
 ## Suite and security requirements
 
@@ -57,17 +61,18 @@ nonce unless the production verifier enforces it at the specified transcript
 position. Estimator screening is not an independent quantum soundness theorem;
 external review must assess the selected accounting and implementation.
 
-## Existing relation and incomplete coverage
+## Native relation and integration boundary
 
-The research D8 slot AIR contains private spend-key/note fields and constraints
-for ownership, note commitments, input membership, nullifiers, conservation,
-value ranges, output rho and unlock heights. It is a reusable starting point,
-not the completed production transaction relation. Its accumulator leaf exposes
-fee limbs and delegates recent-root membership to a parent relation. Moving
-that path into a native transaction proof still requires private fee settlement
-and enforcement of the selected canonical snapshot lifetime.
+The native D8 transaction implementation constrains private spend-key/note
+fields, ownership, note commitments, input membership, nullifiers,
+conservation, value ranges, output rho and unlock heights. Recent-root
+membership is checked within the native relation and the fee is bound by a
+private opening to its public commitment. This relation is distinct from the
+older recursive accumulator leaf, which exposes fee limbs and delegates
+recent-root membership to its parent. The selected canonical snapshot lifetime
+still requires node integration against trusted chain state.
 
-The existing relation binds a ciphertext digest but does not constrain ML-KEM
+The native relation binds a ciphertext digest but does not constrain ML-KEM
 encapsulation coins or shared secrets, the sender change secret/KDF, AEAD keys,
 nonce generation, plaintext encryption or authentication-tag computation.
 These private encryption fields are not proven consistent with output note
@@ -89,7 +94,9 @@ The canonical snapshot pool resolves trusted roots, checks proofs, reserves both
 nullifiers and applies atomic expiry/reorganization eviction. Its caller still
 validates canonical blocks, enforces reorganization depth and confirmed-state
 conflicts, and supplies authoritative refill history. Integration into the node,
-outer relay-envelope bounds and byte/CPU/in-flight quotas remain incomplete.
+byte/CPU/in-flight quota enforcement remain node integration work. The
+[integration plan](v1-node-network-plan.md) specifies the envelope ledger and
+initial local budgets; those budgets are not measured verifier-memory bounds.
 
 Wallet helpers authenticate both constructed outputs before returning a checked
 pair, retain a zeroizing per-payment opening and generate genuine ephemeral-key
@@ -152,8 +159,9 @@ replay use the snapshot window at the candidate block's canonical parent, not
 the current live window. Reproof uses fresh proof randomness and the canonical
 transaction/nullifier conflict rules.
 
-Root selectors and any unamortized envelope bytes remain outside the
-1,790-byte public-body ledger and must be counted in relay/admission budgets.
+Root selectors remain outside the 1,790-byte public-body ledger. The permanent
+record includes the 40-byte selector, totaling 1,830 bytes per position. Count
+unamortized envelope bytes separately in relay/admission budgets.
 Tests must accept the 4,096th-newest snapshot, reject the 4,097th, reject orphaned
 identities, preserve state on invalid chain replacement and evict affected
 pending transactions atomically.
@@ -177,15 +185,14 @@ non-recursive block proof binds every `F_i` to its opening and proves that the
 private sum equals the fee component of the miner reward note. Real and padding
 transactions share the same public shape, including dummy nullifiers.
 
-The direction is not yet included in the V1 production scope. The sidecar has
-no standalone signature or second encryption layer: nodes recompute `F_i` and
+The selected sidecar has no standalone signature or second encryption layer:
+nodes recompute `F_i` and
 the transaction binding on receipt, while confidentiality and peer
 authentication come from the planned X25519 + ML-KEM connection handshake.
 Missing sidecars, mismatched openings, and sidecars bound to another
 transaction are discarded before state mutation and recorded as bounded peer
-abuse. The settlement design requires a reviewed sidecar codec, a reviewed
-and frozen
-AIR layout, a security report, and qualified-host 64--576 capacity measurements,
+abuse. The settlement design requires a fixed sidecar codec, frozen AIR layout,
+security report and qualified-host 64--576 capacity measurements,
 with a three-trial 576-position result reporting proof bytes, generation and
 verification time, and per-stage peak memory. The four required rejection
 cases are explicit:
@@ -196,9 +203,11 @@ the 48-byte commitment, fee sidecar, proof statement, or relay-envelope
 bytes.
 Standard and priority amounts remain reward-linked: standard is
 `floor(reward / 1,000)` and priority is four times standard. Variable bids are
-outside scope. The production AIR cannot be frozen until collection,
-non-duplication and padding indistinguishability have a complete, reviewed
-design. The research design does not close this gate.
+outside scope. The parameter freeze must bind the implemented private fee
+relation and its rejection tests. Collection, non-duplication, padding
+indistinguishability and private witness delivery remain activation and
+independent-review requirements; completing the node path is not a prerequisite
+for recording the proof parameters.
 
 ## Encryption and ciphertext binding
 
@@ -261,17 +270,19 @@ consensus rule or cause unrelated state to become invalid.
 
 ## Public-data codec target
 
-The selected wire layout is 1,742 public bytes per transaction, excluding the
-native proof and proof/relay-envelope context. The current implementation uses
-32-byte digests, two 1,344-byte ciphertexts and a 2,818-byte slot. It is not this codec.
+The native wire layout is 1,742 public bytes per transaction, excluding the
+native proof and proof/relay-envelope context. The retained implementation's
+32-byte digests, two 1,344-byte ciphertexts and 2,818-byte slot belong to the
+unchanged seven-node network.
 
 Under Scheme B, each transaction statement adds one canonical 48-byte `F_i`
-commitment (twelve D8 field elements). The commitment is public in the proof
+commitment (twelve base-field elements). The commitment is public in the proof
 statement and relay envelope, while the fee opening remains in the private
 mempool sidecar. It is not part of the 1,742-byte base encoding, but it
 is retained in the on-chain transaction statement after the proof body is
-pruned; absent an explicitly amortized block-context format, the public record
-is 1,790 bytes before relay and settlement overhead. Capacity and
+pruned; the public body is 1,790 bytes. Each position also permanently retains
+its 40-byte snapshot selector, for a **1,830-byte permanent record** before
+amortized block context. Capacity and
 denial-of-service accounting must include the 48-byte commitment, sidecar,
 proof body, settlement proof, and retransmission reserve as separate ledger
 entries.
@@ -298,8 +309,7 @@ A D8 note body has an 8-byte value, 8-byte unlock height, 48-byte rho and
 ML-KEM output uses a zero nonce only with a fresh encapsulated secret for each
 output; the change output carries the explicit 12-byte nonce above. Version,
 suite and network identifiers live in the proof/relay envelope rather than
-these 1,742 bytes. This is an implementation choice, not an assertion that the
-codec is already implemented. Freeze byte order, output roles, canonical scalar
+these 1,742 bytes. Freeze byte order, output roles, canonical scalar
 encoding and reserved bytes in the codec. Fee-settlement fields, proof root,
 framing and transport overhead require a separate byte ledger; they cannot be
 omitted from relay or DoS accounting. If those decisions require extra permanent
@@ -353,28 +363,38 @@ verification, actual worker settings, stage times, charged-memory peaks and
 failure attempts. Select the smallest canonical encoded proof whose four-core
 generation is at most two seconds. Freeze source, dependencies, AIR shape,
 trusted key, codec, security report and binary identities with the result.
-Diagnostic rows do not freeze production parameters or admission budgets.
+The manifest and matching security/resource reports establish parameter freeze.
+Node/wallet integration and external review remain separate gates. Initial
+byte/CPU/in-flight policies are specified in the
+[node integration plan](v1-node-network-plan.md); local resource timeouts cannot
+invalidate an otherwise valid transaction or block.
 
 `MAX_LEAF_PROOF_LEN` remains **524,288 bytes (512 KiB)**. It is a fixed
 proof-body wire maximum, independent of the largest observed sample. Bound
 proof and transaction envelopes separately. The public-data ledger is
 1,742 bytes plus the 48-byte confidential fee commitment, or **1,790 bytes**
-per position; private sidecars and transport envelopes are additional.
+per position. Its 40-byte snapshot selector makes the permanent record 1,830
+bytes; sidecars and transport framing are additional. Bound the complete
+canonical transaction envelope separately from the proof body.
 
-At 576 positions per 300 seconds and three relay copies, maximum-size proofs
-plus 1,790-byte public data require **24.24167424 Mbps**. Transfer takes
-290.90009088 seconds on a 25-Mbps uplink, leaving 0.75832576 Mbps (3.0333%)
-or 9.09990912 seconds per interval. This is a transaction-payload budget,
-not full-network acceptance. Settlement proofs, sidecars, envelopes, framing,
-missing-proof traffic and retransmissions outside the relay allowance must fit
-the remaining margin and be measured before activation.
+The canonical envelope prefix is 1,899 bytes; with the maximum proof its
+length is 526,187 bytes. The private fee sidecar is 78 bytes, for a combined
+maximum of **526,265 bytes**. At 576 positions per 300 seconds and three relay
+copies this requires **24.25029120 Mbps** and 291.00349440 seconds on a 25-Mbps
+uplink. The remaining 28,114,080 bytes per interval, about 3.00%, must cover
+settlement proofs, block headers, inventories, framing, missing-proof traffic,
+handshakes and retransmissions beyond the three-copy allowance. This is a
+payload calculation, not full-network acceptance. The
+[complete ledger and local limits](v1-node-network-plan.md) distinguish
+permanent bytes, relay bytes and private sidecars.
 
 After the production relation and codec are frozen, if no eligible profile fits
 524,288 bytes, first select a larger blowup from the complete scan. If none
 fits, report a proposed reduction to **544 positions** with revised resource
 budgets. This does not raise the proof maximum or activate a capacity change.
-At 544 positions, the same maximum-size payload ledger requires 22.89491456 Mbps
-and 274.73897472 seconds on 25 Mbps. No increase above 576 is adopted.
+At 544 positions, the same maximum-size envelope/sidecar ledger requires
+22.90305280 Mbps and 274.83663360 seconds on 25 Mbps. No increase above 576 is
+adopted.
 
 Mempool admission must enforce global/per-peer byte caps, bounded concurrent
 verification, work/CPU admission and eviction before expensive verification.
@@ -389,7 +409,8 @@ The following changes are proposed and are not implemented by this document:
   A cached result never bypasses current nullifier or root-lifetime checks.
 - Use groups of 16 with 64 through 576 total positions and a 300-second target.
   Producers generate valid filler transactions without publishing real/filler
-  counts or fee classes. Final fee/padding design is a prerequisite.
+  counts or fee classes. The fee/padding relation and its privacy review are
+  prerequisites for activation.
 - Relay compact block inventories with collision-safe transaction identifiers
   and bounded missing-transaction/proof retrieval. Reconstruct and authenticate
   the complete block before applying it. Missing data is not proof validity.
@@ -419,23 +440,20 @@ The following changes are proposed and are not implemented by this document:
   conflicting, incomplete and wrong-network checkpoints and archive
   unavailability.
 
-## Work estimates and milestones
+## Remaining implementation milestones
 
-Estimates are engineering days for one engineer familiar with the existing
-Rust prover, excluding external review and unresolved cryptographic design.
-They are conditional planning ranges, not delivery commitments.
+The isolated AIR, native proving/verification, fixed public codec, snapshot
+pool and output self-check helpers are implemented in the engineering crate.
+Their security and resource reports must match the exact frozen source,
+dependency, relation and verifier identities. A surrogate AIR, diagnostic row
+or unrelated CI smoke test cannot replace those artifacts.
 
-| Milestone | Work | Estimate | Exit condition |
-| --- | --- | ---: | --- |
-| M1 | Evaluate the research fee-settlement candidate, enforce the selected 4,096-snapshot policy and V1 byte-binding boundary, and freeze the exact byte ledger | 3–6 days | Reviewed, internally consistent relation and codec specification; unresolved choices block AIR freeze |
-| M2 | Native D8/W24/12 transaction AIR, trace, two-input/two-output constraints and test-first rejection matrix | 8–14 days | Native proof generation/verification and rejection tests pass with extracted actual shapes |
-| M3 | Actual-AIR security scan and three-trial byte/time/memory measurements; limits and capacity report | 3–6 days | Eligible smallest-proof configuration and bounded production codecs selected, or infeasibility reported |
-| M4 | Node/block integration design: admission, grouping, filler lifecycle, compact relay, reorgs, retention and checkpoint/archives | 3–5 days, parallel | Interfaces, trust assumptions, budgets and test plan reviewed; no implementation in this scope |
-| M5 | X25519 + ML-KEM handshake and Dandelion++ or reviewed relay alternative | 6–10 days after M2/M3 | End-to-end handshake, failure, reconnect and source-privacy tests pass before the new engineering network |
-
-M2 cannot close with only a surrogate AIR, an unbound ciphertext digest or an
-unapproved fee-settlement mechanism. M3 cannot close using proxy measurements.
-M4 may proceed in parallel as design, but cannot silently settle consensus
-choices in code. Network privacy follows the transaction AIR and scan and is
-required before launching the new engineering network. N=32 and recursive V2
-work remain outside this V1 implementation scope.
+The [node and network integration plan](v1-node-network-plan.md) gives concrete
+admission budgets and remaining milestones: shared block transition,
+verification service and padding pool, compact relay, retention and
+archive/checkpoint synchronization, hybrid transport, source-hiding relay and
+new-network acceptance. Estimates span 3–10 engineering days per milestone;
+the independent cryptographic review is separate. Node implementation follows
+proof-parameter freeze and does not redefine its boundary. Network privacy is
+required before launching the independent engineering network. N=32 and
+recursive V2 work remain outside this V1 implementation scope.

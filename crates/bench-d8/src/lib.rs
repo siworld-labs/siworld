@@ -11,8 +11,13 @@ pub mod air;
 pub mod codec;
 pub mod common;
 pub mod encryption;
+pub mod envelope;
 pub mod fee_settlement;
 pub mod fee_settlement_air;
+#[cfg(feature = "security-report")]
+pub mod native_security;
+pub mod native_verifier;
+pub mod padding_pool;
 #[cfg(feature = "phase-profile")]
 pub mod profile;
 pub mod proof_codec;
@@ -76,9 +81,9 @@ impl FriParams {
         }
     }
 
-    /// Experimental native-transaction profile selected by the 80-bit scan.
-    /// This is a diagnostic candidate only: it is not cryptographically
-    /// approved and has not passed qualified Linux resource acceptance.
+    /// Engineering-frozen native V1 profile selected by the 80-bit scan.
+    /// The legacy method name is retained for benchmark compatibility.
+    /// This freeze does not assert cryptographic approval or network activation.
     pub const fn transaction_candidate() -> Self {
         Self {
             log_blowup: 8,
@@ -91,7 +96,7 @@ impl FriParams {
     }
 
     /// Smallest trace height hiding FRI accepts: 2·(D·opening points + queries) mask rows,
-    /// with D = 4 and two opening points (ζ and ζ·g), rounded up to a power of two.
+    /// with D = 8 and two opening points (ζ and ζ·g), rounded up to a power of two.
     pub fn hiding_min_height(&self) -> usize {
         (2 * (8 * 2 + self.num_queries as usize)).next_power_of_two()
     }

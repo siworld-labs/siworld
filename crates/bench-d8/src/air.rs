@@ -601,7 +601,6 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
                 b.assert_zero(l[input(i) + IN_VU + k]);
                 b.assert_zero(l[output(i) + OUT_VU + k]);
             }
-            b.assert_zero(l[FEE + FEE_VB + k]);
             if self.acc {
                 b.assert_zero(l[ACC_REG + ACC_HB + k]);
             }

@@ -1,10 +1,12 @@
 # Confidential Fee Settlement for Route A V1
 
-Status: selected V1 design direction; research and measurement gate open. This
+Status: selected V1 design with an isolated native AIR/prover implementation. This
 document specifies Scheme B, a confidential settlement mechanism for the
 native, non-recursive transaction route. The direction is selected for V1, but
-it is not an activated consensus rule and no implementation parameter has
-been approved. The retained seven-node network is unchanged.
+it is not an activated consensus rule. Proof-parameter freeze is established by
+the checked manifest, security reports and resource gates; independent review
+and node integration remain separate prerequisites for activation. The
+retained seven-node network is unchanged.
 
 ## Goals and boundaries
 
@@ -22,8 +24,9 @@ The settlement mechanism must meet four requirements:
 1. The proof must establish the selected fee rule without publishing the tier
    or amount for an individual transaction. The public statement contains only
    a randomized fee commitment.
-2. A block must credit the miner with the exact issuance reward plus the fees
-   of its included transactions, including zero-fee padding, exactly once.
+2. A block must credit the miner with its exact post-fund issuance share plus
+   the fees of its included transactions, including zero-fee padding, exactly
+   once.
 3. A node must reject omission, duplication, overflow, replay, and forged
    settlement data before changing state.
 4. No public field may classify a slot as real or padding, or make an
@@ -32,9 +35,9 @@ The settlement mechanism must meet four requirements:
 This design uses a separate native block-level settlement proof. It does not
 recurse over transaction proofs and does not replace transaction proof
 verification. The proof is the selected V1 direction for making the private
-sum publicly checkable, but its circuit size, proof size, generation cost,
-memory cost, and security must be measured before it is included in the V1
-production scope.
+sum publicly checkable. Its actual AIR shape, proof size, generation cost,
+memory cost and security must be recorded before parameter freeze, with
+independent review and node integration required before activation.
 
 ## Private fee binding in a transaction proof
 
@@ -46,17 +49,26 @@ f = 0                         if d = 1
 f = b * (1 + 3 * t)            if d = 0 and t is 0 or 1
 ```
 
-The transaction AIR receives `f`, `d`, `t`, and a fresh 256-bit blinding value
-`r` as private witness data. It computes a fixed-width field digest:
+The transaction AIR receives `f`, `d`, `t`, and an independently sampled blinding value
+`r` as private witness data. The implementation encodes `r` as eight uniformly
+sampled canonical KoalaBear elements: approximately 247.91 bits of entropy,
+or approximately 123.95 bits against generic quantum search. The 32-byte wire
+encoding does not provide a full 256 bits of entropy. Complete commitment
+hiding, transcript separation and randomness handling remain review subjects.
+It computes a fixed-width field digest:
 
 ```text
-F = Poseidon2_fee_v1(
-      suite_id || network_id || transaction_binding || anchor_snapshot || f || r)
+F = Poseidon2_W24(
+      fee_u16_limbs[4] || blinding_field_elements[8] || 6 || 1 || zero[10])[0..12]
 ```
 
-`transaction_binding` is the digest of the canonical 1,742-byte public
-transaction data and the fixed proof context. `anchor_snapshot` identifies
-the accepted canonical recent-root snapshot and its fee schedule. Accept only
+The permutation input is the native one-block overwrite sponge: a twelve-
+element rate, fee-domain tag 6, block count 1 and ten zero capacity elements.
+Network, snapshot and transaction bytes are not part of this fee-commitment
+preimage. The transaction proof separately binds `F` to its canonical public
+data and fixed proof context, including the selected snapshot identity. The
+sidecar transaction identity binds the same complete statement.
+The accepted canonical recent-root snapshot commits the fee schedule. Accept only
 the newest 4,096 canonical snapshots; remove orphaned or expired snapshots and
 evict affected pending transactions for wallet reproof. This window is separate
 from the depth-12 anchor tree and may accept correspondingly older fee schedules.
@@ -71,9 +83,9 @@ the canonical commitment occupies 48 bytes (twelve little-endian 32-bit
 elements). This is an incremental proof-statement/relay-envelope field; it is
 not part of the 1,742-byte permanent transaction encoding. The 48-byte `F` field
 must nevertheless remain in the retained on-chain transaction statement after
-the proof body is pruned; absent an explicitly amortized block-context format,
-the public record is therefore 1,790 bytes before relay and settlement
-overhead. The AIR proves all of the following:
+the proof body is pruned. Together with the 40-byte canonical snapshot selector
+the permanent per-position record is 1,830 bytes before amortized block
+context. The AIR proves all of the following:
 
 - the two inputs and two outputs satisfy the transaction relation;
 - every positive-amount input proves ownership and commitment-tree membership;
@@ -83,8 +95,8 @@ overhead. The AIR proves all of the following:
   transaction-level uniqueness is checked in the relation, while mempool and
   consensus admission check conflicts against the candidate and prior state;
 - `d` and `t` are boolean and the formula above holds with checked carries;
-- `F` is the Poseidon2 digest of the private values and the canonical public
-  transaction binding;
+- `F` is the specified Poseidon2 digest of the private fee and blinding, and
+  the transaction proof binds it to the canonical public statement;
 - the accepted anchor snapshot supplies `b` and the recent-root membership.
 
 The same relation is used for real and padding transactions. A padding witness
@@ -96,9 +108,12 @@ including any transaction that happens to use the same tier. Reusing `r` is a
 wallet error and must be rejected by the wallet; the protocol does not use the
 value of `F` as a fee identifier.
 
-`F` is bound to the transaction and network context, so a proof or fee witness
-cannot be moved to a different public transaction, network, suite, or anchor
-snapshot. The 1,742-byte public transaction encoding remains unchanged. `F`
+The transaction proof and sidecar identity bind `F` to the transaction and
+network context. The raw commitment alone is not context bound. A proof or
+sidecar cannot be moved to a different public transaction, network, suite or
+snapshot without changing the authenticated statement. Wallets must sample
+fresh blinding for every commitment; equality of reused commitments can be
+linkable. The 1,742-byte public transaction encoding remains unchanged. `F`
 belongs to the fixed proof statement/envelope and must be included in the
 proof-size, relay, and denial-of-service ledger; it is not silently added to
 the public transaction bytes.
@@ -109,14 +124,23 @@ A transaction proof deliberately does not reveal `f` or `r`. A miner therefore
 cannot create the block settlement proof from the public proof alone. This is a
 real protocol dependency, not an implementation detail. Scheme B places a
 fixed-size fee-opening sidecar alongside the transaction in the mempool. The
-sidecar contains `(transaction_binding, f, r, dummy, priority)` and uses the
-same canonical encoding for real and padding transactions. It is available to
+sidecar contains the transaction identity, `f` and the eight-element `r` and
+uses the same canonical encoding for real and padding transactions. It has a
+four-byte magic, two-byte version, 32-byte identity, eight-byte fee and 32-byte
+blinding encoding, totaling **78 bytes**. Dummy and priority flags are not
+wire fields. The individual anchor and its fee schedule are private, so a
+relay cannot infer the exact fee tier from the current block schedule.
+The sidecar is available to
 the block producer for ordering and settlement; the opening is never written
 to the block or public chain.
 
 Sidecars do not carry an additional signature or application-level encryption
 layer. Any node that receives one recomputes the fee commitment `F_i` and
-checks the transaction binding before forwarding or using it for settlement.
+checks the transaction identity before forwarding or using it for settlement.
+The identity is a domain-separated digest of the canonical statement including
+network, suite, snapshot selector, public data and `F`; it excludes the proof
+body and sidecar. This identity differs from the AIR's separate public-data digest and avoids
+a circular commitment definition.
 Missing sidecars, an opening that does not match `F_i`, and a sidecar bound to
 another transaction are rejected before mempool or consensus state changes,
 and the bounded relay-abuse diagnostic records the peer. Confidentiality and
@@ -125,10 +149,12 @@ ML-KEM connection handshake; the sidecar protocol does not introduce a second
 key schedule. The handshake and reconnect design remains a separate network
 gate.
 
-If a valid sidecar is unavailable, block production aborts rather than
-guessing an opening or weakening the settlement proof. Until the sidecar
-codec, handshake coverage, and rejection tests are reviewed, Scheme B remains
-an evaluation direction and is not an activated V1 consensus rule.
+If a valid sidecar is unavailable, mempool admission or local block production
+fails rather than guessing an opening or weakening the settlement proof.
+A validator checking an already constructed block needs its public commitments
+and settlement proof, not the private fee openings. Sidecar unavailability must
+not invalidate an otherwise valid block. Handshake coverage and node
+integration tests remain activation gates.
 
 ## Block settlement statement
 
@@ -136,48 +162,70 @@ For a block with `M` fixed positions, the miner constructs a private witness
 for every position, including generated padding. The settlement proof binds the
 following public values:
 
-- block header and network/suite identity;
-- the ordered compact-reference digest for each of the `M` positions;
-- the corresponding transaction binding and fee commitment `F_i` for each
-  position;
-- the miner output commitment and its fixed-format ciphertext;
-- the issuance reward recomputed from the block height.
+- network/suite identity and candidate block height;
+- the domain-separated digest of the ordered transaction identities, including
+  network, height and declared position count;
+- the corresponding ordered fee commitment `F_i` for each position;
+- the miner reward-note commitment;
+- the miner's post-fund issuance share recomputed from the block height.
 
-The proof keeps the `f_i`, tier bits, dummy bits, blindings, and total private.
+The proof keeps the `f_i`, blindings, payout opening and total private.
 It proves:
 
 ```text
-F_i = Poseidon2_fee_v1(context_i || f_i || r_i)       for every i
-f_i is exactly 0, b_i, or 4*b_i                      for every i
+F_i = Poseidon2_fee_v1(f_i || r_i)                    for every i
 T   = sum(i = 0..M-1) f_i                            (checked integer sum)
-miner_amount = issuance_reward(height) + T            (checked integer sum)
+miner_amount = miner_issuance_share(height) + T       (checked integer sum)
 miner_commitment = NoteCommit(miner_amount, miner_blind)
 ```
 
-`T` is not a public block field. The miner note commitment and ciphertext are
-the only settlement result. The proof binds them to the exact included
-transaction list and to the height-derived reward. The public block therefore
+The existing witness field named `issuance_reward` carries the miner's
+post-fund share, not the complete block reward. The block transition must
+compute `miner_issuance_share = reward - 2 * floor(reward / 20)` with the
+protocol's integer issuance schedule and fund split before reconstructing the
+settlement statement. The AIR binds this public input but does not derive the
+issuance schedule or fund shares itself.
+
+`T` is not a public block field. The miner note commitment is the public
+settlement result; its amount and note opening remain private. The standard
+note relation constrains owner, value, height-derived unlock, miner rho and
+random seed. The public Fiat--Shamir transcript binds the network, block height
+and ordered transaction-list digest. The block transition reconstructs these
+values, the ordered fee commitments and miner issuance share from trusted
+candidate data.
+The reward ciphertext belongs to the authenticated block/output codec and its
+wallet self-check, rather than a claim of in-AIR encryption correctness.
+The public block therefore
 does not expose a fee total, a paid-slot count, or a per-transaction fee.
 The phrase "sum of commitments" means that the proof opens each `F_i` to its
 private fee witness and proves the integer sum of those openings; the digest
 values themselves are not arithmetically added.
 
-The settlement proof is padded to the selected fixed capacity and has a fixed
-shape for that capacity. A 16-position group is the smallest unit; an empty
-position is represented by an ordinary fixed-format padding transaction and an
-ordinary fee witness with `f = 0`. The proof must not contain a variable-length
-list whose length reveals the number of real transactions.
+The settlement AIR has fixed capacity 576. A block has `M` positions in groups
+of 16, from 64 through 576; its unused internal AIR rows use deterministic
+zero-fee commitments derived from network, height, declared block-position
+count and row index. The block verifier reconstructs those commitments and the prover
+uses their known zero openings. These rows are not additional transactions in
+the block. Within its `M` positions, ordinary padding transactions use the same
+format and fee-opening relation as every other transaction. Neither statement
+nor proof reveals which of the `M` positions is padding.
 
 This proof is intentionally described as a block-level relation rather than a
 recursive aggregation of the transaction proofs. It may reuse their public
 statements, but it must not accept a transaction merely because the settlement
 proof claims its fee. Each transaction proof is still verified independently
 and the settlement proof must bind to the resulting statement digest.
+The transaction AIR is the authority for zero-fee padding and standard/priority
+fees under each private anchor's schedule. Settlement only opens canonical
+u64 fees and proves their sum; imposing one current block fee schedule here
+would incorrectly reject transactions using valid older anchors. A block must
+never accept an unverified transaction on the strength of settlement alone.
 
 ### Required settlement evaluation
 
-Before Scheme B is admitted to the V1 scope, implement a fixed-capacity
-settlement circuit and measure capacities 64, 128, 256, 384, 512, and 576.
+The selected V1 settlement relation uses a fixed 576-position AIR. Capacity
+measurements cover 64, 128, 256, 384, 512 and 576 active block positions while
+preserving the fixed relation and private padding rules.
 The report must include the row and column shape, constraint count and degree,
 proof and envelope bytes, verifier time, peak charged memory, and generation
 time on the qualified machine. The 576-position case is the acceptance gate:
@@ -191,19 +239,25 @@ requirements.
 
 The per-transaction accounting must list the 48-byte `F_i` commitment and the
 fixed-size fee-opening sidecar separately from the 1,742-byte permanent public
-transaction encoding, totaling 1,790 permanent bytes. Preserve the fixed
+transaction encoding, totaling 1,790 public-body bytes. The permanent snapshot
+selector adds 40 bytes, for a 1,830-byte per-position record. Preserve the fixed
 `MAX_LEAF_PROOF_LEN = 524288` (512 KiB). Mempool byte caps, concurrent-verification
 limits and complete relay capacity require the production codec ledger and
-qualified transaction/576-position settlement measurements.
+qualified transaction/576-position settlement measurements. The
+[node integration plan](v1-node-network-plan.md) specifies the 1,899-byte
+envelope prefix, 78-byte sidecar and initial local byte/CPU policies.
 
 ## Mempool and block validation flow
 
 1. Decode the fixed transaction bytes and proof envelope with bounded lengths.
    Reject unsupported network, suite, format, or proof sizes before expensive
    work.
-2. Recompute the canonical transaction binding and verify the native proof
-   against the trusted verifier key. The verifier obtains `F` from the
-   decoded statement, never from a peer-selected statement.
+2. Recompute the canonical transaction binding, validate the sidecar identity
+   and fee opening against `F`, then verify the native proof against the trusted
+   verifier key. The verifier obtains `F` from the locally decoded statement,
+   never from a peer-selected statement. Missing or mismatched sidecars fail
+   local admission before expensive proof work; block validation does not
+   require a private sidecar.
 3. Check duplicate nullifiers against the candidate state and the mempool's
    reservation table. Admission is atomic: a failure changes neither table.
 4. Retain the verified transaction binding, `F`, proof digest, and nullifier
@@ -212,16 +266,20 @@ qualified transaction/576-position settlement measurements.
    binding and commitment before retaining it; the node does not log `f` or
    classify the slot.
 5. The miner obtains a validated sidecar for every position. It constructs a
-   fixed-capacity block, recomputes the issuance reward from the candidate
-   height, includes the miner output exactly once, and produces the settlement
-   proof. Missing or context-mismatched sidecar data aborts block production.
+   fixed-capacity block, recomputes the miner's post-fund issuance share from
+   the candidate height, includes the miner output exactly once, and produces
+   the settlement proof. Missing or context-mismatched sidecar data aborts
+   block production.
 6. A receiving node verifies the header, compact references, every transaction
    proof, and the settlement proof. It checks that every `F_i` and transaction
    binding occurs exactly once, that every referenced transaction is present,
    and that all nullifiers are unique and unused in the parent state.
-7. The node verifies the miner output commitment/ciphertext against the
-   settlement proof, applies the common integer-only state transition, and
-   only then releases reservations and persists the block.
+7. The node verifies the miner output commitment against the settlement proof
+   and authenticates the reward ciphertext through the block/output codec.
+   The recipient performs AEAD and note-opening checks; the settlement AIR
+   does not prove ciphertext correctness. The node applies the common
+   integer-only state transition, then releases reservations and persists
+   the block.
 
 The producer and validator call the same transition function. Any failure
 leaves the state, mempool reservations, fee accounting, and wallet journals
@@ -233,8 +291,9 @@ The implementation test plan must reject each case below before state mutation:
 
 - changing any public transaction byte, compact reference, proof statement,
   `F_i`, anchor snapshot, network identity, or suite identifier;
-- replacing a transaction proof while retaining its `F_i`, or replacing `F_i`
-  while retaining the proof;
+- substituting a proof for a different statement while retaining `F_i`, or
+  replacing `F_i` while retaining a proof for the old statement; a fresh valid
+  proof for the identical statement preserves its transaction identity;
 - omitting a position, adding a second copy, reordering references without
   rebuilding the bound settlement proof, or using a transaction in two
   positions;
@@ -245,18 +304,20 @@ The implementation test plan must reject each case below before state mutation:
 - producing a zero-amount input with a non-canonical dummy witness, or requiring
   a commitment-tree path for that input; zero-amount dummy inputs must skip
   membership while still producing a unique nullifier;
-- claiming a non-zero fee commitment for a padding transaction, or a zero fee
+- claiming a non-zero private fee for a padding transaction, or a zero fee
   for a real transaction, including attempts to alter either opening after
   mempool admission;
 - supplying a forged fee opening, a commitment that does not match its opening,
   or a settlement sum that differs from the fee portion of the miner reward;
-- overflowing a fee limb, the per-position total, or `issuance_reward + T`,
+- overflowing a fee limb, the per-position total, or `miner_issuance_share + T`,
   including carries at every boundary;
-- claiming a miner amount that is not exactly the issuance reward plus the
-  proved private sum, claiming it twice, or moving the miner output to another
+- claiming a miner amount that is not exactly its post-fund issuance share
+  plus the proved private sum, claiming it twice, or moving the miner output to another
   block height;
-- reusing a settlement proof, `F_i`, or private fee witness in another network,
-  block, suite, or anchor snapshot;
+- transplanting a settlement proof into a different network, block or suite,
+  or binding a fee opening to a different transaction statement or snapshot;
+  an unchanged pending transaction may be selected for a later candidate
+  block when its snapshot and nullifiers remain valid;
 - omitting a sidecar, supplying a sidecar whose opening does not match `F_i`,
   or supplying a sidecar bound to another transaction;
 - truncating, extending, or making any proof, transaction, settlement, or
@@ -288,17 +349,21 @@ operational recovery. After that period, nodes delete the proof bodies and
 sidecars. The public fee commitments `F_i` remain permanently with the
 confirmed transaction; no fee opening is retained in the permanent record.
 
-## Open gates before implementation
+## Parameter freeze and activation gates
 
-This design cannot be activated until the following are specified and tested:
+Proof-parameter freeze records the implemented AIR, public/sidecar/proof codecs,
+trusted verifier, fixed dependency revisions, matching security reports and
+successful resource measurements. It does not require the complete node or
+wallet path to have been implemented. The isolated code must include the
+following evidence:
 
 - a fixed AIR layout replacing clear fee limbs with the private fee witness
   and `F` statement fields;
-- a reviewed fixed-size sidecar codec and handshake integration that gives the
-  block prover enough information to construct the private sum without
-  exposing fee tiers on the public chain;
+- a fixed-size sidecar codec that gives the block prover enough information to
+  construct the private sum without exposing fee tiers on the public chain;
 - a hash-based, quantum-accounted `NoteCommit` and `Poseidon2_fee_v1` domain
-  specification, including the 256-bit blinding representation;
+  specification, including the eight-element blinding representation and
+  its actual entropy;
 - a fixed-size settlement-proof construction and its cost at capacities 64
   through 576;
 - a 576-position three-trial evaluation covering circuit size, proof bytes,
@@ -313,6 +378,10 @@ This design cannot be activated until the following are specified and tested:
   sidecar/transaction mismatches, sidecar commitment mismatches, and
   state-atomicity failures.
 
-Until these gates pass, clear fee limbs in the research AIR and any existing
-recursive fee total are measurement fixtures only. They must not be presented
-as Route A V1 settlement or enabled on the retained network.
+Independent cryptographic review, hybrid-handshake integration, bounded
+admission, the shared block transition and private witness delivery remain
+activation gates after parameter freeze. The
+[node and network plan](v1-node-network-plan.md) describes their implementation
+milestones. Clear fee limbs in the older recursive AIR remain measurement
+fixtures and are not the native V1 settlement statement. No part of this work
+is enabled on the retained network.

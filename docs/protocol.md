@@ -82,7 +82,8 @@ Format v1 carries a 32-byte owner, a 1,184-byte ML-KEM encapsulation key and a f
 
 ## Planned native V1 transaction route
 
-Status: selected design direction; not implemented or activated. The retained
+Status: selected design with isolated native AIR, prover, decoder and codec
+implementations; node integration is planned and the route is not activated. The retained
 seven-node N=2 network keeps its current verifier, history, parameters and keys.
 The new route uses independent genesis, network identity, directories and keys
 and imports no retained notes or proofs. See the
@@ -96,22 +97,27 @@ and imports no retained notes or proofs. See the
 | Anchor | Depth-12 recent-root membership checked inside the transaction AIR; only the recent-root tree root is public |
 | Snapshot acceptance | Newest 4,096 canonical-chain tree snapshots; reject expired/orphaned identities and evict affected pending transactions for wallet reproof |
 | Output-encryption boundary | V1 byte binding; sender self-check before broadcast, private per-payment receipt material, recipient AEAD/commitment checks; padding uses real ephemeral-key ML-KEM encryption |
-| Fee tiers | Reward-linked standard and four-times-standard priority; Scheme B confidential settlement is selected for evaluation and remains a production gate ([design](fee-settlement.md), [evaluation](fee-settlement-evaluation.md)) |
-| Public-data encoding | 1,742-byte body plus 48-byte confidential fee commitment (1,790 bytes); sidecar and envelope additional |
+| Fee tiers | Reward-linked standard and four-times-standard priority; Scheme B native confidential settlement ([design](fee-settlement.md), [evaluation](fee-settlement-evaluation.md)); independent review and node integration precede activation |
+| Public-data encoding | 1,742-byte body plus 48-byte confidential fee commitment and 40-byte snapshot selector: 1,830 permanent bytes per position before amortized block context |
+| Relay envelope | 1,899-byte prefix plus proof body; maximum 526,187 bytes; separate fixed private sidecar 78 bytes |
 | Change encryption | ChaCha20-Poly1305 with a 256-bit key and domain-separated BLAKE3 derivation |
 | Blocks | Groups of 16; 64–576 positions; 300-second target; 25-Mbps minimum node uplink |
 | Reorganization bound | New-route local `MAX_REORG_DEPTH = 24`; existing implementation remains at 100 |
 | Proof retention | Transaction and settlement proofs plus private fee sidecars are retained for four weeks after final confirmation, then deleted online; public fee commitments remain permanent and archive/checkpoint trust is required |
 | Proof-body maximum | `MAX_LEAF_PROOF_LEN = 524288` (512 KiB); prefer larger blowup if exceeded, then report a 544-position fallback without raising this bound |
 | Production parameter choice | Smallest eligible proof with four-core generation at most two seconds, measured on the actual AIR |
+| Parameter-freeze boundary | Checked relation, dependency, key, codec, security and resource artifacts; node/wallet integration, independent review and activation are separate gates |
 
 Nodes verify proofs on mempool admission. Blocks use compact references and
 public transaction data without duplicating proof bodies. The selected snapshot
 and byte-binding requirements still need node/wallet integration. Private fee
-collection, bounded proof decoding and the complete fee/proof/envelope byte
-ledger remain production gates. The [fee-settlement design](fee-settlement.md) is selected for
-evaluation, not an activated rule; its [evaluation gate](fee-settlement-evaluation.md)
-must pass first. A keyless public node cannot authenticate an
+collection, worker isolation and byte/CPU/in-flight quotas follow the
+[node and network plan](v1-node-network-plan.md). These remaining integrations
+do not prevent recording proof-parameter freeze after the relation, codec,
+verifier, security and resource gates pass. The
+[fee-settlement design](fee-settlement.md) is not an activated rule; its
+[evaluation gate](fee-settlement-evaluation.md), independent review and node
+acceptance must pass before activation. A keyless public node cannot authenticate an
 AEAD tag. None of these proposed properties may be described as implemented
 before their tests and gates pass.
 

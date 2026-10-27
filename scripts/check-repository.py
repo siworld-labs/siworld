@@ -20,9 +20,10 @@ DOCUMENTS = {
     "proof-composition.md", "worker-control.md", "memory-budgets.md",
     "proof-security-review.md", "prover-acceptance.md", "d8-w24-recursion.md",
     "d4-security-controls.md", "d8-parameter-screen.md", "linux-proof-measurement.md",
-    "route-a-v1.md", "fee-settlement.md", "fee-settlement-evaluation.md",
+    "v1-node-network-plan.md", "route-a-v1.md", "fee-settlement.md", "fee-settlement-evaluation.md",
 }
 PUBLIC_ARTIFACTS = {
+    "crates/bench-d8/artifacts/v1-native-freeze.json",
     *(f"crates/prover/keys/root-n{n}.bin" for n in (2, 4, 8, 16, 32, 64, 128)),
     "crates/prover/tests/data/root-proof-n16.bin",
     "crates/prover/tests/data/root-statement-n16.bin",
@@ -77,7 +78,7 @@ def main():
         if path.is_symlink() or not path.is_file():
             errors.append(f"Expected a regular file: {name}")
             continue
-        if name in PUBLIC_ARTIFACTS:
+        if name in PUBLIC_ARTIFACTS and path.suffix != ".json":
             continue
         try:
             content = path.read_text(encoding="utf-8")

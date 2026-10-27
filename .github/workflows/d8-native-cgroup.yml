@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   native-cgroup:
-    name: Three transaction and 576-slot settlement trials
+    name: Native proving and single-thread verification trials
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -91,11 +91,12 @@ jobs:
           manifest = destination / 'application/Cargo.toml'
           build.run_logged(['cargo', 'build', '--release', '--manifest-path', str(manifest),
               '--features', 'security-report', '--bin', 'v1-transaction-scan',
-              '--bin', 'fee-settlement-bench'], destination / 'native-build.log')
+              '--bin', 'fee-settlement-bench', '--bin', 'native-verifier-bench',
+              '--bin', 'v1-freeze-artifacts'], destination / 'native-build.log')
           expected = build.registry_pins(Path('crates/bench-d8/Cargo.lock').read_text())
           actual = build.registry_pins((destination / 'application/Cargo.lock').read_text())
           assert actual == expected, 'Registry pins changed during native build'
-          for name in ('v1-transaction-scan', 'fee-settlement-bench'):
+          for name in ('v1-transaction-scan', 'fee-settlement-bench', 'native-verifier-bench'):
               worker = Path(os.environ['CARGO_TARGET_DIR']) / 'release' / name
               receipt = {**configuration, 'binary_sha256': build.sha(worker),
                   'cargo_working_directory': 'repository-root',
@@ -104,11 +105,43 @@ jobs:
           PY_BUILD
           .local/native-cgroup-build/release-v1-transaction-scan/bin/v1-transaction-scan --check-cpu
           .local/native-cgroup-build/release-fee-settlement-bench/bin/fee-settlement-bench --check-cpu
-      - name: Measure six fresh process trees with 5-GiB RAM and zero swap
+          .local/native-cgroup-build/release-native-verifier-bench/bin/native-verifier-bench --check-cpu
+      - name: Check the frozen engineering profile
+        run: |
+          python3 scripts/check-v1-freeze.py
+          prepare_unit="siworld-native-freeze-$(cat /proc/sys/kernel/random/uuid)"
+          sudo --non-interactive systemd-run --scope --quiet --unit="$prepare_unit" \
+            -p MemoryMax=5G -p MemorySwapMax=0 \
+            /usr/sbin/runuser --user "$(id -un)" -- \
+            /usr/bin/env RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
+            .local/native-cgroup-target/release/v1-freeze-artifacts \
+            --root "$GITHUB_WORKSPACE" --check crates/bench-d8/artifacts/v1-native-freeze.json
+          python3 - <<'PY_FREEZE'
+          import hashlib
+          import json
+          from pathlib import Path
+          manifest = Path('crates/bench-d8/artifacts/v1-native-freeze.json')
+          (Path('.local/native-cgroup-results') / 'engineering-freeze.json').write_text(json.dumps({
+              'engineering_profile_frozen': True,
+              'freeze_manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest(),
+              'cryptographic_approval': False, 'network_activation': False}, indent=2) + '\n')
+          PY_FREEZE
+      - name: Prepare synthetic native fixtures outside verification scopes
+        run: |
+          fixture_unit="siworld-native-fixture-$(cat /proc/sys/kernel/random/uuid)"
+          sudo --non-interactive systemd-run --scope --quiet --unit="$fixture_unit" \
+            -p MemoryMax=5G -p MemorySwapMax=0 \
+            /usr/sbin/runuser --user "$(id -un)" -- \
+            /usr/bin/env RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
+            .local/native-cgroup-build/release-native-verifier-bench/bin/native-verifier-bench \
+            --prepare-fixtures .local/native-cgroup-fixtures
+      - name: Measure proving and independent verification process trees with zero swap
         run: |
           python3 scripts/measure-native-cgroup.py \
             --transaction .local/native-cgroup-build/release-v1-transaction-scan/bin/v1-transaction-scan \
             --settlement .local/native-cgroup-build/release-fee-settlement-bench/bin/fee-settlement-bench \
+            --verifier .local/native-cgroup-build/release-native-verifier-bench/bin/native-verifier-bench \
+            --fixtures .local/native-cgroup-fixtures \
             --output .local/native-cgroup-results/measurements
       - name: Retain explicit workflow outcome even on build or scope startup failure
         if: ${{ always() }}
@@ -123,8 +156,11 @@ jobs:
           output.mkdir(parents=True, exist_ok=True)
           (output / 'workflow-status.json').write_text(json.dumps({
               'job_status_before_upload': os.environ['JOB_STATUS'],
+              'preparation_memory_max_bytes': 5368709120,
+              'preparation_swap_max_bytes': 0,
               'measurement_summary_present': (output / 'measurements/summary.json').is_file(),
-              'production_parameters_frozen': False, 'acceptance': False}, indent=2) + '\n')
+              'engineering_profile_frozen': (output / 'engineering-freeze.json').is_file(),
+              'cryptographic_approval': False, 'network_activation': False, 'acceptance': False}, indent=2) + '\n')
           PY_STATUS
       - name: Upload sanitized kernel counters, CPU identity and timing
         if: ${{ always() }}
