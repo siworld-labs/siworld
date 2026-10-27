@@ -35,9 +35,10 @@ class NativeCgroupTests(unittest.TestCase):
         command = CG.scope_command(self.UNIT, Path('/synthetic/config.json'))
         self.assertIn('--scope', command)
         self.assertIn('--unit=' + self.UNIT, command)
-        for prop in ('MemoryMax=5G', 'MemorySwapMax=0', 'MemoryOOMGroup=no', 'MemoryAccounting=yes', 'CPUAccounting=yes'):
+        for prop in ('MemoryMax=5G', 'MemorySwapMax=0', 'MemoryAccounting=yes', 'CPUAccounting=yes'):
             self.assertIn(prop, command)
         self.assertNotIn('--user', command)
+        self.assertNotIn('MemoryOOMGroup=no', command)
         with self.assertRaises(ValueError):
             CG.scoped_group('0::/unrelated.scope', 'unrelated.scope')
 
@@ -48,6 +49,9 @@ class NativeCgroupTests(unittest.TestCase):
     def test_startup_errors_are_fixed_labels_without_host_paths(self):
         text = 'Failed to connect to bus: /private/owner/sensitive'
         self.assertEqual(CG.startup_diagnostic(text)['category'], 'systemd-bus-unavailable')
+        rejected = CG.startup_diagnostic('Unknown assignment: MemoryOOMGroup=no')
+        self.assertEqual(rejected, {'category': 'systemd-property-rejected', 'property': 'MemoryOOMGroup'})
+        self.assertNotIn('property', CG.startup_diagnostic('Unknown assignment: private-owner-setting'))
         text = json.dumps({'event': 'native-cgroup-diagnostic-failed',
             'classification': 'FileNotFoundError', 'stage': 'initial-counters',
             'os_error_number': 2, 'kernel_file': 'cpu.max', 'private_path': '/private/owner'})

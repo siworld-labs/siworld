@@ -62,8 +62,14 @@ def startup_diagnostic(text):
         ('a password is required', 'sudo-password-required'),
         ('Failed to find executable', 'scope-executable-missing'),
         ('Failed to execute', 'scope-executable-failed'))
-    return {'category': next((label for needle, label in patterns if needle in text),
-                             'scope-no-recorder-result')}
+    result = {'category': next((label for needle, label in patterns if needle in text),
+                               'scope-no-recorder-result')}
+    if result['category'] == 'systemd-property-rejected':
+        match = re.search(r'Unknown (?:assignment|property):\s*[\"\']?([A-Za-z][A-Za-z0-9]+)', text)
+        allowed = {'CPUAccounting', 'MemoryAccounting', 'MemoryMax', 'MemorySwapMax', 'MemoryOOMGroup'}
+        if match and match[1] in allowed:
+            result['property'] = match[1]
+    return result
 
 
 def write_json(path, value):
@@ -107,6 +113,8 @@ def snapshot(group):
     data['cpu.max'] = (group / 'cpu.max').read_text().strip()
     if data['memory.max'] != MEMORY_MAX or data['memory.swap.max'] != 0:
         raise ValueError('Systemd memory limit readback mismatch')
+    # systemd 255 does not accept a transient MemoryOOMGroup assignment.
+    # Require the kernel's default per-process OOM policy before any proof starts.
     if data['memory.oom.group'] != 0:
         raise ValueError('Recorder must survive a proof-only OOM')
     return data
@@ -168,7 +176,7 @@ def scope_command(unit, config):
     return ['sudo', '--non-interactive', 'systemd-run', '--scope', '--quiet', '--unit=' + unit,
             '-p', 'MemoryAccounting=yes', '-p', 'CPUAccounting=yes',
             '-p', 'MemoryMax=5G', '-p', 'MemorySwapMax=0',
-            '-p', 'MemoryOOMGroup=no', '/usr/bin/python3', str(Path(__file__).resolve()),
+            '/usr/bin/python3', str(Path(__file__).resolve()),
             '--worker-config', str(config)]
 
 
