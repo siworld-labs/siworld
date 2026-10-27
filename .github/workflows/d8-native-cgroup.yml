@@ -64,6 +64,10 @@ jobs:
           /tmp/native-cgroup-cpu-check --check-cpu
           test -e /sys/fs/cgroup/cgroup.controllers
           sudo --non-interactive systemctl --version
+      - name: Check a harmless scope before compiling proof executables
+        run: |
+          python3 scripts/measure-native-cgroup.py --smoke-scope --timeout 30 \
+            --output .local/native-cgroup-results/scope-smoke
       - name: Prepare pinned native D8 dependencies
         run: python3 scripts/build-d8-checkpoint.py --prepare-only --output .local/native-cgroup-build
       - name: Build and inspect guarded x86-64-v3 proof executables

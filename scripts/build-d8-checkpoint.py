@@ -2,8 +2,8 @@
 """Prepare, test and package a pinned D8 checkpoint in an isolated directory.
 
 This adapter never modifies a Cargo cache, retained deployment or published
-history. The dependency patch is applied only to a fresh detached checkout.
-Correctness smoke tests are distinct from the final-parameter checkpoint.
+history. Cargo uses an exact fork revision; the separately hashed patch is an
+audit archive. Correctness smoke tests are distinct from the final-parameter checkpoint.
 """
 import argparse
 import hashlib
@@ -18,10 +18,19 @@ import tarfile
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '3a69ba61f713c8400b14eb3d8f0e52caa13512c7'
-URL = 'https://github.com/Plonky3/Plonky3-recursion'
+PIN = 'd3d15b2b5d1325fb38ebc8979c1cae04b761e71f'
+URL = 'https://github.com/siworld-labs/Plonky3-recursion'
+BASE_PIN = '3a69ba61f713c8400b14eb3d8f0e52caa13512c7'
+UPSTREAM_URL = 'https://github.com/Plonky3/Plonky3-recursion'
 PATCH = ROOT / 'crates/bench-stark/patches/recursion-d8-w24.patch'
 APPLICATION = ROOT / 'crates/bench-d8'
+LINEAGE = APPLICATION / 'dependency-lineage.toml'
+DEPENDENCY_VERSION = 'd8-w24-review-v1'
+REVIEW_REVISION = 'cb50fe9bb2dcd76fc7de1b71d0cd3f099eb235db'
+REVIEW_TREE = 'e57b72819dbb2a27b5b20cb5b035f3f664e06c3a'
+DOWNSTREAM_REVISION = 'd3d15b2b5d1325fb38ebc8979c1cae04b761e71f'
+DOWNSTREAM_TREE = '11f7507a135f825a2ba6c790b9ad6d50a4e40b81'
+PATCH_SHA256 = '78cc3dc553120147bd3b87371533a3769beed2e62ec034bff5a6378528007c3d'
 FEATURES = 'experimental-fanin,phase-profile,security-report'
 DEPENDENCIES = {'p3-circuit': 'circuit', 'p3-circuit-prover': 'circuit-prover', 'p3-recursion': 'recursion'}
 APP_TESTS = ('constraints', 'acc_mode_binds_statement', 'hashed_limbs', 'outputs_are',
@@ -43,6 +52,42 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def validate_lineage(manifest_path=None, patch_path=None):
+    """Reject modified patches or lineage before fetching or compiling code."""
+    manifest_path = manifest_path or LINEAGE
+    patch_path = patch_path or PATCH
+    manifest = tomllib.loads(manifest_path.read_text())
+    expected = {'schema': 1, 'version': DEPENDENCY_VERSION,
+        'source_mode': 'fixed-fork-revision', 'source_url': URL, 'source_revision': PIN,
+        'upstream_url': UPSTREAM_URL, 'base_revision': BASE_PIN, 'upstream_review_revision': REVIEW_REVISION,
+        'upstream_review_tree': REVIEW_TREE, 'downstream_revision': DOWNSTREAM_REVISION,
+        'downstream_tree': DOWNSTREAM_TREE,
+        'patch_file': 'crates/bench-stark/patches/recursion-d8-w24.patch',
+        'patch_sha256': PATCH_SHA256, 'suite': 'KoalaBear-D8-Poseidon2-W24-digest12'}
+    if manifest != expected or type(manifest.get('schema')) is not int:
+        raise ValueError('D8 dependency lineage does not match the fixed source revisions')
+    if sha(patch_path) != PATCH_SHA256:
+        raise ValueError('D8 dependency patch SHA-256 does not match its fixed lineage')
+    return manifest
+
+
+def validate_prepared_source(upstream, lineage):
+    """Verify the exact fork checkout without rewriting dependency sources."""
+    head = subprocess.check_output(['git', '-C', str(upstream), 'rev-parse', 'HEAD'],
+                                   text=True, cwd=ROOT).strip()
+    tree = subprocess.check_output(['git', '-C', str(upstream), 'rev-parse', 'HEAD^{tree}'],
+                                   text=True, cwd=ROOT).strip()
+    if head != lineage['source_revision']:
+        raise ValueError('Prepared D8 dependency source revision mismatch')
+    if tree != lineage['downstream_tree']:
+        raise ValueError('Prepared D8 dependency tree differs from the fixed downstream revision')
+    return {'version': lineage['version'], 'source_mode': lineage['source_mode'],
+        'source_url': lineage['source_url'], 'source_revision': head,
+        'base_revision': lineage['base_revision'], 'downstream_revision': lineage['downstream_revision'],
+        'downstream_tree': tree, 'upstream_review_revision': lineage['upstream_review_revision'],
+        'patch_sha256': lineage['patch_sha256']}
+
+
 def registry_pins(lock):
     values = set()
     for block in lock.split('[[package]]')[1:]:
@@ -52,22 +97,13 @@ def registry_pins(lock):
     return values
 
 
-def rewrite_dependencies(text, upstream):
-    for name, directory in DEPENDENCIES.items():
-        expression = r'^' + re.escape(name) + r' = \{[^\n]+\}$'
-        matches = re.findall(expression, text, flags=re.M)
-        if len(matches) != 1:
-            raise ValueError('Expected one exact pinned dependency declaration: ' + name)
-        declaration = tomllib.loads(matches[0])[name]
+def validate_application_dependencies(text):
+    """Require exact Git source identities; no local-path adapter is applied."""
+    dependencies = tomllib.loads(text)['workspace']['dependencies']
+    for name in DEPENDENCIES:
+        declaration = dependencies[name]
         if declaration.get('git') != URL or declaration.get('rev') != PIN or 'path' in declaration:
             raise ValueError('Dependency does not use the exact pinned recursion source: ' + name)
-        extras = {key: value for key, value in declaration.items() if key not in ('git', 'rev')}
-        if any(type(value) not in (str, int, bool, list) for value in extras.values()):
-            raise ValueError('Unsupported dependency options: ' + name)
-        fields = ['path = ' + json.dumps(str(upstream / directory))]
-        fields.extend(key + ' = ' + json.dumps(value) for key, value in extras.items())
-        text = re.sub(expression, name + ' = { ' + ', '.join(fields) + ' }', text, flags=re.M)
-    return text
 
 
 TEST_PHASES = frozenset(('leaf_setup', 'leaf_proof', 'leaf_verification', 'merge_setup', 'merge_proof', 'merge_verification', 'public_digest_rejection', 'last_child_rejection', 'transcript.native_equivalence.begin', 'transcript.native_equivalence.complete', 'transcript.interleaving.begin', 'transcript.interleaving.complete', 'binary_compression.begin', 'binary_compression.complete', 'suite_geometry.begin', 'suite_geometry.complete', 'prepared_batch_work.begin', 'prepared_batch_work.native_prove', 'prepared_batch_work.native_verify', 'prepared_batch_work.prepare', 'prepared_batch_work.recursive_prove', 'prepared_batch_work.recursive_verify', 'prepared_batch_work.invalid_nonce', 'prepared_batch_work.invalid_opening_coefficients', 'prepared_batch_work.generic_batch_capture', 'prepared_batch_work.generic_batch_replay', 'prepared_batch_work.complete', 'scalar_witness_bus.begin', 'scalar_witness_bus.prepare', 'scalar_witness_bus.valid_runner', 'scalar_witness_bus.valid_prove', 'scalar_witness_bus.valid_verify', 'scalar_witness_bus.invalid_coefficients', 'scalar_witness_bus.complete', 'statement_preprocessor.begin', 'statement_preprocessor.complete', 'scalar_witness_bus.portable_roundtrip'))
@@ -186,6 +222,8 @@ def build(args):
     configuration = controlled.controlled_configuration(os.environ)
     if not PATCH.is_file() or not (APPLICATION / 'Cargo.toml').is_file() or not (APPLICATION / 'Cargo.lock').is_file():
         raise ValueError('Published D8 application, exact dependency patch and lockfile are required')
+    lineage = validate_lineage()
+    validate_application_dependencies((APPLICATION / 'Cargo.toml').read_text())
     if args.output.exists():
         raise ValueError('Refusing to overwrite an existing D8 build or its evidence')
     destination = args.output.resolve()
@@ -195,24 +233,14 @@ def build(args):
     subprocess.run(['git', '-C', str(upstream), 'fetch', '--depth=1',
                     str(args.source.resolve()) if args.source else URL, PIN], check=True, cwd=ROOT)
     subprocess.run(['git', '-C', str(upstream), 'checkout', '--quiet', '--detach', 'FETCH_HEAD'], check=True, cwd=ROOT)
-    for operation in ('--check', None):
-        command = ['git', '-C', str(upstream), 'apply', '--whitespace=error-all']
-        if operation:
-            command.append(operation)
-        subprocess.run([*command, str(PATCH)], check=True, cwd=ROOT)
-    # Explicit package workspace roots are part of the reproducible local-path
-    # adapter and do not alter the pinned published patch or Cargo cache.
-    for manifest in upstream.glob('*/Cargo.toml'):
-        text = manifest.read_text()
-        if '[package]' in text and not re.search(r'^workspace\s*=\s*"\.\."', text, flags=re.M):
-            manifest.write_text(text.replace('[package]', '[package]\nworkspace = ".."', 1))
+    dependency_source = validate_prepared_source(upstream, lineage)
+    (destination / 'dependency-receipt.json').write_text(json.dumps(dependency_source, indent=2) + '\n')
     workspace = destination / 'application'
     shutil.copytree(APPLICATION, workspace, ignore=shutil.ignore_patterns('target', '.local', '.git'))
     manifest = workspace / 'Cargo.toml'
-    manifest.write_text(rewrite_dependencies(manifest.read_text(), upstream))
     original_lock = registry_pins((APPLICATION / 'Cargo.lock').read_text())
     if args.prepare_only:
-        return {'prepared': True, 'acceptance': False}
+        return {'prepared': True, 'dependency_source': dependency_source, 'acceptance': False}
     # Cargo configuration fixes test/proof code to v3. Check CPU/OS support
     # with an independently compiled generic bootstrap before executing it.
     guard = destination / 'cpu-check'
@@ -233,10 +261,10 @@ def build(args):
         '-p', 'p3-recursion', '--test', 'prepared_recursion',
         'positive_opening_batch_grinding_full_and_prepared_recursion'],
         destination / 'opening-batch-grinding-test.log', nonempty_tests=True)
-    base = ['cargo', 'test', '--release', '--manifest-path', str(manifest), '--features', FEATURES, '--lib']
+    base = ['cargo', 'test', '--release', '--locked', '--manifest-path', str(manifest), '--features', FEATURES, '--lib']
     for index, test in enumerate(APP_TESTS):
         run_logged([*base, test], destination / ('app-test-' + str(index + 1) + '.log'), nonempty_tests=True)
-    run_logged(['cargo', 'build', '--release', '--manifest-path', str(manifest),
+    run_logged(['cargo', 'build', '--release', '--locked', '--manifest-path', str(manifest),
         '--features', FEATURES, '--bin', 'd8-checkpoint'], destination / 'build.log')
     if registry_pins((workspace / 'Cargo.lock').read_text()) != original_lock:
         raise ValueError('Registry dependency versions/checksums changed during the D8 build')
@@ -244,7 +272,8 @@ def build(args):
     if not target.is_absolute():
         target = ROOT / target
     binary = target / 'release/d8-checkpoint'
-    receipt = {**configuration, 'upstream_commit': PIN, 'dependency_patch_sha256': sha(PATCH),
+    receipt = {**configuration, 'recursion_commit': PIN, 'dependency_patch_sha256': sha(PATCH),
+        'dependency_source': dependency_source,
         'repository_config_sha256': sha(ROOT / '.cargo/config.toml'),
         'cargo_working_directory': 'repository-root', 'binary_sha256': sha(binary),
         'rustc_version': subprocess.check_output(['rustc', '-vV'], text=True, cwd=ROOT)}

@@ -6,7 +6,7 @@
       "id": "proof-composition",
       "area": "proofs",
       "status": "planned",
-      "scope": "Plonky3 leaf AIR, recursive aggregation, pinned verifier artifacts, packing, domain separation and additive set-hash binding.",
+      "scope": "Native D8 transaction and confidential-fee settlement AIRs, pinned Plonky3-recursion D8/W24 modifications, random-codeword PCS, scalar witness buses, challenger and MMCS geometry, suite/artifact identity, enforced query/batch grinding, full/prepared verifier transcript equivalence, opt-in two-worker hiding and its RNG use, application ciphertext/fee binding, recursive aggregation and pinned verifier artifacts.",
       "excluded": [
         "unmodified upstream Plonky3",
         "unmodified upstream Plonky3-recursion"
@@ -14,7 +14,11 @@
       "implementation_paths": [
         "crates/circuits",
         "crates/prover",
-        "crates/bench-stark/plonky3"
+        "crates/bench-stark/plonky3",
+        "crates/bench-d8",
+        "crates/bench-stark/patches/recursion-d8-w24.patch",
+        "docs/bht-security-accounting.md",
+        "docs/d8-dependency-patch.md"
       ],
       "report": null,
       "accepted_commit": null,
@@ -85,7 +89,9 @@
       ],
       "implementation_paths": [
         "tools/control-panel/memory_trend.py",
-        "docs/memory-budgets.md"
+        "docs/memory-budgets.md",
+        "scripts/measure-native-cgroup.py",
+        ".github/workflows/d8-native-cgroup.yml"
       ],
       "report": null,
       "accepted_commit": null,

@@ -1,24 +1,153 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 7a22b38..6aba8c7 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -93,7 +93,7 @@ jobs:
+             feature_args: --features p3-recursion/parallel,p3-poseidon1-circuit-air/parallel
+           - shard: protocol
+             partition_count: 1
+-            targets: --test binary_components --test fri_recursion --test prepared_recursion --test protocol_contracts
++            targets: --test binary_components --test fri_recursion --test prepared_recursion --test protocol_contracts --test d8_scalar_w24
+             profile: ''
+             feature_args: --features p3-recursion/parallel,p3-poseidon1-circuit-air/parallel
+     runs-on: ${{ matrix.os }}
 diff --git a/circuit-prover/src/batch_stark_prover.rs b/circuit-prover/src/batch_stark_prover.rs
+index 7e614ab..0a99a84 100644
 --- a/circuit-prover/src/batch_stark_prover.rs
 +++ b/circuit-prover/src/batch_stark_prover.rs
-@@ -144,7 +144,15 @@
-         // the pinned Plonky3 revision draws hiding randomness outside its parallel
-         // work (Plonky3#2368).
+@@ -127,28 +127,101 @@ impl<T: ?Sized> ProvingMaybeSync for T {}
+ fn ensure_safe_hiding_parallelism(is_zk: bool) -> Result<(), BatchStarkProverError> {
+     if is_zk && p3_maybe_rayon::PARALLEL_ENABLED && !cfg!(feature = "parallel") {
+         return Err(BatchStarkProverError::Prove(
+-            "hiding proofs with the Rayon backend require p3-circuit-prover/parallel; enable that feature to isolate native batch proving in a one-worker pool".into(),
++            "hiding proofs with the Rayon backend require p3-circuit-prover/parallel; enable that feature to isolate native batch proving in a bounded worker pool".into(),
+         ));
+     }
+     Ok(())
+ }
+ 
++/// Bounded worker policy for the isolated native hiding-proof pool.
++///
++/// A two-worker policy is opt-in and changes execution only. Consumers must
++/// review the hiding prover's RNG use before enabling parallel execution.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub enum HidingProofWorkers {
++    /// Preserve the default serial isolation policy.
++    #[default]
++    One,
++    /// Use two workers in the isolated native hiding-proof pool.
++    Two,
++}
++
++impl HidingProofWorkers {
++    /// Number of Rayon workers selected by this policy.
++    pub const fn workers(self) -> usize {
++        match self {
++            Self::One => 1,
++            Self::Two => 2,
++        }
++    }
++}
++
++impl TryFrom<usize> for HidingProofWorkers {
++    type Error = BatchStarkProverError;
++
++    fn try_from(workers: usize) -> Result<Self, Self::Error> {
++        match workers {
++            1 => Ok(Self::One),
++            2 => Ok(Self::Two),
++            _ => Err(BatchStarkProverError::Prove(
++                "hiding proof workers must be one or two".into(),
++            )),
++        }
++    }
++}
++
++fn selected_hiding_workers(
++    explicit: Option<HidingProofWorkers>,
++) -> Result<HidingProofWorkers, BatchStarkProverError> {
++    if let Some(workers) = explicit {
++        return Ok(workers);
++    }
++    #[cfg(not(feature = "parallel"))]
++    {
++        Ok(HidingProofWorkers::default())
++    }
++    #[cfg(feature = "parallel")]
++    {
++        extern crate std;
++        match std::env::var("SIWORLD_COMPOSITION_HIDING_WORKERS") {
++            Ok(value) => parse_hiding_worker_override(Some(&value)),
++            Err(std::env::VarError::NotPresent) => parse_hiding_worker_override(None),
++            Err(std::env::VarError::NotUnicode(_)) => Err(BatchStarkProverError::Prove(
++                "hiding proof worker override must be one or two".into(),
++            )),
++        }
++    }
++}
++
++#[cfg(any(feature = "parallel", test))]
++fn parse_hiding_worker_override(
++    value: Option<&str>,
++) -> Result<HidingProofWorkers, BatchStarkProverError> {
++    match value {
++        None | Some("1") => Ok(HidingProofWorkers::One),
++        Some("2") => Ok(HidingProofWorkers::Two),
++        _ => Err(BatchStarkProverError::Prove(
++            "hiding proof worker override must be one or two".into(),
++        )),
++    }
++}
++
+ #[cfg(feature = "parallel")]
+ fn run_native_proof_in_pool<R: Send>(
+     is_zk: bool,
++    hiding_workers: Option<HidingProofWorkers>,
+     prove: impl FnOnce() -> R + Send,
+ ) -> Result<R, BatchStarkProverError> {
+     if is_zk {
+-        // Hiding batch proofs run on one Rayon worker and give up native batch parallelism.
+-        // TODO: drop this pool once hiding batch proving is re-validated under Rayon;
+-        // the pinned Plonky3 revision draws hiding randomness outside its parallel
+-        // work (Plonky3#2368).
++        // Keep hiding work isolated from the caller's Rayon pool. Serial
++        // execution remains the default; parallel hiding is an explicit policy
++        // requiring review of native randomness use (Plonky3#2368).
          let pool = rayon::ThreadPoolBuilder::new()
 -            .num_threads(1)
-+            .num_threads({
-+                extern crate std;
-+                match std::env::var("SIWORLD_COMPOSITION_HIDING_WORKERS") {
-+                Ok(value) if value == "2" => 2,
-+                Ok(value) if value == "1" => 1,
-+                Err(std::env::VarError::NotPresent) => 1,
-+                _ => return Err(BatchStarkProverError::Prove("experimental hiding workers must be 1 or 2".into())),
-+                }
-+            })
++            .num_threads(selected_hiding_workers(hiding_workers)?.workers())
              .build()
              .map_err(|error| {
                  BatchStarkProverError::Prove(format!(
-@@ -177,6 +185,7 @@
+-                    "failed to create the one-worker pool for hiding batch proving: {error}"
++                    "failed to create the isolated pool for hiding batch proving: {error}"
+                 ))
+             })?;
+         let dispatch = tracing::dispatcher::get_default(Clone::clone);
+@@ -162,21 +235,28 @@ fn run_native_proof_in_pool<R: Send>(
+ 
+ #[cfg(not(feature = "parallel"))]
+ fn run_native_proof_in_pool<R>(
+-    _is_zk: bool,
++    is_zk: bool,
++    hiding_workers: Option<HidingProofWorkers>,
+     prove: impl FnOnce() -> R,
+ ) -> Result<R, BatchStarkProverError> {
++    if is_zk && selected_hiding_workers(hiding_workers)? != HidingProofWorkers::One {
++        return Err(BatchStarkProverError::Prove(
++            "two hiding proof workers require p3-circuit-prover/parallel".into(),
++        ));
++    }
+     Ok(prove())
+ }
+ 
+ /// Returns the witness-bus dimension for a D=1 Poseidon config given the circuit's extension
+ /// degree, or `None` if the scale is not supported.
+ ///
+-/// Currently supported: 1 (base-field circuit) and 5 (KoalaBear quintic).
++/// Currently supported: 1 (base-field circuit), 5 (KoalaBear quintic), and 8 (D8 scalar lift).
+ #[inline]
+ const fn poseidon_d1_witness_bus_dim(witness_ctl_scale: u32) -> Option<u32> {
      match witness_ctl_scale {
          1 => Some(1),
          5 => Some(5),
@@ -26,7 +155,16 @@ diff --git a/circuit-prover/src/batch_stark_prover.rs b/circuit-prover/src/batch
          _ => None,
      }
  }
-@@ -1152,6 +1161,8 @@
+@@ -739,6 +819,8 @@ where
+     SC: StarkGenericConfig + 'static,
+ {
+     config: SC,
++    /// Explicit execution policy; absence preserves serial isolation.
++    hiding_workers: Option<HidingProofWorkers>,
+     table_packing: TablePacking,
+     /// Variant used for the primitive ALU AIR.
+     alu_variant: AirVariant,
+@@ -1152,6 +1234,8 @@ fn supported_poseidon2(config: Poseidon2Config) -> bool {
          Poseidon2Config::BABY_BEAR_D4_W24,
          Poseidon2Config::BABY_BEAR_D4_W32,
          Poseidon2Config::KOALA_BEAR_D1_W16,
@@ -35,10 +173,14 @@ diff --git a/circuit-prover/src/batch_stark_prover.rs b/circuit-prover/src/batch
          Poseidon2Config::KOALA_BEAR_D4_W16,
          Poseidon2Config::KOALA_BEAR_D4_W24,
          Poseidon2Config::KOALA_BEAR_D1_W32,
-@@ -1646,6 +1657,21 @@
- where
-     SC: StarkGenericConfig + 'static + Send + Sync,
-     Val<SC>: StarkField + BinomiallyExtendable<4>,
+@@ -1657,6 +1741,21 @@ where
+     }
+ }
+ 
++impl<SC> RegisterPoseidon2ForExt<8, SC> for ()
++where
++    SC: StarkGenericConfig + 'static + Send + Sync,
++    Val<SC>: StarkField + BinomiallyExtendable<4> + BinomiallyExtendable<8>,
 +    SymbolicExpressionExt<Val<SC>, SC::Challenge>:
 +        Algebra<SymbolicExpression<Val<SC>>> + Algebra<SC::Challenge>,
 +{
@@ -50,17 +192,54 @@ diff --git a/circuit-prover/src/batch_stark_prover.rs b/circuit-prover/src/batch
 +    }
 +}
 +
-+impl<SC> RegisterPoseidon2ForExt<8, SC> for ()
-+where
-+    SC: StarkGenericConfig + 'static + Send + Sync,
-+    Val<SC>: StarkField + BinomiallyExtendable<4> + BinomiallyExtendable<8>,
-     SymbolicExpressionExt<Val<SC>, SC::Challenge>:
-         Algebra<SymbolicExpression<Val<SC>>> + Algebra<SC::Challenge>,
- {
+ impl<SC> RegisterPoseidon2ForExt<5, SC> for ()
+ where
+     SC: StarkGenericConfig + 'static + Send + Sync,
+@@ -1776,6 +1875,7 @@ where
+     pub fn new(config: SC) -> Self {
+         Self {
+             config,
++            hiding_workers: None,
+             table_packing: TablePacking::default(),
+             alu_variant: AirVariant::Optimized,
+             non_primitive_provers: Vec::new(),
+@@ -1783,6 +1883,17 @@ where
+         }
+     }
+ 
++    /// Select the isolated native hiding-proof worker policy.
++    ///
++    /// Serial isolation remains the default. Two workers require the `parallel`
++    /// feature and a separate review of the native hiding prover's RNG use.
++    /// The policy does not change verification or non-hiding caller pools.
++    #[must_use]
++    pub const fn with_hiding_workers(mut self, workers: HidingProofWorkers) -> Self {
++        self.hiding_workers = Some(workers);
++        self
++    }
++
+     /// Override the default [`TablePacking`] configuration (builder-style).
+     #[must_use]
+     pub fn with_table_packing(mut self, table_packing: TablePacking) -> Self {
+@@ -2491,9 +2602,10 @@ where
+                 check_lookups(&debug_instances);
+             }
+ 
+-            let native_proof = run_native_proof_in_pool(self.config.is_zk() != 0, || {
+-                p3_batch_stark::prove_batch(&self.config, &instances, effective_prover_data)
+-            })?;
++            let native_proof =
++                run_native_proof_in_pool(self.config.is_zk() != 0, self.hiding_workers, || {
++                    p3_batch_stark::prove_batch(&self.config, &instances, effective_prover_data)
++                })?;
+             native_proof.map_err(|e| BatchStarkProverError::Prove(format!("{e:?}")))?
+         };
+ 
 diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover/src/batch_stark_prover/poseidon2.rs
+index 4626464..184c0ef 100644
 --- a/circuit-prover/src/batch_stark_prover/poseidon2.rs
 +++ b/circuit-prover/src/batch_stark_prover/poseidon2.rs
-@@ -55,7 +55,9 @@
+@@ -55,7 +55,9 @@ pub enum Poseidon2AirWrapperInner {
      BabyBearD4Width24(Box<Poseidon2CircuitAirBabyBearD4Width24>),
      BabyBearD4Width32(Box<Poseidon2CircuitAirBabyBearD4Width32>),
      KoalaBearD1Width16Bus1(Box<Poseidon2CircuitAirKoalaBearD1Width16>),
@@ -70,11 +249,10 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
      KoalaBearD4Width16(Box<Poseidon2CircuitAirKoalaBearD4Width16>),
      KoalaBearD4Width24(Box<Poseidon2CircuitAirKoalaBearD4Width24>),
      KoalaBearD1Width32Bus1(Box<Poseidon2CircuitAirKoalaBearD1Width32>),
-@@ -68,6 +70,26 @@
- #[cfg(test)]
+@@ -69,6 +71,26 @@ pub enum Poseidon2AirWrapperInner {
  mod width_tests {
      use super::*;
-+
+ 
 +    #[test]
 +    fn d8_scalar_w24_requires_full_width_witness_bus() {
 +        let config = Poseidon2Config::KOALA_BEAR_D1_W24;
@@ -94,10 +272,11 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +            poseidon2_config_for_air_builder::<8>(Poseidon2Config::KOALA_BEAR_D4_W24).is_none()
 +        );
 +    }
-
++
      #[test]
      fn poseidon_width_lookup_matches_every_constructed_air() {
-@@ -350,8 +372,14 @@
+         let configs = [
+@@ -350,9 +372,15 @@ impl Poseidon2AirWrapperInner {
              Self::KoalaBearD1Width16Bus1(air) => {
                  generate!(air, KoalaBear, KoalaBearD1Width16::round_constants())
              }
@@ -106,13 +285,14 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +            }
              Self::KoalaBearD1Width16Bus5(air) => {
                  generate!(air, KoalaBear, KoalaBearD1Width16::round_constants())
-+            }
+             }
 +            Self::KoalaBearD1Width24Bus8(air) => {
 +                generate!(air, KoalaBear, KoalaBearD1Width24::round_constants())
-             }
++            }
              Self::KoalaBearD4Width16(air) => {
                  generate!(air, KoalaBear, KoalaBearD4Width16::round_constants())
-@@ -400,8 +428,14 @@
+             }
+@@ -400,9 +428,15 @@ impl Poseidon2AirWrapperInner {
              Self::KoalaBearD1Width16Bus1(air) => {
                  Self::KoalaBearD1Width16Bus1(Box::new((*air).with_challenger_role(challenger)))
              }
@@ -121,13 +301,14 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +            }
              Self::KoalaBearD1Width16Bus5(air) => {
                  Self::KoalaBearD1Width16Bus5(Box::new((*air).with_challenger_role(challenger)))
-+            }
+             }
 +            Self::KoalaBearD1Width24Bus8(air) => {
 +                Self::KoalaBearD1Width24Bus8(Box::new((*air).with_challenger_role(challenger)))
-             }
++            }
              Self::KoalaBearD4Width16(air) => {
                  Self::KoalaBearD4Width16(Box::new((*air).with_challenger_role(challenger)))
-@@ -447,8 +481,14 @@
+             }
+@@ -447,9 +481,15 @@ impl Poseidon2AirWrapperInner {
              Self::KoalaBearD1Width16Bus1(air) => {
                  Self::KoalaBearD1Width16Bus1(Box::new(air.with_shared_role(shared)))
              }
@@ -136,13 +317,14 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +            }
              Self::KoalaBearD1Width16Bus5(air) => {
                  Self::KoalaBearD1Width16Bus5(Box::new(air.with_shared_role(shared)))
-+            }
+             }
 +            Self::KoalaBearD1Width24Bus8(air) => {
 +                Self::KoalaBearD1Width24Bus8(Box::new(air.with_shared_role(shared)))
-             }
++            }
              Self::KoalaBearD4Width16(air) => {
                  Self::KoalaBearD4Width16(Box::new(air.with_shared_role(shared)))
-@@ -482,7 +522,9 @@
+             }
+@@ -482,7 +522,9 @@ impl Poseidon2AirWrapperInner {
              Self::BabyBearD4Width24(air) => air.width(),
              Self::BabyBearD4Width32(air) => air.width(),
              Self::KoalaBearD1Width16Bus1(air) => air.width(),
@@ -152,7 +334,7 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Self::KoalaBearD4Width16(air) => air.width(),
              Self::KoalaBearD4Width24(air) => air.width(),
              Self::KoalaBearD1Width32Bus1(air) => air.width(),
-@@ -507,7 +549,13 @@
+@@ -507,9 +549,15 @@ impl Poseidon2AirWrapperInner {
              Self::KoalaBearD1Width16Bus1(air) => {
                  BaseAir::<KoalaBear>::preprocessed_width(air.as_ref())
              }
@@ -160,13 +342,15 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +                BaseAir::<KoalaBear>::preprocessed_width(air.as_ref())
 +            }
              Self::KoalaBearD1Width16Bus5(air) => {
-+                BaseAir::<KoalaBear>::preprocessed_width(air.as_ref())
-+            }
-+            Self::KoalaBearD1Width24Bus8(air) => {
                  BaseAir::<KoalaBear>::preprocessed_width(air.as_ref())
              }
++            Self::KoalaBearD1Width24Bus8(air) => {
++                BaseAir::<KoalaBear>::preprocessed_width(air.as_ref())
++            }
              Self::KoalaBearD4Width16(air) => BaseAir::<KoalaBear>::preprocessed_width(air.as_ref()),
-@@ -538,7 +586,9 @@
+             Self::KoalaBearD4Width24(air) => BaseAir::<KoalaBear>::preprocessed_width(air.as_ref()),
+             Self::KoalaBearD1Width32Bus1(air) => {
+@@ -538,7 +586,9 @@ impl Clone for Poseidon2AirWrapperInner {
              Self::BabyBearD4Width24(air) => Self::BabyBearD4Width24(air.clone()),
              Self::BabyBearD4Width32(air) => Self::BabyBearD4Width32(air.clone()),
              Self::KoalaBearD1Width16Bus1(air) => Self::KoalaBearD1Width16Bus1(air.clone()),
@@ -176,7 +360,7 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Self::KoalaBearD4Width16(air) => Self::KoalaBearD4Width16(air.clone()),
              Self::KoalaBearD4Width24(air) => Self::KoalaBearD4Width24(air.clone()),
              Self::KoalaBearD1Width32Bus1(air) => Self::KoalaBearD1Width32Bus1(air.clone()),
-@@ -656,6 +706,15 @@
+@@ -656,6 +706,15 @@ macro_rules! eval_folder_inner {
                      GenericPoseidon2LinearLayersKoalaBear, $kb_ty, 1;
                      air.as_ref(), b, l, n, p);
              },
@@ -192,12 +376,10 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Poseidon2AirWrapperInner::KoalaBearD1Width16Bus5(air) => unsafe {
                  let b: &mut $kb_ty = transmute::<_, &mut $kb_ty>($builder);
                  let l: &[<$kb_ty as AirBuilder>::Var] = transmute($local);
-@@ -663,6 +722,15 @@
-                 let p: &[<$kb_ty as AirBuilder>::Var] = transmute($prep);
-                 call_eval_variant!(KoalaBearD1Width16, KoalaBearConfig, KoalaBear,
+@@ -665,6 +724,15 @@ macro_rules! eval_folder_inner {
                      GenericPoseidon2LinearLayersKoalaBear, $kb_ty, 5;
-+                    air.as_ref(), b, l, n, p);
-+            },
+                     air.as_ref(), b, l, n, p);
+             },
 +            Poseidon2AirWrapperInner::KoalaBearD1Width24Bus8(air) => unsafe {
 +                let b: &mut $kb_ty = transmute::<_, &mut $kb_ty>($builder);
 +                let l: &[<$kb_ty as AirBuilder>::Var] = transmute($local);
@@ -205,10 +387,12 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +                let p: &[<$kb_ty as AirBuilder>::Var] = transmute($prep);
 +                call_eval_variant!(KoalaBearD1Width24, KoalaBearConfig, KoalaBear,
 +                    GenericPoseidon2LinearLayersKoalaBear, $kb_ty, 8;
-                     air.as_ref(), b, l, n, p);
-             },
++                    air.as_ref(), b, l, n, p);
++            },
              Poseidon2AirWrapperInner::KoalaBearD4Width16(air) => unsafe {
-@@ -788,6 +856,14 @@
+                 let b: &mut $kb_ty = transmute::<_, &mut $kb_ty>($builder);
+                 let l: &[<$kb_ty as AirBuilder>::Var] = transmute($local);
+@@ -788,6 +856,14 @@ macro_rules! eval_symbolic_inner {
                      Air::eval(air.as_ref(), b);
                  }
              }
@@ -223,7 +407,7 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Poseidon2AirWrapperInner::KoalaBearD1Width16Bus5(air) => {
                  assert_eq!(<$F>::from_u64(KOALA_BEAR_MODULUS), <$F>::ZERO);
                  unsafe {
-@@ -796,6 +872,14 @@
+@@ -796,6 +872,14 @@ macro_rules! eval_symbolic_inner {
                      Air::eval(air.as_ref(), b);
                  }
              }
@@ -238,7 +422,7 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Poseidon2AirWrapperInner::KoalaBearD4Width16(air) => {
                  assert_eq!(<$F>::from_u64(KOALA_BEAR_MODULUS), <$F>::ZERO);
                  unsafe {
-@@ -890,9 +974,19 @@
+@@ -890,11 +974,21 @@ macro_rules! eval_verifier_inner {
                      GenericPoseidon2LinearLayersKoalaBear, $ab, 1;
                      air.as_ref(), $builder, $local, $next, $prep);
              },
@@ -250,15 +434,17 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Poseidon2AirWrapperInner::KoalaBearD1Width16Bus5(air) => unsafe {
                  call_eval_variant!(KoalaBearD1Width16, KoalaBearConfig, KoalaBear,
                      GenericPoseidon2LinearLayersKoalaBear, $ab, 5;
-+                    air.as_ref(), $builder, $local, $next, $prep);
-+            },
+                     air.as_ref(), $builder, $local, $next, $prep);
+             },
 +            Poseidon2AirWrapperInner::KoalaBearD1Width24Bus8(air) => unsafe {
 +                call_eval_variant!(KoalaBearD1Width24, KoalaBearConfig, KoalaBear,
 +                    GenericPoseidon2LinearLayersKoalaBear, $ab, 8;
-                     air.as_ref(), $builder, $local, $next, $prep);
-             },
++                    air.as_ref(), $builder, $local, $next, $prep);
++            },
              Poseidon2AirWrapperInner::KoalaBearD4Width16(air) => unsafe {
-@@ -972,7 +1066,17 @@
+                 call_eval_variant!(KoalaBearD4Width16, KoalaBearConfig, KoalaBear,
+                     GenericPoseidon2LinearLayersKoalaBear, $ab,
+@@ -972,11 +1066,21 @@ macro_rules! preprocessed_trace_inner {
                  let p = BaseAir::<KoalaBear>::preprocessed_trace(air.as_ref())?;
                  Some(unsafe { transmute::<RowMajorMatrix<KoalaBear>, RowMajorMatrix<Val<$SC>>>(p) })
              }
@@ -268,15 +454,19 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +                Some(unsafe { transmute::<RowMajorMatrix<KoalaBear>, RowMajorMatrix<Val<$SC>>>(p) })
 +            }
              Poseidon2AirWrapperInner::KoalaBearD1Width16Bus5(air) => {
+                 assert_eq!(Val::<$SC>::from_u64(KOALA_BEAR_MODULUS), Val::<$SC>::ZERO);
+                 let p = BaseAir::<KoalaBear>::preprocessed_trace(air.as_ref())?;
+                 Some(unsafe { transmute::<RowMajorMatrix<KoalaBear>, RowMajorMatrix<Val<$SC>>>(p) })
+             }
++            Poseidon2AirWrapperInner::KoalaBearD1Width24Bus8(air) => {
 +                assert_eq!(Val::<$SC>::from_u64(KOALA_BEAR_MODULUS), Val::<$SC>::ZERO);
 +                let p = BaseAir::<KoalaBear>::preprocessed_trace(air.as_ref())?;
 +                Some(unsafe { transmute::<RowMajorMatrix<KoalaBear>, RowMajorMatrix<Val<$SC>>>(p) })
 +            }
-+            Poseidon2AirWrapperInner::KoalaBearD1Width24Bus8(air) => {
+             Poseidon2AirWrapperInner::KoalaBearD4Width16(air) => {
                  assert_eq!(Val::<$SC>::from_u64(KOALA_BEAR_MODULUS), Val::<$SC>::ZERO);
                  let p = BaseAir::<KoalaBear>::preprocessed_trace(air.as_ref())?;
-                 Some(unsafe { transmute::<RowMajorMatrix<KoalaBear>, RowMajorMatrix<Val<$SC>>>(p) })
-@@ -1289,6 +1393,9 @@
+@@ -1289,6 +1393,9 @@ impl Poseidon2Prover {
              Poseidon2Config::KOALA_BEAR_D1_W16 => Poseidon2AirWrapperInner::KoalaBearD1Width16Bus1(
                  Box::new(KoalaBearD1Width16::default_air()),
              ),
@@ -286,7 +476,7 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Poseidon2Config::KOALA_BEAR_D4_W16 => Poseidon2AirWrapperInner::KoalaBearD4Width16(
                  Box::new(KoalaBearD4Width16::default_air()),
              ),
-@@ -1380,6 +1487,21 @@
+@@ -1380,6 +1487,21 @@ impl Poseidon2Prover {
                      _ => unreachable!(),
                  }
              }
@@ -308,7 +498,7 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Poseidon2Config::KOALA_BEAR_D4_W16 => {
                  assert!(F::from_u64(KOALA_BEAR_MODULUS) == F::ZERO);
                  Poseidon2AirWrapperInner::KoalaBearD4Width16(Box::new(
-@@ -1484,6 +1606,9 @@
+@@ -1484,6 +1606,9 @@ impl Poseidon2Prover {
              Poseidon2Config::KOALA_BEAR_D1_W16 => {
                  Poseidon2CircuitAirKoalaBearD1Width16::preprocessed_width()
              }
@@ -318,17 +508,17 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Poseidon2Config::KOALA_BEAR_D4_W16 => {
                  Poseidon2CircuitAirKoalaBearD4Width16::preprocessed_width()
              }
-@@ -1514,6 +1639,9 @@
-             Poseidon2Config::BABY_BEAR_D4_W32 => Poseidon2CircuitAirBabyBearD4Width32::main_width(),
+@@ -1515,6 +1640,9 @@ impl Poseidon2Prover {
              Poseidon2Config::KOALA_BEAR_D1_W16 => {
                  Poseidon2CircuitAirKoalaBearD1Width16::main_width()
-+            }
+             }
 +            Poseidon2Config::KOALA_BEAR_D1_W24 => {
 +                Poseidon2CircuitAirKoalaBearD1Width24::main_width()
-             }
++            }
              Poseidon2Config::KOALA_BEAR_D4_W16 => {
                  Poseidon2CircuitAirKoalaBearD4Width16::main_width()
-@@ -1863,6 +1991,57 @@
+             }
+@@ -1863,6 +1991,57 @@ impl Poseidon2Prover {
                      matrix,
                  )
              }
@@ -386,7 +576,7 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              Poseidon2Config::KOALA_BEAR_D4_W16 => {
                  let constants = KoalaBearD4Width16::round_constants();
                  let preprocessed =
-@@ -2072,7 +2251,7 @@
+@@ -2072,7 +2251,7 @@ where
          committed: &[Val<SC>],
          circuit_extension_degree: u32,
      ) -> Option<BatchTableInstance<SC>> {
@@ -395,8 +585,8 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
              || (circuit_extension_degree == 5 && self.config.is_shared())
          {
              return None;
-@@ -2144,12 +2323,22 @@
-
+@@ -2144,12 +2323,22 @@ where
+ 
      fn batch_instance_d8(
          &self,
 -        config: &SC,
@@ -419,9 +609,9 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +            .unwrap_or_else(|| packing.min_trace_height());
 +        self.batch_instance_base_impl::<SC>(trace.operations.clone(), min_height, 8)
      }
-
+ 
      fn batch_air_from_table_entry(
-@@ -2458,6 +2647,15 @@
+@@ -2458,6 +2647,15 @@ impl NpoPreprocessor<KoalaBear> for Poseidon2Preprocessor {
                  5,
              >(prep);
          }
@@ -437,7 +627,7 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
          Ok(NonPrimitivePreprocessedMap::new())
      }
  }
-@@ -2545,6 +2743,13 @@
+@@ -2545,6 +2743,13 @@ pub(crate) fn poseidon2_config_for_air_builder<const D: usize>(
  ) -> Option<Poseidon2Config> {
      let shape = config.without_challenger_role();
      match D {
@@ -451,13 +641,10 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
          2 => match shape {
              Poseidon2Config::GOLDILOCKS_D2_W8 | Poseidon2Config::GOLDILOCKS_D2_W16 => Some(config),
              _ => None,
-@@ -2645,6 +2850,29 @@
-         constraint_profile: ConstraintProfile,
-     ) -> Option<(CircuitTableAir<SC, 4>, usize)> {
-         poseidon2_air_try_build::<SC, 4>(op_type, prep_base, min_height, constraint_profile)
-+    }
-+}
-+
+@@ -2648,6 +2853,29 @@ where
+     }
+ }
+ 
 +impl<SC> NpoAirBuilder<SC, 8> for Poseidon2AirBuilder<8>
 +where
 +    SC: StarkGenericConfig + 'static + Send + Sync,
@@ -478,16 +665,16 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +        constraint_profile: ConstraintProfile,
 +    ) -> Option<(CircuitTableAir<SC, 8>, usize)> {
 +        poseidon2_air_try_build::<SC, 8>(op_type, prep_base, min_height, constraint_profile)
-     }
- }
-
-@@ -2760,6 +2988,30 @@
-     ) -> Option<(CircuitTableAir<SC, 4>, usize)> {
-         self.matches_op_type(op_type).then_some(())?;
-         poseidon2_air_try_build::<SC, 4>(op_type, prep_base, min_height, constraint_profile)
 +    }
 +}
 +
+ impl<SC> NpoAirBuilder<SC, 5> for Poseidon2AirBuilder<5>
+ where
+     SC: StarkGenericConfig + 'static + Send + Sync,
+@@ -2763,6 +2991,30 @@ where
+     }
+ }
+ 
 +impl<SC> NpoAirBuilder<SC, 8> for Poseidon2AirBuilderForConfig<8>
 +where
 +    SC: StarkGenericConfig + 'static + Send + Sync,
@@ -509,28 +696,33 @@ diff --git a/circuit-prover/src/batch_stark_prover/poseidon2.rs b/circuit-prover
 +    ) -> Option<(CircuitTableAir<SC, 8>, usize)> {
 +        self.matches_op_type(op_type).then_some(())?;
 +        poseidon2_air_try_build::<SC, 8>(op_type, prep_base, min_height, constraint_profile)
-     }
- }
-
++    }
++}
++
+ impl<SC> NpoAirBuilder<SC, 5> for Poseidon2AirBuilderForConfig<5>
+ where
+     SC: StarkGenericConfig + 'static + Send + Sync,
 diff --git a/circuit-prover/src/batch_stark_prover/recompose.rs b/circuit-prover/src/batch_stark_prover/recompose.rs
+index 7aa96bd..bc9c62e 100644
 --- a/circuit-prover/src/batch_stark_prover/recompose.rs
 +++ b/circuit-prover/src/batch_stark_prover/recompose.rs
-@@ -276,6 +276,11 @@
-             preprocessed.downcast_mut::<PreprocessedColumns<QuinticTrinomialExtensionField<F>, 5>>()
+@@ -277,6 +277,11 @@ impl NpoPreprocessor<KoalaBear> for RecomposePreprocessor {
          {
              return recompose_preprocess_impl::<F, _, 5>(prep, split);
-+        }
+         }
 +        if let Some(prep) =
 +            preprocessed.downcast_mut::<PreprocessedColumns<BinomialExtensionField<F, 8>, 8>>()
 +        {
 +            return recompose_preprocess_impl::<F, _, 8>(prep, split);
-         }
++        }
          if let Some(prep) = preprocessed.downcast_mut::<PreprocessedColumns<F, 1>>() {
              return recompose_preprocess_impl::<F, _, 1>(prep, split);
+         }
 diff --git a/circuit-prover/src/batch_stark_prover/statement.rs b/circuit-prover/src/batch_stark_prover/statement.rs
+index cdc5808..8b1e1df 100644
 --- a/circuit-prover/src/batch_stark_prover/statement.rs
 +++ b/circuit-prover/src/batch_stark_prover/statement.rs
-@@ -196,6 +196,7 @@
+@@ -196,6 +196,7 @@ impl_statement_preprocessor!(
      [
          KoalaBear => 1,
          BinomialExtensionField<KoalaBear, 4> => 4,
@@ -538,15 +730,94 @@ diff --git a/circuit-prover/src/batch_stark_prover/statement.rs b/circuit-prover
          QuinticTrinomialExtensionField<KoalaBear> => 5,
      ]
  );
+diff --git a/circuit-prover/src/batch_stark_prover/tests.rs b/circuit-prover/src/batch_stark_prover/tests.rs
+index c97fb0b..0638a43 100644
+--- a/circuit-prover/src/batch_stark_prover/tests.rs
++++ b/circuit-prover/src/batch_stark_prover/tests.rs
+@@ -3313,3 +3313,75 @@ fn check_horner_chain_head_seed(k: usize) {
+         "ALU separator row 0 out column 3 changed 0 -> 1 with rows 1..=3 recomputed",
+     );
+ }
++
++#[test]
++fn hiding_worker_policy_defaults_to_one_and_rejects_other_counts() {
++    assert_eq!(HidingProofWorkers::default(), HidingProofWorkers::One);
++    assert_eq!(HidingProofWorkers::try_from(1).unwrap().workers(), 1);
++    assert_eq!(HidingProofWorkers::try_from(2).unwrap().workers(), 2);
++    for workers in [0, 3, usize::MAX] {
++        assert!(HidingProofWorkers::try_from(workers).is_err());
++    }
++    assert_eq!(
++        selected_hiding_workers(Some(HidingProofWorkers::Two)).unwrap(),
++        HidingProofWorkers::Two
++    );
++}
++
++#[cfg(feature = "parallel")]
++#[test]
++fn hiding_worker_policy_uses_requested_isolated_pool() {
++    for workers in [HidingProofWorkers::One, HidingProofWorkers::Two] {
++        let actual =
++            run_native_proof_in_pool(true, Some(workers), rayon::current_num_threads).unwrap();
++        assert_eq!(actual, workers.workers());
++    }
++}
++
++#[cfg(feature = "parallel")]
++#[test]
++fn hiding_worker_policy_keeps_non_hiding_caller_pool() {
++    let caller = rayon::ThreadPoolBuilder::new()
++        .num_threads(3)
++        .build()
++        .unwrap();
++    let actual = caller.install(|| {
++        run_native_proof_in_pool(
++            false,
++            Some(HidingProofWorkers::Two),
++            rayon::current_num_threads,
++        )
++        .unwrap()
++    });
++    assert_eq!(actual, 3);
++}
++
++#[cfg(not(feature = "parallel"))]
++#[test]
++fn hiding_worker_policy_requires_parallel_support_for_two_workers() {
++    assert!(run_native_proof_in_pool(true, Some(HidingProofWorkers::Two), || 7).is_err());
++    assert_eq!(run_native_proof_in_pool(true, None, || 7).unwrap(), 7);
++    assert_eq!(
++        run_native_proof_in_pool(false, Some(HidingProofWorkers::Two), || 7).unwrap(),
++        7
++    );
++}
++
++#[test]
++fn hiding_worker_environment_override_is_bounded() {
++    assert_eq!(
++        parse_hiding_worker_override(None).unwrap(),
++        HidingProofWorkers::One
++    );
++    assert_eq!(
++        parse_hiding_worker_override(Some("1")).unwrap(),
++        HidingProofWorkers::One
++    );
++    assert_eq!(
++        parse_hiding_worker_override(Some("2")).unwrap(),
++        HidingProofWorkers::Two
++    );
++    for invalid in ["", "0", "3", " 2", "2 ", "02", "all"] {
++        assert!(parse_hiding_worker_override(Some(invalid)).is_err());
++    }
++}
 diff --git a/circuit/src/builder/circuit_builder.rs b/circuit/src/builder/circuit_builder.rs
+index dd84cd4..0f0426f 100644
 --- a/circuit/src/builder/circuit_builder.rs
 +++ b/circuit/src/builder/circuit_builder.rs
-@@ -597,6 +597,32 @@
-         let exec = base_perm_exec::<F, P, 16>(perm);
-         let plugin = Poseidon2CircuitPlugin::new(Config::CONFIG, exec, trace_generator);
+@@ -599,6 +599,32 @@ where
          self.register_npo(plugin);
-+    }
-+
+     }
+ 
 +    /// Register standard W24 over lifted scalar slots. The circuit field may
 +    /// be D8 while the table binds each scalar with a full-width witness key.
 +    pub fn enable_poseidon2_perm_base_width_24<Config, P>(
@@ -571,16 +842,19 @@ diff --git a/circuit/src/builder/circuit_builder.rs b/circuit/src/builder/circui
 +            exec,
 +            generate_poseidon2_challenger_trace::<F, Config>,
 +        ));
-     }
-
++    }
++
      /// Enables the Poseidon2 permutation operation for base field challenges (D=1) on the
+     /// width-32 arity-4 compression shape.
+     ///
 diff --git a/circuit/src/ops/poseidon2_perm/config.rs b/circuit/src/ops/poseidon2_perm/config.rs
+index 7110659..4699c5b 100644
 --- a/circuit/src/ops/poseidon2_perm/config.rs
 +++ b/circuit/src/ops/poseidon2_perm/config.rs
-@@ -157,6 +157,21 @@
+@@ -157,6 +157,21 @@ impl Poseidon2Config {
          partial_rounds: 23,
      };
-
+ 
 +    /// Scalar W24 table used by D8 circuits with a twelve-scalar digest.
 +    /// Every state slot is a base-field scalar; the witness bus separately
 +    /// binds all eight circuit-field coefficients.
@@ -599,7 +873,7 @@ diff --git a/circuit/src/ops/poseidon2_perm/config.rs b/circuit/src/ops/poseidon
      /// Goldilocks with extension degree D=2, width 8 (matches Poseidon2Goldilocks<8>).
      pub const GOLDILOCKS_D2_W8: Self = Self {
          field_id: Poseidon2FieldId::Goldilocks,
-@@ -241,8 +256,8 @@
+@@ -241,8 +256,8 @@ impl Poseidon2Config {
      /// into extension limbs (`d >= 2`) and never uses the arity-4 compression layout.
      pub const fn for_challenger(self) -> Self {
          assert!(
@@ -610,7 +884,7 @@ diff --git a/circuit/src/ops/poseidon2_perm/config.rs b/circuit/src/ops/poseidon
          );
          assert!(
              !self.is_arity4_shape(),
-@@ -557,6 +572,7 @@
+@@ -557,6 +572,7 @@ impl Poseidon2Config {
                      _ => panic!("unknown BabyBear Poseidon2 challenger config"),
                  },
                  Poseidon2FieldId::KoalaBear => match (self.d, self.width) {
@@ -618,7 +892,7 @@ diff --git a/circuit/src/ops/poseidon2_perm/config.rs b/circuit/src/ops/poseidon
                      (4, 16) => "koala_bear_d4_w16_challenger",
                      (4, 24) => "koala_bear_d4_w24_challenger",
                      _ => panic!("unknown KoalaBear Poseidon2 challenger config"),
-@@ -577,6 +593,7 @@
+@@ -577,6 +593,7 @@ impl Poseidon2Config {
              },
              Poseidon2FieldId::KoalaBear => match (self.d, self.width) {
                  (1, 16) => "koala_bear_d1_w16",
@@ -626,7 +900,7 @@ diff --git a/circuit/src/ops/poseidon2_perm/config.rs b/circuit/src/ops/poseidon
                  (4, 16) => "koala_bear_d4_w16",
                  (4, 24) => "koala_bear_d4_w24",
                  (1, 32) => "koala_bear_d1_w32",
-@@ -599,6 +616,8 @@
+@@ -599,6 +616,8 @@ impl Poseidon2Config {
              "baby_bear_d4_w24" => Some(Self::BABY_BEAR_D4_W24),
              "baby_bear_d4_w32" => Some(Self::BABY_BEAR_D4_W32),
              "koala_bear_d1_w16" => Some(Self::KOALA_BEAR_D1_W16),
@@ -635,11 +909,10 @@ diff --git a/circuit/src/ops/poseidon2_perm/config.rs b/circuit/src/ops/poseidon
              "koala_bear_d4_w16" => Some(Self::KOALA_BEAR_D4_W16),
              "koala_bear_d4_w24" => Some(Self::KOALA_BEAR_D4_W24),
              "koala_bear_d1_w32" => Some(Self::KOALA_BEAR_D1_W32),
-@@ -649,6 +668,28 @@
-     use crate::builder::NpoLoweringContext;
-
+@@ -650,6 +669,28 @@ mod tests {
+ 
      type F = BabyBear;
-+
+ 
 +    #[test]
 +    fn d8_scalar_w24_keeps_twelve_scalar_digest_elements() {
 +        let config = Poseidon2Config::KOALA_BEAR_D1_W24;
@@ -661,13 +934,63 @@ diff --git a/circuit/src/ops/poseidon2_perm/config.rs b/circuit/src/ops/poseidon
 +            Some(config)
 +        );
 +    }
-
++
      #[test]
      fn validate_io_counts_d4_w16_ok() {
+         let cfg = Poseidon2Config::BABY_BEAR_D4_W16;
+diff --git a/docs/d8-w24-suite.md b/docs/d8-w24-suite.md
+new file mode 100644
+index 0000000..b946998
+--- /dev/null
++++ b/docs/d8-w24-suite.md
+@@ -0,0 +1,42 @@
++# Experimental KoalaBear D8 W24 suite
++
++Status: experimental implementation. Correctness tests do not establish security approval, performance feasibility or suitability for a deployed protocol. The suite has a distinct registry identifier and must not be substituted for an existing suite.
++
++## Configuration
++
++`ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri` uses degree-eight KoalaBear extension challenges, the standard width-24 Poseidon2 permutation, rate twelve, and twelve base-field digest elements. Registry identifier `0xF824` is experimental. The native random-codeword factory is `experimental_koala_bear_d8_poseidon2_w24_random_codeword`.
++
++The recursive permutation uses 24 scalar circuit values embedded in the degree-eight extension. The witness bus constrains every extension coefficient; scalar values have seven zero coefficients. Binary compression absorbs all 24 scalar inputs and returns twelve designated scalar outputs. This representation does not permit the existing unsupported three-lane packed W24 geometry.
++
++The challenger has a dedicated table binding its initial capacity and squeeze chain. Ordinary MMCS permutations use a separate table. Interleaved MMCS work must not alter the challenger state. Descriptor and proof artifacts preserve all twelve external digest scalars and their canonical extension encoding. Existing built-in AIR wire tags remain unchanged; scalar W24 and its challenger variant append at `0x0215` and `0x0216`. Unregistered following tags are rejected.
++
++## Opening-batch proof of work
++
++`FriConfigV1::with_batch_pow_bits` carries batch-work difficulty through native configuration, the recursive verifier parameters, prepared runtime witnesses and portable artifacts. Difficulty is bound into the PCS transcript seed. Proof work is checked before sampling the opening-batch challenge, with identical native and circuit transcript order. A zero-difficulty configuration requires its canonical zero witness and preserves the legacy zero-work descriptor encoding. Query and commitment work remain separate parameters. This compatibility covers native proof and descriptor encoding, not regenerated recursive circuit, verification-key or prepared-artifact identities. Rebuilding may add nonce and zero-work constraints even at zero difficulty; regenerate and freeze the resulting circuits, keys and artifact hashes instead of assuming identity with an earlier verifier.
++
++Security analysis must justify credit for each enforced work site under the selected classical and quantum model. This implementation does not provide such approval or a composition theorem.
++
++## Source and review boundary
++
++The implementation builds on Plonky3 `0.9.0-rc.2`, including its existing KoalaBear degree-eight field, standard W24 permutation and native FRI batch-work implementation. The source delta is in Plonky3-recursion. Review must cover scalar coefficients, witness buses, capacity and output geometry, transcript order and domain separation, noncanonical proof rejection, suite/key/artifact binding, batch-work soundness and all full/prepared paths. Protocol-specific AIRs and parameters require separate review.
++
++No existing suite is automatically upgraded. Consumers must pin a complete source revision and dependency lock graph, freeze the selected descriptor and verification artifacts, and run application rejection tests before selecting this suite.
++
++## Focused regression commands
++
++```sh
++cargo test --locked --release -p p3-recursion --lib batch_pow
++cargo test --locked --release -p p3-recursion --test d8_scalar_w24
++cargo test --locked --release -p p3-poseidon2-circuit-air --lib scalar_w24_d8_challenger_air_binds_initial_capacity_and_squeeze_chain
++cargo test --locked --release -p p3-recursion --test prepared_recursion positive_opening_batch_grinding_full_and_prepared_recursion
++```
++
++The D8 integration group covers native/circuit transcript agreement, interleaved MMCS operations, both compression directions, suite identity, base/extension statement exports, full/prepared positive-work proofs, modified witnesses and opening claims, and nonconstant scalar coefficients. Run the complete upstream required checks in addition to these focused groups.
++
++## Hiding proof worker policy
++
++`BatchStarkProver::with_hiding_workers` selects `HidingProofWorkers::One` or `HidingProofWorkers::Two`. Serial isolation remains the default. Two workers require the `parallel` feature; requesting them without support is rejected. The isolated pool preserves tracing context, and non-hiding proofs retain the caller's pool. The policy changes execution only and does not alter verification parameters. Any opt-in parallel hiding use requires independent review of RNG derivation and native proving code.
++
++## Downstream compatibility override
++
++This downstream branch additionally retains `SIWORLD_COMPOSITION_HIDING_WORKERS` for existing experiment launchers. When no typed policy is supplied, an absent value or `1` selects one worker, `2` selects two, and every other value is rejected. A typed policy takes precedence. The override is separate from the upstream suite changes and is not a protocol or verifier parameter. Native transaction and settlement proofs use `p3-uni-stark` and do not call this recursive batch-prover pool.
 diff --git a/poseidon2-circuit-air/src/air.rs b/poseidon2-circuit-air/src/air.rs
+index 390421c..a9b20ac 100644
 --- a/poseidon2-circuit-air/src/air.rs
 +++ b/poseidon2-circuit-air/src/air.rs
-@@ -2029,12 +2029,13 @@
+@@ -2029,12 +2029,13 @@ mod test {
      use crate::columns::{POSEIDON2_LIMBS, POSEIDON2_PUBLIC_OUTPUT_LIMBS};
      use crate::{
          BabyBearD4Width16, BabyBearD4Width24, BabyBearD4Width32, GoldilocksD2Width16,
@@ -684,14 +1007,12 @@ diff --git a/poseidon2-circuit-air/src/air.rs b/poseidon2-circuit-air/src/air.rs
 +        Poseidon2CircuitAirKoalaBearD4Width24, Poseidon2CircuitAirKoalaBearD4Width32,
 +        goldilocks_d2_width8_round_constants,
      };
-
+ 
      const WIDTH: usize = 16;
-@@ -2332,6 +2333,65 @@
-         }
-         let (air, trace) = w24_challenger_air_and_trace(&rows);
+@@ -2334,6 +2335,65 @@ mod test {
          assert_air_satisfies::<Val, BinomialExtensionField<Val, 4>, _>(&air, &trace);
-+    }
-+
+     }
+ 
 +    fn scalar_w24_d8_challenger_air_and_trace(
 +        initial_capacity_shift: KoalaBear,
 +        continuation_shift: KoalaBear,
@@ -749,16 +1070,19 @@ diff --git a/poseidon2-circuit-air/src/air.rs b/poseidon2-circuit-air/src/air.rs
 +        assert_air_rejects::<KoalaBear, KbD8, _>(&air, &trace);
 +        let (air, trace) = scalar_w24_d8_challenger_air_and_trace(KoalaBear::ZERO, KoalaBear::ONE);
 +        assert_air_rejects::<KoalaBear, KbD8, _>(&air, &trace);
-     }
-
++    }
++
      #[test]
+     fn satisfies_challenger_sponge_chain_start() {
+         let mut rng = SmallRng::seed_from_u64(7);
 diff --git a/poseidon2-circuit-air/src/public_types.rs b/poseidon2-circuit-air/src/public_types.rs
+index 04b1b88..63c1f4e 100644
 --- a/poseidon2-circuit-air/src/public_types.rs
 +++ b/poseidon2-circuit-air/src/public_types.rs
-@@ -252,6 +252,50 @@
+@@ -252,6 +252,50 @@ impl KoalaBearD1Width16 {
      }
  }
-
+ 
 +/// Standard W24 scalar table for extension-field verifier circuits.
 +pub struct KoalaBearD1Width24;
 +
@@ -806,12 +1130,10 @@ diff --git a/poseidon2-circuit-air/src/public_types.rs b/poseidon2-circuit-air/s
  /// Configuration for KoalaBear with a quartic extension and a 16-element
  /// Poseidon2 state.
  ///
-@@ -544,6 +588,38 @@
-     { KoalaBearD1Width16::HALF_FULL_ROUNDS },
-     { KoalaBearD1Width16::PARTIAL_ROUNDS },
+@@ -546,6 +590,38 @@ pub type Poseidon2CircuitAirKoalaBearD1Width16WitnessBus5 = Poseidon2CircuitAir<
      5,
-+>;
-+
+ >;
+ 
 +/// Standard scalar W24 AIR with one scalar per state slot.
 +pub type Poseidon2CircuitAirKoalaBearD1Width24 = Poseidon2CircuitAir<
 +    KoalaBear,
@@ -842,14 +1164,17 @@ diff --git a/poseidon2-circuit-air/src/public_types.rs b/poseidon2-circuit-air/s
 +    { KoalaBearD1Width24::HALF_FULL_ROUNDS },
 +    { KoalaBearD1Width24::PARTIAL_ROUNDS },
 +    8,
- >;
-
++>;
++
  /// KoalaBear Poseidon2 circuit AIR with quartic extension and 16-element state.
+ pub type Poseidon2CircuitAirKoalaBearD4Width16 = Poseidon2CircuitAir<
+     KoalaBear,
 diff --git a/recursion/Cargo.toml b/recursion/Cargo.toml
+index c176409..3c978d9 100644
 --- a/recursion/Cargo.toml
 +++ b/recursion/Cargo.toml
-@@ -129,3 +129,7 @@
-
+@@ -129,3 +129,7 @@ path = "tests/whir_quintic.rs"
+ 
  [lints]
  workspace = true
 +
@@ -857,17 +1182,18 @@ diff --git a/recursion/Cargo.toml b/recursion/Cargo.toml
 +name = "d8_scalar_w24"
 +path = "tests/d8_scalar_w24.rs"
 diff --git a/recursion/src/artifact/assembly.rs b/recursion/src/artifact/assembly.rs
+index b3b2c6a..92d7229 100644
 --- a/recursion/src/artifact/assembly.rs
 +++ b/recursion/src/artifact/assembly.rs
-@@ -229,6 +229,7 @@
+@@ -229,6 +229,7 @@ macro_rules! random_codeword_impl {
      };
  }
-
+ 
 +random_codeword_impl!(ExperimentalKoalaBearD8Poseidon2W24RandomCodewordConfig, KoalaBear, BinomialExtensionField<KoalaBear, 8>, 12, FieldEncoding::u32(), experimental_koala_bear_d8_poseidon2_w24_random_codeword);
  random_codeword_impl!(BabyBearD4Poseidon2RandomCodewordConfig, BabyBear, BinomialExtensionField<BabyBear, 4>, 8, FieldEncoding::u32(), baby_bear_d4_poseidon2_random_codeword);
  random_codeword_impl!(BabyBearD4Poseidon1RandomCodewordConfig, BabyBear, BinomialExtensionField<BabyBear, 4>, 8, FieldEncoding::u32(), baby_bear_d4_poseidon1_random_codeword);
  random_codeword_impl!(KoalaBearD4Poseidon2RandomCodewordConfig, KoalaBear, BinomialExtensionField<KoalaBear, 4>, 8, FieldEncoding::u32(), koala_bear_d4_poseidon2_random_codeword);
-@@ -675,6 +676,9 @@
+@@ -675,6 +676,9 @@ pub(crate) fn decode_portable_verifier(
          };
      }
      match suite {
@@ -878,25 +1204,37 @@ diff --git a/recursion/src/artifact/assembly.rs b/recursion/src/artifact/assembl
          SuiteIdV1::BabyBearD4Poseidon1BinaryFri => decode!(BabyBearD4Poseidon1BinaryConfig),
          SuiteIdV1::KoalaBearD4Poseidon2BinaryFri => decode!(KoalaBearD4Poseidon2BinaryConfig),
 diff --git a/recursion/src/artifact/descriptor.rs b/recursion/src/artifact/descriptor.rs
+index 4c78203..5513ab4 100644
 --- a/recursion/src/artifact/descriptor.rs
 +++ b/recursion/src/artifact/descriptor.rs
-@@ -45,12 +45,14 @@
+@@ -45,7 +45,7 @@ const POSEIDON1_CONFIGS: [Poseidon1Config; 12] = [
      Poseidon1Config::GOLDILOCKS_D2_W8.for_challenger(),
  ];
-
+ 
 -const POSEIDON2_CONFIGS: [Poseidon2Config; 21] = [
 +const POSEIDON2_CONFIGS: [Poseidon2Config; 23] = [
      Poseidon2Config::BABY_BEAR_D1_W16,
      Poseidon2Config::BABY_BEAR_D4_W16,
      Poseidon2Config::BABY_BEAR_D4_W24,
-     Poseidon2Config::BABY_BEAR_D4_W32,
-     Poseidon2Config::KOALA_BEAR_D1_W16,
+@@ -67,6 +67,8 @@ const POSEIDON2_CONFIGS: [Poseidon2Config; 21] = [
+     Poseidon2Config::KOALA_BEAR_D4_W16.for_shared_challenger_table(),
+     Poseidon2Config::KOALA_BEAR_D4_W24.for_shared_challenger_table(),
+     Poseidon2Config::GOLDILOCKS_D2_W8.for_shared_challenger_table(),
 +    Poseidon2Config::KOALA_BEAR_D1_W24,
 +    Poseidon2Config::KOALA_BEAR_D1_W24.for_challenger(),
-     Poseidon2Config::KOALA_BEAR_D4_W16,
-     Poseidon2Config::KOALA_BEAR_D4_W24,
-     Poseidon2Config::KOALA_BEAR_D1_W32,
-@@ -1022,8 +1024,12 @@
+ ];
+ 
+ impl BuiltinNpoV1 {
+@@ -117,7 +119,7 @@ impl BuiltinNpoV1 {
+             0x0100..=0x010b => Ok(Self::Poseidon1(
+                 POSEIDON1_CONFIGS[usize::from(tag - 0x0100)],
+             )),
+-            0x0200..=0x0214 => Ok(Self::Poseidon2(
++            0x0200..=0x0216 => Ok(Self::Poseidon2(
+                 POSEIDON2_CONFIGS[usize::from(tag - 0x0200)],
+             )),
+             _ => Err(ArtifactError::UnsupportedBuiltinAir(tag)),
+@@ -1022,8 +1024,12 @@ pub(crate) fn write_config(
  ) -> Result<(), ArtifactError> {
      match descriptor {
          BuiltinConfigDescriptorV1::Fri(config) => {
@@ -910,7 +1248,7 @@ diff --git a/recursion/src/artifact/descriptor.rs b/recursion/src/artifact/descr
              writer.write_u32(config.log_blowup())?;
              writer.write_u32(config.log_final_poly_len())?;
              writer.write_u32(config.max_log_arity())?;
-@@ -1072,19 +1078,33 @@
+@@ -1072,19 +1078,33 @@ pub(crate) fn read_config(
          return Err(ArtifactError::NonCanonicalMetadata);
      }
      let descriptor = match tag {
@@ -957,10 +1295,20 @@ diff --git a/recursion/src/artifact/descriptor.rs b/recursion/src/artifact/descr
          1 => {
              let starting_log_inv_rate = reader.read_u32()?;
              let round_log_inv_rates = match reader.read_u8()? {
-@@ -1310,6 +1330,28 @@
+@@ -1258,7 +1278,7 @@ mod tests {
+     use core::mem::size_of;
+ 
+     use p3_baby_bear::BabyBear;
+-    use p3_circuit::ops::NpoTypeId;
++    use p3_circuit::ops::{NpoTypeId, Poseidon2Config};
+     use p3_circuit::{StatementField, StatementSchema};
+     use p3_circuit_prover::air::AluExtMulKind;
+     use p3_circuit_prover::{
+@@ -1309,6 +1329,28 @@ mod tests {
+         ))
      }
-
-     #[test]
+ 
++    #[test]
 +    fn config_codec_binds_positive_batch_pow_without_changing_zero_encoding() {
 +        let BuiltinConfigDescriptorV1::Fri(zero) = ordinary() else {
 +            unreachable!()
@@ -982,14 +1330,29 @@ diff --git a/recursion/src/artifact/descriptor.rs b/recursion/src/artifact/descr
 +        ));
 +    }
 +
-+    #[test]
+     #[test]
      fn config_codec_roundtrips_exact_runtime_parameters() {
          let reduced_domain = BuiltinConfigDescriptorV1::Whir(WhirConfigV1::new(
-             SuiteIdV1::KoalaBearD4Poseidon2Whir,
+@@ -1661,5 +1703,14 @@ mod tests {
+             POSEIDON2_CONFIGS[20].variant_name(),
+             "goldilocks_d2_w8_shared"
+         );
++        assert_eq!(POSEIDON2_CONFIGS[21], Poseidon2Config::KOALA_BEAR_D1_W24);
++        assert_eq!(
++            POSEIDON2_CONFIGS[22],
++            Poseidon2Config::KOALA_BEAR_D1_W24.for_challenger()
++        );
++        assert_eq!(
++            BuiltinNpoV1::from_wire(0x0217),
++            Err(ArtifactError::UnsupportedBuiltinAir(0x0217))
++        );
+     }
+ }
 diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
+index f05d295..9f514ea 100644
 --- a/recursion/src/backend/fri.rs
 +++ b/recursion/src/backend/fri.rs
-@@ -452,6 +452,10 @@
+@@ -452,6 +452,10 @@ impl<const WIDTH: usize, const RATE: usize, C: ChallengerPermConfig>
      /// its sponge capacity on the shared table already — so only the shared entry is returned.
      fn poseidon2_challenger_shape_configs(&self, config: Poseidon2Config) -> Vec<Poseidon2Config> {
          let shape = config.without_challenger_role();
@@ -1000,7 +1363,7 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
          if matches!(
              shape,
              Poseidon2Config::BABY_BEAR_D4_W16
-@@ -779,6 +783,7 @@
+@@ -779,6 +783,7 @@ where
              2 => plan_fri_batch_for_degree::<SC, A, 2>(config, prev, provers)?,
              4 => plan_fri_batch_for_degree::<SC, A, 4>(config, prev, provers)?,
              5 => plan_fri_batch_for_degree::<SC, A, 5>(config, prev, provers)?,
@@ -1008,7 +1371,7 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
              degree => {
                  return Err(VerificationError::InvalidProofShape(format!(
                      "unsupported batch proof ext_degree {degree}"
-@@ -1335,6 +1340,26 @@
+@@ -1335,6 +1340,26 @@ where
                      backend.challenger_perm_config,
                      non_primitive_provers,
                  )?,
@@ -1035,10 +1398,10 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
                  d => {
                      return Err(VerificationError::InvalidProofShape(format!(
                          "unsupported batch proof ext_degree {}",
-@@ -1943,6 +1968,208 @@
+@@ -1943,6 +1968,208 @@ where
      }
  }
-
+ 
 +impl<SC, A, const WIDTH: usize, const RATE: usize, C> PcsRecursionBackend<SC, A, 8>
 +    for FriRecursionBackendForExt<8, WIDTH, RATE, C>
 +where
@@ -1244,16 +1607,16 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
  impl<SC, A, const WIDTH: usize, const RATE: usize, C> PcsRecursionBackend<SC, A, 5>
      for FriRecursionBackendD5<WIDTH, RATE, C>
  where
-@@ -2188,7 +2415,7 @@
+@@ -2188,7 +2415,7 @@ where
  }
-
+ 
  macro_rules! impl_prepared_fri_backend {
 -    ($backend:ty, $d:literal, $binomial_bound:path) => {
 +    ($backend:ty, $d:literal, $binomial_bound:path $(, $extra_bound:path)?) => {
          impl<SC, A, const WIDTH: usize, const RATE: usize, C> PreparedPcsRecursionBackend<SC, A, $d>
              for $backend
          where
-@@ -2196,7 +2423,7 @@
+@@ -2196,7 +2423,7 @@ macro_rules! impl_prepared_fri_backend {
              SC: FriRecursionConfig + Send + Sync + 'static,
              A: RecursiveAir<Val<SC>, SC::Challenge, LogUpGadget>,
              C: ChallengerPermConfig + Copy + 'static,
@@ -1262,7 +1625,7 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
              Poseidon1Preprocessor: NpoPreprocessor<Val<SC>>,
              Poseidon2Preprocessor: NpoPreprocessor<Val<SC>>,
              Poseidon2SharedPreprocessor: NpoPreprocessor<Val<SC>>,
-@@ -2284,7 +2511,7 @@
+@@ -2284,7 +2511,7 @@ macro_rules! impl_prepared_fri_backend {
              SC: FriRecursionConfig + Send + Sync + 'static,
              A: RecursiveAir<Val<SC>, SC::Challenge, LogUpGadget>,
              C: ChallengerPermConfig + Copy + 'static,
@@ -1271,7 +1634,7 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
              Poseidon1Preprocessor: NpoPreprocessor<Val<SC>>,
              Poseidon2Preprocessor: NpoPreprocessor<Val<SC>>,
              Poseidon2SharedPreprocessor: NpoPreprocessor<Val<SC>>,
-@@ -2386,6 +2613,7 @@
+@@ -2386,6 +2613,7 @@ macro_rules! impl_prepared_fri_backend {
                      2 => trusted_batch_tables::<SC, 2>(verifier, statement)?.public_values,
                      4 => trusted_batch_tables::<SC, 4>(verifier, statement)?.public_values,
                      5 => trusted_batch_tables::<SC, 5>(verifier, statement)?.public_values,
@@ -1279,7 +1642,7 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
                      degree => {
                          return Err(VerificationError::InvalidProofShape(format!(
                              "unsupported trusted batch verifier ext_degree {degree}"
-@@ -2405,6 +2633,7 @@
+@@ -2405,6 +2633,7 @@ macro_rules! impl_prepared_fri_backend {
                      2 => preflight_trusted_fri_batch::<SC, A, 2>(verifier, proof, statement)?,
                      4 => preflight_trusted_fri_batch::<SC, A, 4>(verifier, proof, statement)?,
                      5 => preflight_trusted_fri_batch::<SC, A, 5>(verifier, proof, statement)?,
@@ -1287,7 +1650,7 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
                      _ => unreachable!(),
                  };
                  validate_batch_proof_native::<SC, SC::Commitment, SC::OpeningProof>(&proof.proof)?;
-@@ -2436,6 +2665,7 @@
+@@ -2436,6 +2665,7 @@ macro_rules! impl_prepared_fri_backend {
                      2 => build_for_degree!(2)?,
                      4 => build_for_degree!(4)?,
                      5 => build_for_degree!(5)?,
@@ -1295,7 +1658,7 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
                      _ => unreachable!(),
                  };
                  Ok(CheckedVerifierResult::new(
-@@ -2474,6 +2704,10 @@
+@@ -2474,6 +2704,10 @@ macro_rules! impl_prepared_fri_backend {
                          replay_trusted_batch_layer_transcript::<SC, 5>(verifier, proof, statement)?,
                          trusted_batch_tables::<SC, 5>(verifier, statement)?.public_values,
                      ),
@@ -1306,7 +1669,7 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
                      degree => {
                          return Err(VerificationError::InvalidProofShape(format!(
                              "unsupported trusted batch verifier ext_degree {degree}"
-@@ -2557,3 +2791,10 @@
+@@ -2557,3 +2791,10 @@ impl_prepared_fri_backend!(
      5,
      BinomiallyExtendable<4>
  );
@@ -1318,9 +1681,10 @@ diff --git a/recursion/src/backend/fri.rs b/recursion/src/backend/fri.rs
 +    BinomiallyExtendable<4>
 +);
 diff --git a/recursion/src/backend/transcript.rs b/recursion/src/backend/transcript.rs
+index f1a8c4a..4c75701 100644
 --- a/recursion/src/backend/transcript.rs
 +++ b/recursion/src/backend/transcript.rs
-@@ -95,6 +95,12 @@
+@@ -95,6 +95,12 @@ where
                  common_data,
                  non_primitive_provers,
              ),
@@ -1334,9 +1698,10 @@ diff --git a/recursion/src/backend/transcript.rs b/recursion/src/backend/transcr
                  "unsupported batch proof ext_degree {d}"
              ))),
 diff --git a/recursion/src/builtin_config/fri.rs b/recursion/src/builtin_config/fri.rs
+index 77dd225..a2f2948 100644
 --- a/recursion/src/builtin_config/fri.rs
 +++ b/recursion/src/builtin_config/fri.rs
-@@ -177,7 +177,7 @@
+@@ -177,7 +177,7 @@ fn checked_parameters<M>(
          log_blowup: descriptor.log_blowup() as usize,
          log_final_poly_len: descriptor.log_final_poly_len() as usize,
          num_queries: descriptor.num_queries() as usize,
@@ -1345,7 +1710,7 @@ diff --git a/recursion/src/builtin_config/fri.rs b/recursion/src/builtin_config/
          commit_proof_of_work_bits: descriptor.commit_pow_bits() as usize,
          query_proof_of_work_bits: descriptor.query_pow_bits() as usize,
          mmcs,
-@@ -192,10 +192,11 @@
+@@ -192,10 +192,11 @@ fn checked_parameters<M>(
          }
      }
      .map_err(BuiltinConfigError::NativeFri)?;
@@ -1358,8 +1723,8 @@ diff --git a/recursion/src/builtin_config/fri.rs b/recursion/src/builtin_config/
          params.commit_proof_of_work_bits,
          params.query_proof_of_work_bits,
          params.num_queries,
-@@ -467,6 +468,7 @@
-
+@@ -467,6 +468,7 @@ macro_rules! random_codeword_factory {
+ 
  random_codeword_factory!(BabyBearD4Poseidon2RandomCodewordConfig, baby_bear_d4_poseidon2_random_codeword, BabyBear, BinomialExtensionField<BabyBear, 4>, Poseidon2BabyBear<16>, 16, 8, 8, SuiteIdV1::BabyBearD4Poseidon2RandomCodewordFri, default_babybear_poseidon2_16());
  random_codeword_factory!(BabyBearD4Poseidon1RandomCodewordConfig, baby_bear_d4_poseidon1_random_codeword, BabyBear, BinomialExtensionField<BabyBear, 4>, Poseidon1BabyBear<16>, 16, 8, 8, SuiteIdV1::BabyBearD4Poseidon1RandomCodewordFri, default_babybear_poseidon1_16());
 +random_codeword_factory!(ExperimentalKoalaBearD8Poseidon2W24RandomCodewordConfig, experimental_koala_bear_d8_poseidon2_w24_random_codeword, KoalaBear, BinomialExtensionField<KoalaBear, 8>, Poseidon2KoalaBear<24>, 24, 12, 12, SuiteIdV1::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri, p3_koala_bear::default_koalabear_poseidon2_24());
@@ -1367,12 +1732,13 @@ diff --git a/recursion/src/builtin_config/fri.rs b/recursion/src/builtin_config/
  random_codeword_factory!(KoalaBearD4Poseidon1RandomCodewordConfig, koala_bear_d4_poseidon1_random_codeword, KoalaBear, BinomialExtensionField<KoalaBear, 4>, Poseidon1KoalaBear<16>, 16, 8, 8, SuiteIdV1::KoalaBearD4Poseidon1RandomCodewordFri, default_koalabear_poseidon1_16());
  random_codeword_factory!(GoldilocksD2Poseidon2RandomCodewordConfig, goldilocks_d2_poseidon2_random_codeword, Goldilocks, BinomialExtensionField<Goldilocks, 2>, Poseidon2Goldilocks<8>, 8, 4, 4, SuiteIdV1::GoldilocksD2Poseidon2RandomCodewordFri, fixed_goldilocks_poseidon2_8());
 diff --git a/recursion/src/builtin_config/fri/recursion.rs b/recursion/src/builtin_config/fri/recursion.rs
+index 882c550..b8e3763 100644
 --- a/recursion/src/builtin_config/fri/recursion.rs
 +++ b/recursion/src/builtin_config/fri/recursion.rs
-@@ -77,6 +77,25 @@
+@@ -77,6 +77,25 @@ where
      }
  }
-
+ 
 +/// Scalar W24 execution embedded in D8. The AIR's eight-coefficient witness
 +/// bus binds each input/output scalar; no packed digest or truncation is used.
 +#[derive(Clone)]
@@ -1395,7 +1761,7 @@ diff --git a/recursion/src/builtin_config/fri/recursion.rs b/recursion/src/built
  macro_rules! opening_targets {
      (ordinary, $field:ty, $challenge:ty, $digest:expr, $rec_ext:ident, $rec_mmcs:ty) => {
          FriProofTargets<
-@@ -223,7 +242,7 @@
+@@ -223,7 +242,7 @@ macro_rules! impl_plain_fri {
                          log_blowup: descriptor.log_blowup() as usize,
                          log_final_poly_len: descriptor.log_final_poly_len() as usize,
                          num_queries: descriptor.num_queries() as usize,
@@ -1404,7 +1770,7 @@ diff --git a/recursion/src/builtin_config/fri/recursion.rs b/recursion/src/built
                          commit_proof_of_work_bits: descriptor.commit_pow_bits() as usize,
                          query_proof_of_work_bits: descriptor.query_pow_bits() as usize,
                          mmcs: ExtensionMmcs::new(commit_mmcs.clone()),
-@@ -797,7 +816,7 @@
+@@ -797,7 +816,7 @@ mod koala_bear_d4_poseidon2_salted {
                  log_blowup: descriptor.log_blowup() as usize,
                  log_final_poly_len: descriptor.log_final_poly_len() as usize,
                  num_queries: descriptor.num_queries() as usize,
@@ -1413,7 +1779,7 @@ diff --git a/recursion/src/builtin_config/fri/recursion.rs b/recursion/src/built
                  commit_proof_of_work_bits: descriptor.commit_pow_bits() as usize,
                  query_proof_of_work_bits: descriptor.query_pow_bits() as usize,
                  mmcs: ExtensionMmcs::new(commit_hiding_mmcs),
-@@ -839,3 +858,22 @@
+@@ -839,3 +858,22 @@ mod koala_bear_d4_poseidon2_salted {
          }
      }
  }
@@ -1437,9 +1803,10 @@ diff --git a/recursion/src/builtin_config/fri/recursion.rs b/recursion/src/built
 +    }
 +);
 diff --git a/recursion/src/builtin_config/registry.rs b/recursion/src/builtin_config/registry.rs
+index 652a74e..25fdbc1 100644
 --- a/recursion/src/builtin_config/registry.rs
 +++ b/recursion/src/builtin_config/registry.rs
-@@ -18,6 +18,7 @@
+@@ -18,6 +18,7 @@ use crate::verifier::VerifierLimits;
  #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
  #[repr(u16)]
  pub enum SuiteIdV1 {
@@ -1447,9 +1814,9 @@ diff --git a/recursion/src/builtin_config/registry.rs b/recursion/src/builtin_co
      BabyBearD4Poseidon2BinaryFri = 0x0101,
      BabyBearD4Poseidon1BinaryFri = 0x0102,
      KoalaBearD4Poseidon2BinaryFri = 0x0103,
-@@ -42,7 +43,8 @@
+@@ -42,7 +43,8 @@ pub enum SuiteIdV1 {
  }
-
+ 
  impl SuiteIdV1 {
 -    pub const ALL: [Self; 21] = [
 +    pub const ALL: [Self; 22] = [
@@ -1457,44 +1824,61 @@ diff --git a/recursion/src/builtin_config/registry.rs b/recursion/src/builtin_co
          Self::BabyBearD4Poseidon2BinaryFri,
          Self::BabyBearD4Poseidon1BinaryFri,
          Self::KoalaBearD4Poseidon2BinaryFri,
-@@ -72,6 +74,7 @@
-
+@@ -72,6 +74,7 @@ impl SuiteIdV1 {
+ 
      pub const fn from_u16(raw: u16) -> Result<Self, BuiltinConfigError> {
          let suite = match raw {
 +            0xF824 => Self::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri,
              0x0101 => Self::BabyBearD4Poseidon2BinaryFri,
              0x0102 => Self::BabyBearD4Poseidon1BinaryFri,
              0x0103 => Self::KoalaBearD4Poseidon2BinaryFri,
-@@ -115,6 +118,7 @@
+@@ -115,6 +118,18 @@ impl SuiteIdV1 {
              proof_family,
              salt_elements,
          ) = match self {
-+            Self::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri => (KoalaBear, 8, Poseidon2, 24, 12, 24, 12, 2, RandomCodewordFri, 0),
++            Self::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri => (
++                KoalaBear,
++                8,
++                Poseidon2,
++                24,
++                12,
++                24,
++                12,
++                2,
++                RandomCodewordFri,
++                0,
++            ),
              Self::BabyBearD4Poseidon2BinaryFri => (BabyBear, 4, Poseidon2, 16, 8, 16, 8, 2, Fri, 0),
              Self::BabyBearD4Poseidon1BinaryFri => (BabyBear, 4, Poseidon1, 16, 8, 16, 8, 2, Fri, 0),
              Self::KoalaBearD4Poseidon2BinaryFri => {
-@@ -234,10 +238,10 @@
+@@ -234,9 +249,13 @@ impl SuiteIdV1 {
              challenger_rate,
              mmcs_width,
              mmcs_rate,
 -            digest_elements: match field {
-+            digest_elements: if extension_degree == 8 { 12 } else { match field {
-                 Goldilocks => 4,
-                 BabyBear | KoalaBear => 8,
--            },
-+            } },
+-                Goldilocks => 4,
+-                BabyBear | KoalaBear => 8,
++            digest_elements: if extension_degree == 8 {
++                12
++            } else {
++                match field {
++                    Goldilocks => 4,
++                    BabyBear | KoalaBear => 8,
++                }
+             },
              merkle_arity,
              proof_family,
-             salt_elements,
-@@ -249,6 +253,7 @@
+@@ -249,6 +268,9 @@ impl SuiteIdV1 {
          use Poseidon1Config as P1;
          use Poseidon2Config as P2;
          match self {
-+            Self::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri => PermConfig::poseidon2(P2::KOALA_BEAR_D1_W24),
++            Self::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri => {
++                PermConfig::poseidon2(P2::KOALA_BEAR_D1_W24)
++            }
              Self::BabyBearD4Poseidon1BinaryFri | Self::BabyBearD4Poseidon1RandomCodewordFri => {
                  PermConfig::poseidon1(P1::BABY_BEAR_D4_W16)
              }
-@@ -368,6 +373,7 @@
+@@ -368,6 +390,7 @@ pub struct FriConfigV1 {
      log_final_poly_len: u32,
      max_log_arity: u32,
      num_queries: u32,
@@ -1502,7 +1886,7 @@ diff --git a/recursion/src/builtin_config/registry.rs b/recursion/src/builtin_co
      commit_pow_bits: u32,
      query_pow_bits: u32,
      input_cap_height: u32,
-@@ -397,6 +403,7 @@
+@@ -397,6 +420,7 @@ impl FriConfigV1 {
              log_final_poly_len,
              max_log_arity,
              num_queries,
@@ -1510,12 +1894,10 @@ diff --git a/recursion/src/builtin_config/registry.rs b/recursion/src/builtin_co
              commit_pow_bits,
              query_pow_bits,
              input_cap_height,
-@@ -404,6 +411,16 @@
-             num_random_codewords,
-             salt_elements,
+@@ -406,6 +430,16 @@ impl FriConfigV1 {
          }
-+    }
-+
+     }
+ 
 +    /// Configure opening-batch grinding without changing the zero-work constructor.
 +    pub const fn with_batch_pow_bits(mut self, bits: u32) -> Self {
 +        self.batch_pow_bits = bits;
@@ -1524,10 +1906,12 @@ diff --git a/recursion/src/builtin_config/registry.rs b/recursion/src/builtin_co
 +
 +    pub const fn batch_pow_bits(&self) -> u32 {
 +        self.batch_pow_bits
-     }
-
++    }
++
      pub const fn suite(&self) -> SuiteIdV1 {
-@@ -502,7 +519,7 @@
+         self.suite
+     }
+@@ -502,7 +536,7 @@ impl FriConfigV1 {
              log_blowup: self.log_blowup as usize,
              log_final_poly_len: self.log_final_poly_len as usize,
              num_queries: self.num_queries as usize,
@@ -1536,7 +1920,7 @@ diff --git a/recursion/src/builtin_config/registry.rs b/recursion/src/builtin_co
              commit_proof_of_work_bits: self.commit_pow_bits as usize,
              query_proof_of_work_bits: self.query_pow_bits as usize,
              mmcs: (),
-@@ -513,10 +530,11 @@
+@@ -513,10 +547,11 @@ impl FriConfigV1 {
              FieldFamilyV1::Goldilocks => NativeFriParams::try_from_native::<Goldilocks, _>(&params),
          }
          .map_err(BuiltinConfigError::NativeFri)?;
@@ -1550,9 +1934,10 @@ diff --git a/recursion/src/builtin_config/registry.rs b/recursion/src/builtin_co
              params.query_proof_of_work_bits,
              params.num_queries,
 diff --git a/recursion/src/challenger/circuit.rs b/recursion/src/challenger/circuit.rs
+index 0d91e0f..c3caeda 100644
 --- a/recursion/src/challenger/circuit.rs
 +++ b/recursion/src/challenger/circuit.rs
-@@ -241,6 +241,35 @@
+@@ -241,6 +241,35 @@ impl<const WIDTH: usize, const RATE: usize, C: ChallengerPermConfig>
      ) where
          EF: p3_field::Field,
      {
@@ -1589,18 +1974,19 @@ diff --git a/recursion/src/challenger/circuit.rs b/recursion/src/challenger/circ
              // First permutation: CTL-verify rate only; capacity is zero without witness CTL.
              let inputs: [Option<Target>; 16] =
 diff --git a/recursion/src/generation.rs b/recursion/src/generation.rs
+index 09eaaae..474b297 100644
 --- a/recursion/src/generation.rs
 +++ b/recursion/src/generation.rs
-@@ -981,7 +981,7 @@
+@@ -981,7 +981,7 @@ where
          _extra_params: Option<&[usize]>,
      ) -> Result<usize, GenerationError> {
          let num_challenges =
 -            1 + opening_proof.commit_phase_commits.len() + fri_proof_num_queries(opening_proof);
 +            2 + 2 * opening_proof.commit_phase_commits.len() + fri_proof_num_queries(opening_proof);
-
+ 
          Ok(num_challenges)
      }
-@@ -1025,7 +1025,7 @@
+@@ -1025,7 +1025,7 @@ where
          _extra_params: Option<&[usize]>,
      ) -> Result<usize, GenerationError> {
          let inner_proof = &opening_proof.1;
@@ -1608,11 +1994,11 @@ diff --git a/recursion/src/generation.rs b/recursion/src/generation.rs
 +        Ok(2 + 2 * inner_proof.commit_phase_commits.len() + fri_proof_num_queries(inner_proof))
      }
  }
-
-@@ -1067,6 +1067,10 @@
+ 
+@@ -1067,6 +1067,10 @@ where
      let mut challenges =
          Vec::with_capacity(2 + 2 * opening_proof.commit_phase_commits.len() + num_queries);
-
+ 
 +    // Native canonical encoding pins the unused zero-difficulty witness to zero.
 +    if batch_pow_bits == 0 && opening_proof.batch_pow_witness != Val::<SC>::ZERO {
 +        return Err(GenerationError::InvalidPowWitness);
@@ -1620,7 +2006,7 @@ diff --git a/recursion/src/generation.rs b/recursion/src/generation.rs
      // PCS phase: domain separator, claimed openings, batch grind, `alpha`.
      observe_opened_values::<SC>(challenger, coms_to_verify, batch_pow_bits);
      if !challenger.check_witness(batch_pow_bits, opening_proof.batch_pow_witness) {
-@@ -1174,3 +1178,98 @@
+@@ -1174,3 +1178,98 @@ where
      let beta = challenger.sample_algebra_element::<SC::Challenge>();
      vec![alpha, beta]
  }
@@ -1720,20 +2106,22 @@ diff --git a/recursion/src/generation.rs b/recursion/src/generation.rs
 +    }
 +}
 diff --git a/recursion/src/input_contract/fri.rs b/recursion/src/input_contract/fri.rs
+index 7a6321c..af1401e 100644
 --- a/recursion/src/input_contract/fri.rs
 +++ b/recursion/src/input_contract/fri.rs
-@@ -17,6 +17,7 @@
+@@ -17,6 +17,7 @@ pub struct FriShape<C, I, M, W> {
      pub(crate) commit_phase_openings: Vec<FriCommitStepShape<M>>,
      pub(crate) final_poly: usize,
      pub(crate) query_pow_witness: W,
 +    pub(crate) batch_pow_witness: W,
  }
-
+ 
  /// Allocation-relevant structure of one FRI commit-phase opening round.
 diff --git a/recursion/src/pcs/fri/context.rs b/recursion/src/pcs/fri/context.rs
+index c64d79e..d03e3bc 100644
 --- a/recursion/src/pcs/fri/context.rs
 +++ b/recursion/src/pcs/fri/context.rs
-@@ -296,7 +296,7 @@
+@@ -296,7 +296,7 @@ where
      usage.add_final_poly_evaluations(limits, proof.final_poly.len())?;
      usage.add_scalar_elements(limits, proof.final_poly.len())?;
      usage.add_scalar_elements(limits, proof.commit_pow_witnesses.len())?;
@@ -1742,7 +2130,7 @@ diff --git a/recursion/src/pcs/fri/context.rs b/recursion/src/pcs/fri/context.rs
      usage.check(limits)?;
      Ok(usage)
  }
-@@ -420,7 +420,7 @@
+@@ -420,7 +420,7 @@ pub(crate) fn checked_flat_value_totals<EF: p3_field::Field>(
          "public phase caps and witnesses",
      )?;
      let public_values = checked_add_len(public_values, final_poly_len, "public final polynomial")?;
@@ -1751,7 +2139,7 @@ diff --git a/recursion/src/pcs/fri/context.rs b/recursion/src/pcs/fri/context.rs
      check_vec_len::<EF>(private_values, "FRI private values")?;
      check_vec_len::<EF>(public_values, "FRI public values")?;
      Ok(FriValueCounts {
-@@ -941,6 +941,9 @@
+@@ -941,6 +941,9 @@ where
          input_salt_elems,
          phase_salt_elems,
      )?;
@@ -1762,9 +2150,10 @@ diff --git a/recursion/src/pcs/fri/context.rs b/recursion/src/pcs/fri/context.rs
      let commitment_count = layout.commitment_count();
      if commitment_count > MAX_FRI_COMMITMENTS {
 diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
+index 2a1e7fa..711cb0d 100644
 --- a/recursion/src/pcs/fri/params.rs
 +++ b/recursion/src/pcs/fri/params.rs
-@@ -25,10 +25,6 @@
+@@ -25,10 +25,6 @@ pub enum FriInputError {
      MaxArityExceedsTwoAdicity,
      #[error("native FRI {name} proof-of-work bits are not supported by the field/word limits")]
      PowBitsOutOfRange { name: &'static str },
@@ -1775,7 +2164,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
      #[error("native FRI scalar {name} does not match recursive parameters")]
      ScalarMismatch { name: &'static str },
      #[error("native FRI has {native} queries but recursive verifier requires {minimum}")]
-@@ -60,6 +56,7 @@
+@@ -60,6 +56,7 @@ pub struct NativeFriParams {
      log_final_poly_len: usize,
      max_log_arity: usize,
      num_queries: usize,
@@ -1783,7 +2172,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
      commit_pow_bits: usize,
      query_pow_bits: usize,
  }
-@@ -81,13 +78,6 @@
+@@ -81,13 +78,6 @@ impl NativeFriParams {
          if params.log_blowup == 0 {
              return Err(FriInputError::ZeroBlowup);
          }
@@ -1797,7 +2186,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
          for (name, value) in [
              ("log_blowup", params.log_blowup),
              ("log_final_poly_len", params.log_final_poly_len),
-@@ -98,6 +88,7 @@
+@@ -98,6 +88,7 @@ impl NativeFriParams {
              }
          }
          for (name, bits) in [
@@ -1805,7 +2194,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
              ("commit", params.commit_proof_of_work_bits),
              ("query", params.query_proof_of_work_bits),
          ] {
-@@ -114,6 +105,7 @@
+@@ -114,6 +105,7 @@ impl NativeFriParams {
              log_final_poly_len: params.log_final_poly_len,
              max_log_arity: params.max_log_arity,
              num_queries: params.num_queries,
@@ -1813,18 +2202,18 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
              commit_pow_bits: params.commit_proof_of_work_bits,
              query_pow_bits: params.query_proof_of_work_bits,
          };
-@@ -135,6 +127,10 @@
-
-     pub const fn num_queries(&self) -> usize {
+@@ -137,6 +129,10 @@ impl NativeFriParams {
          self.num_queries
-+    }
-+
+     }
+ 
 +    pub const fn batch_pow_bits(&self) -> usize {
 +        self.batch_pow_bits
-     }
-
++    }
++
      pub const fn commit_pow_bits(&self) -> usize {
-@@ -175,6 +171,7 @@
+         self.commit_pow_bits
+     }
+@@ -175,6 +171,7 @@ impl NativeFriParams {
              return Err(FriInputError::MaxArityExceedsTwoAdicity);
          }
          for (name, bits) in [
@@ -1832,7 +2221,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
              ("commit", self.commit_pow_bits),
              ("query", self.query_pow_bits),
          ] {
-@@ -200,6 +197,11 @@
+@@ -200,6 +197,11 @@ impl NativeFriParams {
                  recursive.log_final_poly_len,
              ),
              ("max_log_arity", self.max_log_arity, recursive.max_log_arity),
@@ -1844,7 +2233,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
              (
                  "commit_pow_bits",
                  self.commit_pow_bits,
-@@ -257,6 +259,8 @@
+@@ -257,6 +259,8 @@ pub struct FriVerifierParams {
      /// Since Plonky3 0.8 the fold schedule is derived from this cap and the input heights, and
      /// the cap is bound into the FRI transcript's domain separator.
      max_log_arity: usize,
@@ -1853,10 +2242,11 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
      /// Number of commit-phase proof-of-work bits required
      commit_pow_bits: usize,
      /// Number of query proof-of-work bits required
-@@ -287,6 +291,30 @@
+@@ -286,6 +290,30 @@ impl FriVerifierParams {
+         query_pow_bits: usize,
          num_queries: usize,
          permutation_config: impl Into<PermConfig>,
-     ) -> Result<Self, FriVerifierParamsError> {
++    ) -> Result<Self, FriVerifierParamsError> {
 +        Self::try_with_mmcs_and_batch(
 +            log_blowup,
 +            log_final_poly_len,
@@ -1880,11 +2270,10 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
 +        query_pow_bits: usize,
 +        num_queries: usize,
 +        permutation_config: impl Into<PermConfig>,
-+    ) -> Result<Self, FriVerifierParamsError> {
+     ) -> Result<Self, FriVerifierParamsError> {
          if num_queries == 0 {
              return Err(FriVerifierParamsError::ZeroQueries);
-         }
-@@ -294,6 +322,7 @@
+@@ -294,6 +322,7 @@ impl FriVerifierParams {
              ("log_blowup", log_blowup),
              ("log_final_poly_len", log_final_poly_len),
              ("max_log_arity", max_log_arity),
@@ -1892,7 +2281,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
              ("commit_pow_bits", commit_pow_bits),
              ("query_pow_bits", query_pow_bits),
          ] {
-@@ -314,6 +343,7 @@
+@@ -314,6 +343,7 @@ impl FriVerifierParams {
              log_blowup,
              log_final_poly_len,
              max_log_arity,
@@ -1900,10 +2289,10 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
              commit_pow_bits,
              query_pow_bits,
              num_queries,
-@@ -344,6 +374,31 @@
+@@ -344,6 +374,31 @@ impl FriVerifierParams {
          .expect("invalid production FRI verifier parameters")
      }
-
+ 
 +    /// Infallible compatibility form with explicit opening-batch difficulty.
 +    #[allow(clippy::too_many_arguments)]
 +    pub fn with_mmcs_and_batch(
@@ -1932,7 +2321,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
      pub const fn log_blowup(&self) -> usize {
          self.log_blowup
      }
-@@ -353,6 +408,10 @@
+@@ -353,6 +408,10 @@ impl FriVerifierParams {
      pub const fn max_log_arity(&self) -> usize {
          self.max_log_arity
      }
@@ -1943,10 +2332,11 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
      pub const fn commit_pow_bits(&self) -> usize {
          self.commit_pow_bits
      }
-@@ -431,6 +490,29 @@
+@@ -430,6 +489,29 @@ mod tests {
+         }
      }
-
-     #[test]
+ 
++    #[test]
 +    fn native_snapshot_accepts_and_binds_positive_batch_pow() {
 +        let mut params = native(1, 0, 1, 2, 0, 0);
 +        params.batch_proof_of_work_bits = 4;
@@ -1969,11 +2359,10 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
 +        );
 +    }
 +
-+    #[test]
+     #[test]
      fn native_snapshot_rejects_zero_folds_queries_and_field_pow() {
          assert_eq!(
-             NativeFriParams::try_from_native::<BabyBear, _>(&native(1, 0, 0, 2, 0, 0)),
-@@ -526,6 +608,7 @@
+@@ -526,6 +608,7 @@ mod tests {
              log_final_poly_len: 0,
              max_log_arity: 1,
              num_queries: 1,
@@ -1981,7 +2370,7 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
              commit_pow_bits: 0,
              query_pow_bits: 0,
          };
-@@ -538,6 +621,7 @@
+@@ -538,6 +621,7 @@ mod tests {
              log_final_poly_len: 1,
              max_log_arity: 1,
              num_queries: 1,
@@ -1990,10 +2379,11 @@ diff --git a/recursion/src/pcs/fri/params.rs b/recursion/src/pcs/fri/params.rs
              query_pow_bits: 0,
          };
 diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
+index 2f6fbcb..e1eb40f 100644
 --- a/recursion/src/pcs/fri/targets.rs
 +++ b/recursion/src/pcs/fri/targets.rs
-@@ -216,10 +216,11 @@
-
+@@ -216,10 +216,11 @@ fn num_queries_from_counts(from_rounds: Option<usize>, from_batches: Option<usiz
+ 
  /// The domain-separator seed of the native FRI PCS transcript for a set of claims.
  ///
 -/// The recursive verifier only accepts a zero batch-phase difficulty (see
@@ -2006,7 +2396,7 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
  ) -> Vec<F>
  where
      F: PrimeField64,
-@@ -228,10 +229,30 @@
+@@ -228,12 +229,32 @@ where
      domain_separator_seed(
          &p3_fri::PcsShape {
              claimed_evaluation_counts,
@@ -2015,8 +2405,8 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
          }
          .domain_separator::<F, EF>(),
      )
-+}
-+
+ }
+ 
 +/// Check the opening-batch nonce without absorbing anything at zero difficulty.
 +/// A canonical zero nonce is still required when this transcript site is disabled.
 +fn check_batch_pow<F, EF, const WIDTH: usize, const RATE: usize, C: crate::ChallengerPermConfig>(
@@ -2035,18 +2425,20 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
 +    } else {
 +        challenger.check_pow_witness(circuit, bits, witness)
 +    }
- }
-
++}
++
  /// The domain-separator seed of the native FRI low-degree test for a fold schedule.
-@@ -298,6 +319,7 @@
+ pub(crate) fn fri_transcript_seed<F, EF>(
+     params: &FriVerifierParams,
+@@ -298,6 +319,7 @@ pub struct FriProofTargets<
      pub query_proofs: Vec<QueryProofTargets<F, EF, InputProof, RecMmcs>>,
      pub final_poly: Vec<Target>,
      pub pow_witness: Witness,
 +    pub batch_pow_witness: Witness,
      pub log_arities: Vec<usize>,
  }
-
-@@ -376,13 +398,14 @@
+ 
+@@ -376,13 +398,14 @@ where
              query_proofs,
              final_poly,
              pow_witness: Witness::new(circuit, &input.query_pow_witness),
@@ -2054,7 +2446,7 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
              log_arities,
          }
      }
-
+ 
      fn get_values(input: &Self::Input) -> Vec<EF> {
          let FriProof {
 -            batch_pow_witness: _,
@@ -2062,16 +2454,16 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
              commit_phase_commits,
              commit_pow_witnesses,
              input_openings,
-@@ -408,6 +431,7 @@
+@@ -408,6 +431,7 @@ where
              }))
              .chain(final_poly.iter().copied())
              .chain(Witness::get_values(query_pow_witness))
 +            .chain(Witness::get_values(batch_pow_witness))
              .collect()
      }
-
-@@ -447,7 +471,7 @@
-
+ 
+@@ -447,7 +471,7 @@ where
+ 
      fn input_shape(input: &Self::Input) -> Result<Self::Shape, VerificationError> {
          let FriProof {
 -            batch_pow_witness: _,
@@ -2079,7 +2471,7 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
              commit_phase_commits,
              commit_pow_witnesses,
              input_openings,
-@@ -509,6 +533,7 @@
+@@ -509,6 +533,7 @@ where
                  .collect::<Result<_, VerificationError>>()?,
              final_poly: final_poly.len(),
              query_pow_witness: Witness::input_shape(query_pow_witness)?,
@@ -2087,9 +2479,9 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
          })
      }
  }
-@@ -2053,14 +2078,17 @@
+@@ -2053,14 +2078,17 @@ where
      type VerifierParams = FriVerifierParams;
-
+ 
      fn claims_transcript_seed(
 -        _params: &Self::VerifierParams,
 +        params: &Self::VerifierParams,
@@ -2107,10 +2499,10 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
      }
      type RecursiveProof = RecursiveFriProof<
          SC,
-@@ -2092,8 +2120,13 @@
+@@ -2092,8 +2120,13 @@ where
          // For batch-STARK, the caller must observe in per-instance order to match native.
          // For single-STARK, the caller can use opened_values.observe() directly.
-
+ 
 -        // Sample FRI alpha (for batch opening reduction) - extension field. The batch phase
 -        // grinds nothing: the recursive verifier only accepts a zero batch difficulty.
 +        // Native PCS order: claimed evaluations, opening-batch witness, then alpha.
@@ -2121,11 +2513,11 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
 +            fri_proof.batch_pow_witness.witness,
 +        )?;
          let fri_alpha = challenger.sample_ext(circuit);
-
+ 
          // The low-degree test opens its own transcript with a seed bound to its shape.
-@@ -2568,14 +2601,17 @@
+@@ -2568,14 +2601,17 @@ where
      type VerifierParams = FriVerifierParams;
-
+ 
      fn claims_transcript_seed(
 -        _params: &Self::VerifierParams,
 +        params: &Self::VerifierParams,
@@ -2143,10 +2535,10 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
      }
      type RecursiveProof = RecursiveHidingFriProof<
          SC,
-@@ -2600,6 +2636,12 @@
+@@ -2600,6 +2636,12 @@ where
      {
          let fri_proof = &proof_targets.inner_proof;
-
+ 
 +        check_batch_pow::<Val<SC>, SC::Challenge, WIDTH, RATE, C>(
 +            circuit,
 +            challenger,
@@ -2156,8 +2548,8 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
          let fri_alpha = challenger.sample_ext(circuit);
          challenger.observe_seed(
              circuit,
-@@ -3274,17 +3316,17 @@
-
+@@ -3274,17 +3316,17 @@ mod prepared_shape_tests {
+ 
          let ordinary_counts = checked_flat_value_totals::<Challenge>(56, 80, 0, 24, 3, 1).unwrap();
          assert_eq!(ordinary_counts.private_values(), 136);
 -        assert_eq!(ordinary_counts.public_values(), 29);
@@ -2175,10 +2567,10 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
 -        assert!(checked_flat_value_totals::<Challenge>(0, 0, 0, public_limit - 2, 1, 1,).is_err());
 +        assert!(checked_flat_value_totals::<Challenge>(0, 0, 0, public_limit - 4, 1, 1,).is_ok());
 +        assert!(checked_flat_value_totals::<Challenge>(0, 0, 0, public_limit - 3, 1, 1,).is_err());
-
+ 
          let tail_overflow = checked_flat_value_totals::<Challenge>(1, 0, usize::MAX, 0, 0, 0)
              .expect_err("late hiding-tail addition must reject");
-@@ -3319,7 +3361,7 @@
+@@ -3319,7 +3361,7 @@ mod prepared_shape_tests {
          assert!(matches!(
              query_overflow,
              VerificationError::InvalidProofShape(message)
@@ -2187,7 +2579,7 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
          ));
          assert!(checked_cap_public_values_len::<Challenge>(2, 4,).is_ok());
          assert!(checked_cap_public_values_len::<Challenge>(q_limit / 4 + 1, 4,).is_err());
-@@ -3443,7 +3485,7 @@
+@@ -3443,7 +3485,7 @@ mod prepared_shape_tests {
          )
          .expect("ordinary counted collector accepts the fixture");
          assert_eq!(counts.private_values(), 136);
@@ -2196,7 +2588,7 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
          assert!(<OpeningTargets as CheckedRecursive<Challenge>>::validate_input(&baseline).is_ok());
          let old = <OpeningTargets as CheckedFriOpening<
              Challenge,
-@@ -3881,7 +3923,7 @@
+@@ -3881,7 +3923,7 @@ mod prepared_shape_tests {
          )
          .expect("hiding counted collector accepts the fixture");
          assert_eq!(counts.private_values(), 310);
@@ -2205,12 +2597,10 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
          assert!(
              <HidingOpeningTargets as CheckedRecursive<Challenge>>::validate_input(&baseline)
                  .is_ok()
-@@ -4603,6 +4645,133 @@
-             VerificationError::InvalidProofShape(message)
-                 if message.contains("round count mismatch")
+@@ -4605,6 +4647,133 @@ mod prepared_shape_tests {
          ));
-+    }
-+
+     }
+ 
 +    fn run_batch_pow_transcript(
 +        bits: usize,
 +        claims: &[F],
@@ -2336,10 +2726,12 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
 +                .domain_separator::<F, Challenge>()
 +            )
 +        );
-     }
-
++    }
++
      fn frontier(count: usize) -> PrunedMerklePaths<F, DIGEST_ELEMS> {
-@@ -5141,7 +5310,7 @@
+         PrunedMerklePaths {
+             sibling_hashes: vec![[F::ZERO; DIGEST_ELEMS]; count],
+@@ -5141,7 +5310,7 @@ mod prepared_shape_tests {
              max_matrix_width: 2,
              max_final_poly_evaluations: 1,
              max_cap_roots: 1,
@@ -2348,16 +2740,16 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
              max_compressed_frontier_hashes: 5,
              ..VerifierLimits::default()
          };
-@@ -5156,7 +5325,7 @@
+@@ -5156,7 +5325,7 @@ mod prepared_shape_tests {
          assert_eq!(usage.cap_roots, 1);
          assert_eq!(usage.final_poly_evaluations, 1);
          assert_eq!(usage.compressed_frontier_hashes, 5);
 -        assert_eq!(usage.scalar_elements, 17);
 +        assert_eq!(usage.scalar_elements, 18);
-
+ 
          for (limits, component) in [
              (
-@@ -5210,7 +5379,7 @@
+@@ -5210,7 +5379,7 @@ mod prepared_shape_tests {
              ),
              (
                  VerifierLimits {
@@ -2366,7 +2758,7 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
                      ..exact
                  },
                  "scalar elements",
-@@ -5301,7 +5470,7 @@
+@@ -5301,7 +5470,7 @@ mod prepared_shape_tests {
          proof.1.commit_phase_openings[0].opening_proof.1 = frontier(3);
          let exact = VerifierLimits {
              max_matrix_width: 4,
@@ -2375,14 +2767,14 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
              max_compressed_frontier_hashes: 5,
              ..VerifierLimits::default()
          };
-@@ -5310,13 +5479,13 @@
+@@ -5310,13 +5479,13 @@ mod prepared_shape_tests {
              <RecHidingMmcs as RecursiveMmcs<F, Challenge>>::Commitment,
          >>::check_fri_resources(&proof, &exact)
          .expect("hiding proof is accepted at its literal resource boundaries");
 -        assert_eq!(usage.scalar_elements, 26);
 +        assert_eq!(usage.scalar_elements, 27);
          assert_eq!(usage.compressed_frontier_hashes, 5);
-
+ 
          for (limits, component) in [
              (
                  VerifierLimits {
@@ -2392,31 +2784,38 @@ diff --git a/recursion/src/pcs/fri/targets.rs b/recursion/src/pcs/fri/targets.rs
                  },
                  "scalar elements",
 diff --git a/recursion/src/pcs/mmcs.rs b/recursion/src/pcs/mmcs.rs
+index 3c9b2ca..bf25497 100644
 --- a/recursion/src/pcs/mmcs.rs
 +++ b/recursion/src/pcs/mmcs.rs
-@@ -11,7 +11,7 @@
+@@ -11,7 +11,10 @@ use p3_commit::{
      CommitmentOpening, CommitmentWithOpeningPoints, MatrixOpening, Mmcs, PointOpening,
  };
  use p3_field::coset::TwoAdicMultiplicativeCoset;
 -use p3_field::{BasedVectorSpace, ExtensionField, Field, PackedValue, PrimeField64, TwoAdicField};
-+use p3_field::{BasedVectorSpace, ExtensionField, Field, PackedValue, PrimeCharacteristicRing, PrimeField64, TwoAdicField};
++use p3_field::{
++    BasedVectorSpace, ExtensionField, Field, PackedValue, PrimeCharacteristicRing, PrimeField64,
++    TwoAdicField,
++};
  use p3_fri::verifier::{FriError, PowPhase, fold_query, open_inputs};
  use p3_fri::{
      BatchMultiOpening, FriFoldingStrategy, FriParameters, FriProof, FriShape, TwoAdicFriFolding,
-@@ -1297,6 +1297,9 @@
+@@ -1297,6 +1300,11 @@ where
          }
      }
-
-+    if params.batch_proof_of_work_bits == 0 && proof.batch_pow_witness != <Challenger as GrindingChallenger>::Witness::ZERO {
+ 
++    if params.batch_proof_of_work_bits == 0
++        && proof.batch_pow_witness != <Challenger as GrindingChallenger>::Witness::ZERO
++    {
 +        return Err(FriError::InvalidPowWitness(PowPhase::Batch));
 +    }
      // Only after the complete borrowed schedule/proof preflight may transcript
      // replay begin. The challenger sits after the PCS transcript's claimed openings; finish the
      // PCS batch phase, then open the low-degree test's own transcript with its seed.
 diff --git a/recursion/src/prepared/input.rs b/recursion/src/prepared/input.rs
+index 1c858c8..9dc525f 100644
 --- a/recursion/src/prepared/input.rs
 +++ b/recursion/src/prepared/input.rs
-@@ -685,7 +685,7 @@
+@@ -685,7 +685,7 @@ where
                      proof.ext_degree
                  )));
              }
@@ -2425,48 +2824,58 @@ diff --git a/recursion/src/prepared/input.rs b/recursion/src/prepared/input.rs
                  return Err(VerificationError::InvalidProofShape(format!(
                      "unsupported batch proof ext_degree {}",
                      proof.ext_degree
-@@ -712,6 +712,12 @@
+@@ -717,6 +717,12 @@ where
+                     table_public_inputs,
                      &non_primitive_provers,
                  )?,
-                 5 => reconstruct_and_validate_public_inputs::<SC, 5>(
++                8 => reconstruct_and_validate_public_inputs::<SC, 8>(
 +                    config,
 +                    proof,
 +                    table_public_inputs,
 +                    &non_primitive_provers,
 +                )?,
-+                8 => reconstruct_and_validate_public_inputs::<SC, 8>(
-                     config,
-                     proof,
-                     table_public_inputs,
+                 degree => {
+                     return Err(VerificationError::InvalidProofShape(format!(
+                         "unsupported batch proof ext_degree {degree}"
 diff --git a/recursion/src/verifier/batch_stark.rs b/recursion/src/verifier/batch_stark.rs
+index 77a44ef..2dfe62e 100644
 --- a/recursion/src/verifier/batch_stark.rs
 +++ b/recursion/src/verifier/batch_stark.rs
-@@ -2677,7 +2677,7 @@
+@@ -2676,8 +2676,10 @@ mod create_alu_air_tests {
+             })
              .collect::<Vec<_>>();
          let claims = collect_opened_values_circuit::<Config>(&target_instances, &[], &layout);
-         let seed =
+-        let seed =
 -            crate::pcs::fri::fri_pcs_transcript_seed::<F, EF>(claimed_evaluation_counts(&claims));
-+            crate::pcs::fri::fri_pcs_transcript_seed::<F, EF>(claimed_evaluation_counts(&claims), 0);
++        let seed = crate::pcs::fri::fri_pcs_transcript_seed::<F, EF>(
++            claimed_evaluation_counts(&claims),
++            0,
++        );
          observe_claims_circuit::<Config, Poseidon2Config, WIDTH, RATE>(
              &mut circuit,
              &mut circuit_challenger,
 diff --git a/recursion/tests/builtin_config_registry.rs b/recursion/tests/builtin_config_registry.rs
+index 7b2aaba..4ece1fb 100644
 --- a/recursion/tests/builtin_config_registry.rs
 +++ b/recursion/tests/builtin_config_registry.rs
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,10 @@ use p3_recursion::builtin_config::{
  };
-
+ 
  const SUITES: &[(u16, SuiteIdV1)] = &[
-+    (0xF824, SuiteIdV1::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri),
++    (
++        0xF824,
++        SuiteIdV1::ExperimentalKoalaBearD8Poseidon2W24RandomCodewordFri,
++    ),
      (0x0101, SuiteIdV1::BabyBearD4Poseidon2BinaryFri),
      (0x0102, SuiteIdV1::BabyBearD4Poseidon1BinaryFri),
      (0x0103, SuiteIdV1::KoalaBearD4Poseidon2BinaryFri),
 diff --git a/recursion/tests/common/mod.rs b/recursion/tests/common/mod.rs
+index fd87edf..31ad36a 100644
 --- a/recursion/tests/common/mod.rs
 +++ b/recursion/tests/common/mod.rs
-@@ -407,12 +407,21 @@
+@@ -407,12 +407,21 @@ where
  pub(crate) type KoalaBearD4Backend = FriRecursionBackendForExt<4, 16, 8, Poseidon2Config>;
-
+ 
  fn koala_bear_d4_recursion_config(pow_bits: usize) -> KoalaBearD4RecursionConfig {
 -    let (val_mmcs, fri_params) = test_fri_instance_with_pow_bits(pow_bits);
 +    koala_bear_d4_recursion_config_with_batch(pow_bits, 0)
@@ -2488,24 +2897,25 @@ diff --git a/recursion/tests/common/mod.rs b/recursion/tests/common/mod.rs
          native_fri_params.commit_pow_bits(),
          native_fri_params.query_pow_bits(),
          native_fri_params.num_queries(),
-@@ -442,6 +451,15 @@
-     pow_bits: usize,
- ) -> (KoalaBearD4RecursionConfig, KoalaBearD4Backend) {
-     let config = koala_bear_d4_recursion_config(pow_bits);
+@@ -447,6 +456,15 @@ pub(crate) fn koala_bear_d4_recursion_config_and_backend_with_pow_bits(
+     (config, backend)
+ }
+ 
++pub(crate) fn koala_bear_d4_recursion_config_and_backend_with_batch_pow_bits(
++    batch_pow_bits: usize,
++) -> (KoalaBearD4RecursionConfig, KoalaBearD4Backend) {
++    let config = koala_bear_d4_recursion_config_with_batch(0, batch_pow_bits);
 +    let backend = FriRecursionBackend::<16, 8, _>::new(Poseidon2Config::KOALA_BEAR_D4_W16)
 +        .for_extension_degree::<4>();
 +    (config, backend)
 +}
 +
-+pub(crate) fn koala_bear_d4_recursion_config_and_backend_with_batch_pow_bits(
-+    batch_pow_bits: usize,
-+) -> (KoalaBearD4RecursionConfig, KoalaBearD4Backend) {
-+    let config = koala_bear_d4_recursion_config_with_batch(0, batch_pow_bits);
-     let backend = FriRecursionBackend::<16, 8, _>::new(Poseidon2Config::KOALA_BEAR_D4_W16)
-         .for_extension_degree::<4>();
-     (config, backend)
+ /// Everything [`solve_fixed_point`](p3_recursion::solve_fixed_point) needs to build/probe a
+ /// first recursion layer over a KoalaBear D4 base batch-STARK proof.
+ pub(crate) struct KoalaBearD4FirstLayerFixture {
 diff --git a/recursion/tests/d8_scalar_w24.rs b/recursion/tests/d8_scalar_w24.rs
 new file mode 100644
+index 0000000..fa2b89c
 --- /dev/null
 +++ b/recursion/tests/d8_scalar_w24.rs
 @@ -0,0 +1,571 @@
@@ -3081,14 +3491,13 @@ new file mode 100644
 +    phase("scalar_witness_bus.complete");
 +}
 diff --git a/recursion/tests/prepared_layer.rs b/recursion/tests/prepared_layer.rs
+index 3548875..85a18c6 100644
 --- a/recursion/tests/prepared_layer.rs
 +++ b/recursion/tests/prepared_layer.rs
-@@ -239,6 +239,82 @@
-         .verifier()
-         .verify(&second_output.0, &second_statement)
+@@ -241,6 +241,82 @@ fn whir_trusted_batch_statement_replay_uses_each_caller_expected_vector() {
          .unwrap();
-+}
-+
+ }
+ 
 +#[test]
 +fn positive_opening_batch_grinding_full_and_prepared_recursion() {
 +    let n = 1 << 6;
@@ -3163,6 +3572,8 @@ diff --git a/recursion/tests/prepared_layer.rs b/recursion/tests/prepared_layer.
 +                .is_err()
 +        );
 +    }
- }
-
++}
++
  #[test]
+ fn fri_uni_prepared_layer_reuses_varied_witnesses_after_reference_drop() {
+     let log_n = 10;

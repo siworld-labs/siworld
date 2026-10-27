@@ -25,6 +25,45 @@ SUITE = 'KoalaBear-D8-Poseidon2-W24-digest12'
 PARAMETERS = {'log_blowup': 8, 'num_queries': 36, 'query_pow_bits': 20,
               'batch_pow_bits': 20, 'commit_pow_bits': 0, 'max_log_arity': 1}
 EVENTS = ('max', 'oom', 'oom_kill', 'oom_group_kill')
+CURRENT_STAGE = 'controller'
+STAGES = frozenset(('controller', 'membership', 'recorder-oom-protection',
+    'initial-counters', 'proof-launch', 'proof-wait', 'final-counters', 'result-write'))
+ERROR_FILES = frozenset(('oom_score_adj', 'memory.max', 'memory.swap.max', 'memory.oom.group',
+    'memory.peak', 'memory.current', 'memory.swap.current', 'memory.events',
+    'memory.events.local', 'cpu.stat', 'cpu.max', 'cgroup.procs'))
+
+
+def startup_diagnostic(text):
+    """Export fixed error labels, never arbitrary systemd stderr or host paths."""
+    for line in text.splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and value.get('event') == 'native-cgroup-diagnostic-failed':
+            result = {'category': 'scope-recorder-failure'}
+            if value.get('classification') in {'OSError', 'PermissionError', 'FileNotFoundError',
+                    'ValueError', 'CalledProcessError', 'TimeoutExpired', 'ProcessLookupError',
+                    'SubprocessError'}:
+                result['classification'] = value['classification']
+            if value.get('stage') in STAGES:
+                result['stage'] = value['stage']
+            number = value.get('os_error_number')
+            if type(number) is int and 0 <= number <= 4096:
+                result['os_error_number'] = number
+            if value.get('kernel_file') in ERROR_FILES:
+                result['kernel_file'] = value['kernel_file']
+            return result
+    patterns = (('Failed to connect to bus', 'systemd-bus-unavailable'),
+        ('Unknown assignment', 'systemd-property-rejected'),
+        ('Unknown property', 'systemd-property-rejected'),
+        ('unrecognized option', 'systemd-option-rejected'),
+        ('Failed to start transient scope unit', 'systemd-scope-startup-rejected'),
+        ('a password is required', 'sudo-password-required'),
+        ('Failed to find executable', 'scope-executable-missing'),
+        ('Failed to execute', 'scope-executable-failed'))
+    return {'category': next((label for needle, label in patterns if needle in text),
+                             'scope-no-recorder-result')}
 
 
 def write_json(path, value):
@@ -114,6 +153,8 @@ def proof_metrics(kind, report):
 
 
 def child_command(kind, executable, output, index, run_id):
+    if kind == 'scope-smoke':
+        return ['/usr/bin/true']
     if kind == 'transaction':
         return [str(executable), '--log-blowup', '8', '--queries', '36', '--grinding', '20',
                 '--operation', 'four_worker', '--trial-index', str(index), '--run-id', run_id,
@@ -125,7 +166,8 @@ def child_command(kind, executable, output, index, run_id):
 
 def scope_command(unit, config):
     return ['sudo', '--non-interactive', 'systemd-run', '--scope', '--quiet', '--unit=' + unit,
-            '-p', 'MemoryAccounting=yes', '-p', 'MemoryMax=5G', '-p', 'MemorySwapMax=0',
+            '-p', 'MemoryAccounting=yes', '-p', 'CPUAccounting=yes',
+            '-p', 'MemoryMax=5G', '-p', 'MemorySwapMax=0',
             '-p', 'MemoryOOMGroup=no', '/usr/bin/python3', str(Path(__file__).resolve()),
             '--worker-config', str(config)]
 
@@ -136,12 +178,16 @@ def member_pids(group):
 
 
 def run_in_scope(config):
+    global CURRENT_STAGE
     if os.geteuid() != 0 or config['uid'] <= 0 or config['gid'] <= 0:
         raise ValueError('Root recorder and nonroot proof UID/GID required')
+    CURRENT_STAGE = 'membership'
     group = scoped_group(Path('/proc/self/cgroup').read_text(), config['unit'])
     # The proof inherits score 0, not this recorder's OOM immunity. Keeping the
     # tiny recorder alive preserves final kernel counters after proof OOMs.
+    CURRENT_STAGE = 'recorder-oom-protection'
     Path('/proc/self/oom_score_adj').write_text('-1000')
+    CURRENT_STAGE = 'initial-counters'
     before = snapshot(group)
     raw = Path(config['private_output'])
     command = child_command(config['kind'], config['executable'], raw,
@@ -156,10 +202,12 @@ def run_in_scope(config):
     started = time.monotonic_ns()
     timed_out = False
     with Path(config['private_log']).open('xb') as log:
+        CURRENT_STAGE = 'proof-launch'
         process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL,
             stdout=log, stderr=log, start_new_session=True, preexec_fn=unprivileged,
             env={'PATH': '/usr/bin:/bin', 'RAYON_NUM_THREADS': '4',
                  'SIWORLD_COMPOSITION_HIDING_WORKERS': '2'})
+        CURRENT_STAGE = 'proof-wait'
         try:
             code = process.wait(timeout=config['timeout'])
         except subprocess.TimeoutExpired:
@@ -178,6 +226,7 @@ def run_in_scope(config):
     until = time.monotonic() + 5
     while member_pids(group) and time.monotonic() < until:
         time.sleep(0.05)
+    CURRENT_STAGE = 'final-counters'
     after = snapshot(group)
     report = {'schema': 1, 'kind': config['kind'], 'trial': config['trial'],
         'scope_id': config['unit'], 'suite': SUITE, 'parameters': PARAMETERS,
@@ -188,11 +237,13 @@ def run_in_scope(config):
         'timing_scope': 'proof generation measured by the executable; process lifetime recorded separately',
         **assess(before, after, code, timed_out, remaining)}
     try:
-        report['proof'] = proof_metrics(config['kind'], json.loads(raw.read_text()))
+        report['proof'] = ({} if config['kind'] == 'scope-smoke'
+            else proof_metrics(config['kind'], json.loads(raw.read_text())))
         report['proof_report_valid'] = True
     except (OSError, ValueError, TypeError, KeyError):
         report['proof_report_valid'] = False
         report['resource_control_pass'] = False
+    CURRENT_STAGE = 'result-write'
     write_json(config['result'], report)
     return 0 if report['resource_control_pass'] else 1
 
@@ -208,19 +259,21 @@ def collect(args):
     write_json(args.output / 'hardware.json', {'hardware': hardware,
         'lscpu': evidence['lscpu_json'], 'lscpu_text': evidence['lscpu_text'],
         'hardware_profile': 'github-hosted-diagnostic', 'reserved_reference_machine': False})
-    executables = {'transaction': args.transaction.resolve(strict=True),
-                   'settlement': args.settlement.resolve(strict=True)}
+    executables = ({'scope-smoke': Path('/usr/bin/true')} if args.smoke_scope else
+        {'transaction': args.transaction.resolve(strict=True),
+         'settlement': args.settlement.resolve(strict=True)})
     hashes = {kind: {
         'launcher_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
-        'worker_sha256': hashlib.sha256((path.parent.parent / 'libexec' / path.name).read_bytes()).hexdigest()
+        'worker_sha256': hashlib.sha256((path if args.smoke_scope else
+            path.parent.parent / 'libexec' / path.name).read_bytes()).hexdigest()
         } for kind, path in executables.items()}
     outcomes = []
     # Config, raw fixture/digest reports, absolute paths and stderr are never
     # copied to the uploaded artifact directory.
     with tempfile.TemporaryDirectory(prefix='native-cgroup-', dir=args.private_parent) as temporary:
         private = Path(temporary)
-        for kind in ('transaction', 'settlement'):
-            for trial in range(1, 4):
+        for kind in executables:
+            for trial in range(1, 2 if args.smoke_scope else 4):
                 unit = 'siworld-native-' + uuid.uuid4().hex + '.scope'
                 result = args.output.resolve() / f'{kind}-{trial}.json'
                 config = {'unit': unit, 'uid': os.getuid(), 'gid': os.getgid(), 'kind': kind,
@@ -230,10 +283,12 @@ def collect(args):
                     'private_log': str(private / f'{kind}-{trial}.log')}
                 config_file = private / f'{kind}-{trial}-config.json'
                 write_json(config_file, config)
+                scope_log = private / f'{kind}-{trial}-scope.log'
                 try:
-                    completed = subprocess.run(scope_command(unit, config_file),
-                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL, timeout=args.timeout + 30, check=False)
+                    with scope_log.open('xb') as log:
+                        completed = subprocess.run(scope_command(unit, config_file),
+                            stdin=subprocess.DEVNULL, stdout=log,
+                            stderr=subprocess.STDOUT, timeout=args.timeout + 30, check=False)
                     returncode = completed.returncode
                 except subprocess.TimeoutExpired:
                     returncode = 124
@@ -246,6 +301,8 @@ def collect(args):
                 outcomes.append({'kind': kind, 'trial': trial,
                     **hashes[kind], 'scope_exit_code': returncode,
                     'result_present': saved is not None,
+                    'startup_diagnostic': (startup_diagnostic(scope_log.read_text(errors='replace'))
+                        if saved is None else None),
                     'resource_control_pass': bool(saved and saved['resource_control_pass']
                                                   and returncode == 0)})
     report = {'schema': 1, 'suite': SUITE, 'parameters': PARAMETERS,
@@ -254,7 +311,10 @@ def collect(args):
         'production_air_frozen': False, 'production_parameters_frozen': False,
         'acceptance': False, 'hardware_profile': 'github-hosted-diagnostic',
         'resource_scope': '5-GiB limit applies only to these diagnostics; no production budget is selected'}
+    report['measurement_kind'] = ('scope-smoke-only' if args.smoke_scope else 'native-proof-diagnostic')
     write_json(args.output / 'summary.json', report)
+    if args.smoke_scope:
+        print(json.dumps(report))
     return 0 if report['resource_control_pass'] else 1
 
 
@@ -265,18 +325,27 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--private-parent', type=Path, default=Path('.local'))
     parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--smoke-scope', action='store_true',
+                        help='Check recorder and kernel files with /usr/bin/true before compiling proofs')
     parser.add_argument('--worker-config', type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
         if args.worker_config:
             return run_in_scope(json.loads(args.worker_config.read_text()))
-        if not all((args.transaction, args.settlement, args.output)) or args.timeout <= 0:
-            parser.error('transaction, settlement, output and positive timeout are required')
+        if (not args.output or args.timeout <= 0
+                or (not args.smoke_scope and not all((args.transaction, args.settlement)))):
+            parser.error('output and positive timeout are required; proof mode also needs both executables')
         return collect(args)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         # Do not expose proof log contents or private host paths in CI output.
         print(json.dumps({'event': 'native-cgroup-diagnostic-failed',
-                          'classification': type(error).__name__, 'acceptance': False}))
+                          'classification': type(error).__name__,
+                          'stage': CURRENT_STAGE if CURRENT_STAGE in STAGES else 'controller',
+                          'os_error_number': error.errno if isinstance(error, OSError) else None,
+                          'kernel_file': (Path(error.filename).name
+                              if isinstance(error, OSError) and error.filename
+                              and Path(error.filename).name in ERROR_FILES else None),
+                          'acceptance': False}))
         return 2
 
 

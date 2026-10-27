@@ -91,7 +91,8 @@ reviews or resource acceptance.
   `commitment-collision` term.
 - `crates/bench-d8/src/common.rs`: width, rate, digest and application
   permutation geometry.
-- `crates/bench-stark/patches/recursion-d8-w24.patch`: D8 W24 random-codeword
+- `crates/bench-d8/dependency-lineage.toml` and the corresponding
+  `crates/bench-stark/patches/recursion-d8-w24.patch`: D8 W24 random-codeword
   suite registration with width 24, rate 12 and digest 12.
 - `crates/bench-d8/src/bin/v1_transaction_scan.rs::security` and
   `scripts/scan-v1-transaction.py::summarize_security`: classical reports,

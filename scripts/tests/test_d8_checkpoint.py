@@ -572,21 +572,16 @@ class BuilderTests(unittest.TestCase):
         cls.builder = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.builder)
 
-    def test_dependency_rewrite_keeps_features_and_exact_pin(self):
-        text = '\n'.join(name + ' = { git = "' + self.builder.URL + '", rev = "' + self.builder.PIN
+    def test_application_dependencies_require_the_direct_fork_pin(self):
+        text = '[workspace.dependencies]\n' + '\n'.join(
+            name + ' = { git = "' + self.builder.URL + '", rev = "' + self.builder.PIN
             + '", default-features = false, features = ["parallel"] }'
             for name in self.builder.DEPENDENCIES)
-        output = self.builder.rewrite_dependencies(text, Path('/synthetic/upstream'))
-        self.assertNotIn('git =', output)
-        self.assertNotIn('rev =', output)
-        self.assertEqual(output.count('features = ["parallel"]'), 3)
-        self.assertEqual(output.count('default-features = false'), 3)
-
-    def test_dependency_rewrite_rejects_another_revision(self):
-        text = '\n'.join(name + ' = { git = "' + self.builder.URL + '", rev = "' + 'a' * 40 + '" }'
-            for name in self.builder.DEPENDENCIES)
+        self.builder.validate_application_dependencies(text)
         with self.assertRaisesRegex(ValueError, 'exact pinned'):
-            self.builder.rewrite_dependencies(text, Path('/synthetic/upstream'))
+            self.builder.validate_application_dependencies(text.replace(self.builder.PIN, 'a' * 40))
+        with self.assertRaisesRegex(ValueError, 'exact pinned'):
+            self.builder.validate_application_dependencies(text.replace(self.builder.URL, self.builder.UPSTREAM_URL))
 
     def test_registry_pin_comparison_retains_versions_and_checksums(self):
         lock = ('[[package]]\nname = "one"\nversion = "1"\nsource = "registry+url"\nchecksum = "abc"\n'

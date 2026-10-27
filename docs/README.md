@@ -24,3 +24,4 @@ experiments are paused.
 
 - [Current protocol decisions](00-decisions.md)
 - [Commitment collision accounting](bht-security-accounting.md)
+- [D8 dependency patch and review boundary](d8-dependency-patch.md)

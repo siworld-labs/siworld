@@ -50,6 +50,8 @@ permanent. See [fee settlement](fee-settlement.md) for unresolved production gat
 
 Freeze the production AIR, deterministic codec maximum, dependency revision,
 trusted key and full security report before selecting production parameters.
+Pin the modified Plonky3-recursion source by the full revision and tree recorded
+in [the dependency lineage](d8-dependency-patch.md); no upstream merge is required.
 Choose the smallest eligible proof with four-worker generation at most two
 seconds. Measure generation and verification memory independently and bound
 malformed-input work before adopting mempool/DoS constants. A hosted cgroup

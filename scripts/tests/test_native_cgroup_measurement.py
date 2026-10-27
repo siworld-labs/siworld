@@ -35,11 +35,30 @@ class NativeCgroupTests(unittest.TestCase):
         command = CG.scope_command(self.UNIT, Path('/synthetic/config.json'))
         self.assertIn('--scope', command)
         self.assertIn('--unit=' + self.UNIT, command)
-        for prop in ('MemoryMax=5G', 'MemorySwapMax=0', 'MemoryOOMGroup=no', 'MemoryAccounting=yes'):
+        for prop in ('MemoryMax=5G', 'MemorySwapMax=0', 'MemoryOOMGroup=no', 'MemoryAccounting=yes', 'CPUAccounting=yes'):
             self.assertIn(prop, command)
         self.assertNotIn('--user', command)
         with self.assertRaises(ValueError):
             CG.scoped_group('0::/unrelated.scope', 'unrelated.scope')
+
+    def test_smoke_scope_cannot_execute_an_arbitrary_worker(self):
+        self.assertEqual(CG.child_command('scope-smoke', Path('/untrusted/worker'),
+            Path('/ignored/output'), 1, 'unused'), ['/usr/bin/true'])
+
+    def test_startup_errors_are_fixed_labels_without_host_paths(self):
+        text = 'Failed to connect to bus: /private/owner/sensitive'
+        self.assertEqual(CG.startup_diagnostic(text)['category'], 'systemd-bus-unavailable')
+        text = json.dumps({'event': 'native-cgroup-diagnostic-failed',
+            'classification': 'FileNotFoundError', 'stage': 'initial-counters',
+            'os_error_number': 2, 'kernel_file': 'cpu.max', 'private_path': '/private/owner'})
+        result = CG.startup_diagnostic(text)
+        self.assertEqual(result['kernel_file'], 'cpu.max')
+        self.assertEqual(result['stage'], 'initial-counters')
+        self.assertNotIn('private_path', result)
+        injected = json.dumps({'event': 'native-cgroup-diagnostic-failed',
+            'classification': '/private/owner', 'stage': '/private/owner',
+            'kernel_file': '/private/owner', 'os_error_number': '/private/owner'})
+        self.assertNotIn('/private/owner', str(CG.startup_diagnostic(injected)))
 
     def test_failed_proof_is_never_reported_as_resource_acceptance(self):
         before, after = self.counters(), self.counters()
