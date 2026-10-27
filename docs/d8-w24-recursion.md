@@ -488,10 +488,14 @@ approximately 0.744 seconds), approximately 11.6 milliseconds for single-core
 verification, and approximately 415,000--419,000 proof bytes. Every observed
 proof is below the adopted 524,288-byte comparison threshold.
 
-The corresponding diagnostic report gives 185 conjectured bits, 163.8 Johnson
-bits, 81.9 bits for the quantum-halved Johnson challenge union, and 123.3 BHT
-bits. These values are estimator output for this actual transaction AIR and do
-not constitute cryptographic approval. macOS supplied no Linux cgroup peak
+The corresponding PCS estimator report gives 185 classical conjectured bits
+and 163.8 classical Johnson bits for this actual transaction AIR. The separate
+selected quantum ledger gives 81.9 bits for the halved Johnson challenge union
+and 123.3 ideal BHT bits for the PCS commitment. The external BLAKE3-256
+ciphertext-byte binding has a nominal BHT exponent of 85.3 bits and is excluded
+from the PCS report. These calculations do not establish full-protocol security
+or cryptographic approval; see [collision accounting](bht-security-accounting.md).
+macOS supplied no Linux cgroup peak
 memory evidence; the trials therefore do not establish a memory budget or
 production acceptance. `production_selection_allowed` remains `false` until
 the qualified Linux build, cgroup measurement, pinned artifact bundle and
