@@ -3,7 +3,7 @@ name: Native D8 hosted cgroup diagnostics
 on:
   workflow_dispatch:
   push:
-    branches: ["codex/route-a-production-air"]
+    branches: ["feature/route-a-production-air"]
     paths:
       - ".github/workflows/d8-native-cgroup.yml"
       - "scripts/measure-native-cgroup.py"

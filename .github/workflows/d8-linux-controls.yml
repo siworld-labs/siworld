@@ -1,7 +1,7 @@
 name: Linux proof resource control
 on:
   push:
-    branches: ["codex/d8-w24-security-and-latency"]
+    branches: ["research/d8-w24-security-and-latency"]
     paths:
       - ".cargo/config.toml"
       - "scripts/measure-proof-cgroup.py"

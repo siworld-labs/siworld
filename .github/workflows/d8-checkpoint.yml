@@ -1,7 +1,7 @@
 name: D8 frozen performance checkpoint
 on:
   push:
-    branches: ["codex/d8-w24-security-and-latency"]
+    branches: ["research/d8-w24-security-and-latency"]
     paths:
       - "crates/bench-d8/**"
       - "crates/bench-stark/patches/recursion-d8-w24.patch"
