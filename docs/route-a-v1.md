@@ -1,12 +1,12 @@
 # Native Transaction Proof Design
 
-Status: reopened V1 multi-asset design with isolated native two-input/three-output
-AIR, codec, issuance and SI-reward settlement implementations in
-`crates/bench-multi-asset`. The new profile is not frozen or activated; the
-four-core two-second transaction-generation qualification is not met. See the
-[actual multi-asset evaluation](v1-multi-asset-evaluation.md) for the matching
-security, encoding and resource evidence. Node and durable-wallet integration,
-independent review and activation remain separate gates.
+Status: engineering-frozen native two-input/three-output transaction profile,
+with isolated codec, issuance and SI-reward settlement implementations in
+`crates/bench-multi-asset`. The [multi-asset profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+and [actual measurements](v1-multi-asset-evaluation.md) bind the selected
+parameters, actual-AIR security, source and public verifier key. Node/decoder
+and durable-wallet integration, independent review and activation remain
+separate gates.
 
 The prior two-output [engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
 remains an unchanged diagnostic baseline. Its key and parameter freeze do not
@@ -29,7 +29,7 @@ No network launch is authorized by this specification. Historical verifier
 activation is deferred until before mainnet.
 
 The engineering block target is 300 seconds, with 64 through 576 transaction
-positions in groups of 16. The minimum node uplink is 30 Mbps; 100 Mbps is recommended. Node integration,
+positions in groups of 16. The minimum node uplink is 43 Mbps; 100 Mbps is recommended. Node integration,
 block validity changes, pruning and checkpoint synchronization follow the
 [node and network integration plan](v1-node-network-plan.md). Proof parameters
 may be frozen before those implementations are complete; activation requires
@@ -293,9 +293,9 @@ the native proof and proof/relay-envelope context. Its fields are:
 | **Total** | | | **2,027** |
 
 A fee commitment adds 48 bytes and the canonical snapshot selector adds 40,
-for 2,115 permanent bytes per position. The proof cap remains 524,288 bytes.
-With the proposed 2,184-byte envelope prefix and 78-byte sidecar, the maximum
-combined transaction payload is 526,550 bytes. The body and permanent-record
+for 2,115 permanent bytes per position. The transaction proof cap is 655,360
+bytes. With the proposed 2,184-byte envelope prefix and 78-byte sidecar, the
+maximum combined transaction payload is 657,622 bytes. The body and permanent-record
 lengths are implemented and tested; the 2,184-byte production envelope prefix
 remains proposed. A 32-byte private asset ID consumes
 existing note padding, leaving 144 meaningful bytes and 64 zero-padding bytes
@@ -340,56 +340,55 @@ deterministic and atomic. Invalid input leaves state unchanged. Proof inputs
 must never select an untrusted verification key. Use synthetic fixtures and
 independent network identities.
 
-## Production parameter scan and capacity gate
+## Frozen transaction profile and capacity gate
 
-The isolated native relation and codec are implemented. The reopened scan covers every
-`log_blowup` in 4 through 8 with grinding in 16, 20 and 24. Select the smallest
-query count satisfying all security terms for each actual configuration. Record
-folding, commitment and batch grinding separately; varying one does not credit
-an unchecked site. Only rows passing the full security screen proceed to
-measurements.
+The qualified scan measures log blowups 5, 6, 7 and 8 with query and batch
+grinding 20 or 24, using the minimum query count passing the actual-AIR
+80-bit screen. All eight configurations receive three fresh four-worker
+measurements on the EPYC 7763, Ubuntu 24.04, two-exposed-core/four-vCPU
+reference class. Four Rayon workers and two hiding workers are fixed.
+Prover setup is separate; generation includes the complete native proof.
+Three samples do not establish a latency-tail guarantee.
 
-Run three trials on one qualified machine per selected configuration. Record
-proof-body and envelope bytes, one-core and four-core generation, single-core
-verification, actual worker settings, stage times, charged-memory peaks and
-failure attempts. Select the smallest canonical encoded proof whose four-core
-generation is at most two seconds. Freeze source, dependencies, AIR shape,
-trusted key, codec, security report and binary identities with the result.
-The manifest and matching security/resource reports establish parameter freeze
-only after every qualification gate passes. The current three-output profile
-does not meet the two-second generation criterion and remains unfrozen; see the
-[measured evaluation](v1-multi-asset-evaluation.md). Node/wallet integration and
-external review remain separate gates. Initial
-byte/CPU/in-flight policies are specified in the
-[node integration plan](v1-node-network-plan.md); local resource timeouts cannot
-invalidate an otherwise valid transaction or block.
+Require every generation trial to be at most two seconds, then choose the
+smallest maximum observed proof body among passing configurations. The
+selected profile is log blowup 7, 41 queries, query/batch grinding 20,
+commitment grinding zero, binary folding and final polynomial log length
+zero. Its three generation times are 1.332143/1.315662/1.316440 seconds and
+maximum cgroup peak is 531,668,992 bytes, including setup, proof, verification
+and descendants. The actual security ledger has quantum-halved Johnson
+challenge union 81.692219 bits; full errors and geometry are recorded in the
+[profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json).
 
-`MAX_LEAF_PROOF_LEN` remains **524,288 bytes (512 KiB)**. It is a fixed
-proof-body wire maximum, independent of the largest observed sample. Bound
-proof and transaction envelopes separately. The implemented public body is
-2,027 bytes; the 48-byte confidential fee commitment and 40-byte snapshot
-selector make the permanent record 2,115 bytes per position. Sidecars and
-transport framing are additional. Bound the complete canonical transaction
-envelope separately from the proof body.
+Set the multi-asset `MAX_LEAF_PROOF_LEN` to **655,360 bytes (640 KiB)**, the
+smallest 64-KiB multiple at least 10% above the largest selected sample
+(584,848 bytes). The resulting sample margin is 12.056%. This is an admission
+cap, not a deterministic proof-length theorem. Reject an oversized encoding;
+never reduce security or accept truncated data to meet the cap. Settlement
+and issuance keep separate 524,288-byte caps. The old two-output decoder and
+its frozen 512-KiB limit remain unchanged; prepare and qualify the new
+multi-asset shape/decoder before node activation.
 
-The old two-output 1,899-byte envelope prefix is a diagnostic baseline,
-not the multi-asset wire limit. The proposed three-output prefix is 2,184 bytes;
-with the proof cap and 78-byte sidecar, relay uses 526,550 bytes per position.
-The [complete conditional wire budget](v1-network-budget.md) accounts for
-settlement, inventories, framing, hybrid records, TCP/IP/link overhead, ACKs,
-handshakes, issuance and recovery. At 576 positions it uses approximately
-29.252 Mbps against the 30-Mbps minimum; 100 Mbps is recommended. Qualification
-requires actual packet and resource evidence, not this planning fit.
+The canonical public body remains 2,027 bytes, with 48 fee-commitment bytes
+and a 40-byte snapshot selector: 2,115 permanent bytes per position. The
+proposed 2,184-byte prefix gives a 657,544-byte maximum transaction envelope;
+with its 78-byte private sidecar the relay payload is 657,622 bytes.
 
-After the production relation and codec are frozen, if no eligible profile fits
-524,288 bytes, first select a larger blowup from the complete scan. If none
-fits, report the proposed 544-position fallback with revised resource budgets.
-This does not raise the proof maximum or activate a capacity change. The
-current maximum remains 576 positions.
+Keep the block maximum at 576 positions. The [complete wire model](v1-network-budget.md)
+includes three copies, settlement, bounded issuance, inventory and requests,
+AEAD/multiplexing, IPv6/TCP/link framing and reciprocal ACKs, handshake churn,
+retransmission and recovery reserves. It requires 36.501639 Mbps before the
+additional capacity reserve. `ceil(36.501639 / 0.85)` gives a **43-Mbps** minimum
+sustained uplink, leaving 15.112% unused capacity; recommend 100 Mbps.
+Qualify the actual transport and offered load before launch.
 
-Mempool admission must enforce global/per-peer byte caps, bounded concurrent
-verification, work/CPU admission and eviction before expensive verification.
-No byte count alone bounds verification work or allocation on malformed proofs.
+Source, dependencies, actual AIR dimensions, key, parameters and the measured
+binary identity are bound by the engineering profile. Node/wallet integration
+and independent cryptographic review are separate from parameter freeze.
+The [layout optimization](multi-asset-air-optimization.md) proceeds independently;
+a smaller result requires a new screen, measurements and key/profile freeze
+before reducing the bandwidth requirement. Local byte/CPU limits remain
+necessary; resource exhaustion is retryable unavailability, not invalidity.
 
 ## Node and block design boundary
 
@@ -475,8 +474,9 @@ transaction AIR, encrypted plaintext, statement digest and trusted verifier key.
 The isolated implementation includes the actual three-output codec, per-asset
 balance AIR, native fixed-supply issuance proof with ML-DSA-65 verification, and
 an SI-only reward constraint inside the settlement AIR. The two-output baseline
-is unchanged. The new profile remains unfrozen because its full acceptance
-gates, including the two-second generation qualification, are not met.
+is unchanged. The transaction engineering profile is frozen after the
+qualified three-trial generation scan; complete integration, independent
+review and sustained testnet acceptance remain outstanding.
 
 See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md),
 [V1 Multi-Asset Transaction Format](v1-multi-asset.md), and

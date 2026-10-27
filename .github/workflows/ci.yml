@@ -225,3 +225,50 @@ jobs:
           actual = build.registry_pins(Path('.local/native-transaction/application/Cargo.lock').read_text())
           assert expected == actual, 'Registry pins changed during native validation'
           PY_LOCK
+
+  native-multi-asset:
+    name: Native multi-asset relation and frozen transaction profile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.local/multi-asset-ci-target
+      RAYON_NUM_THREADS: 4
+      SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/bench-multi-asset -> ../../.local/multi-asset-ci-target
+      - name: Check CPU admission before optimized code
+        run: |
+          rustc scripts/prover-launcher.rs --edition=2021 -O -D warnings -C target-cpu=x86-64 -o /tmp/multi-asset-cpu-check
+          /tmp/multi-asset-cpu-check --check-cpu
+      - name: Validate native relations and public artifact tooling
+        run: |
+          cargo fmt --manifest-path crates/bench-multi-asset/Cargo.toml --check
+          cargo clippy --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --all-targets -- -D warnings
+          cargo test --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --lib --bin profile-artifacts
+          rustc --edition=2024 --test crates/bench-multi-asset/src/experiments/transaction_layout.rs -D warnings -o /tmp/transaction-layout-tests
+          /tmp/transaction-layout-tests
+          cargo build --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --bin profile-artifacts
+      - name: Reproduce the frozen transaction public key and security ledger
+        run: |
+          python3 - <<'PY_PROFILE'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          frozen = Path('crates/bench-multi-asset/artifacts/v1-transaction-profile.json')
+          profile = json.loads(frozen.read_text())
+          params = profile['parameters']
+          output = Path('.local/multi-asset-profile-reproduced.json')
+          worker = Path(os.environ['CARGO_TARGET_DIR']) / 'release/profile-artifacts'
+          subprocess.run([str(worker), str(params['log_blowup']), str(params['num_queries']),
+              str(params['query_pow_bits']), str(output)], check=True)
+          subprocess.run(['python3', 'scripts/freeze-multi-asset.py', '--check', str(frozen),
+              '--verifier-key', str(output)], check=True)
+          PY_PROFILE

@@ -1,18 +1,35 @@
 # Native V1 Network Capacity Budget
 
-Status: reproducible engineering budget for the proposed multi-asset codec.
-The minimum uplink is **30 Mbps**; **100 Mbps sustained uplink** is recommended.
-The maximum remains **576 positions per 300-second target block**. This document
+Status: reproducible engineering budget for the multi-asset codec. The
+transaction proof-length limit is **655,360 bytes (640 KiB)** and the
+minimum uplink is **43 Mbps**, selected from the actual-AIR performance scan;
+**100 Mbps sustained uplink** remains the deployment recommendation. The
+maximum remains **576 positions per 300-second target block**. This document
 does not claim measured full-network acceptance or alter the retained network.
 
 ## Payload and transport assumptions
 
-At the 512-KiB proof cap, each proposed transaction envelope and private sidecar
-uses 526,550 bytes. Three copies of all 576 positions plus three capped
-524,447-byte settlement envelopes use 911,451,741 bytes/interval, or
-24.30537976 Mbps. The settlement prefix is the old 159-byte baseline and must
-be re-extracted after the SI-asset reward binding changes. The transaction
-prefix likewise requires final encoded fixtures.
+Transaction body, settlement body and issuance body limits are independent.
+The transaction envelope/sidecar allowance is 657,622 bytes: the 655,360-byte
+transaction proof cap plus 2,184 envelope bytes and 78 sidecar bytes. Settlement and issuance
+proof caps remain 524,288 bytes; the settlement envelope adds 159 bytes.
+Three copies of all 576 transaction positions plus three capped settlement
+envelopes use 1,137,944,157 payload bytes per interval, or 30.34517752 Mbps.
+Envelope sizes require final encoded fixtures before network qualification.
+
+Selection requires all three four-worker generation trials on the EPYC 7763
+reference host to complete within two seconds and the actual-AIR security
+report to meet the selected 80-bit quantum target. Round the transaction
+proof cap up to a complete 64-KiB unit while retaining at least 10% above the
+largest selected-profile proof body in the evidence. The selected profile is
+log_blowup 7, 41 queries, query/batch grinding 20, commit grinding 0, binary
+folding and final polynomial log length 0. Its three reference-host generation
+times were 1.332143, 1.315662 and 1.316440 seconds; proof bodies were
+583,552–584,848 bytes. The cap is 12.056% above the largest observed body.
+The [measurement record](v1-multi-asset-evaluation.md) contains the pinned
+security report and process-tree memory evidence. Sample headroom is not a
+mathematical maximum-size proof; the decoder must still enforce the cap and
+wallets must handle an oversized proof without broadcasting an invalid body.
 
 The complete conditional budget adds all of the following categories. These
 are conservative accounting assumptions to qualify, not frozen wire formats:
@@ -54,23 +71,42 @@ record bytes, rerun this model and the disk model before freezing admission.
 ## Result and remaining margin
 
 Reproduce with `python3 scripts/v1-network-budget.py`; use
-`--link-mbps 100` for the recommended link. The full conditional wire model
-uses approximately **29.252 Mbps**, or **1.097 GB per 300 seconds**.
+`--transaction-proof-cap-bytes` to make a different body limit explicit and
+`--link-mbps 100` for the recommended link. The script reports independent
+transaction, settlement and issuance caps and every wire component.
+`--legacy-baseline` reproduces the earlier 524,288-byte transaction cap and
+30-Mbps link; that historical scenario does not set the current requirement.
+
+After charging all framed payload, ACK, control, retransmission and recovery
+costs, reserve at least 15% of the minimum uplink's capacity:
+
+```text
+minimum_link_mbps = ceil(wire_mbps / 0.85)
+```
+
+This reserves 15% of total capacity; multiplying the load by 1.15 would leave
+less than 15% unused. The script uses integer byte/rate arithmetic when
+rounding the minimum link and checks that one lower integer-Mbps link fails
+the headroom condition.
+
+The full conditional wire budget is **1,368,811,477 bytes per interval**, or
+**36.50163939 Mbps**. The smallest integer-Mbps link satisfying the capacity
+reserve is **43 Mbps**; a 42-Mbps link does not leave 15% unused.
 
 | Link | Serialization at modeled load | Remaining rate | Remaining fraction |
 | --- | ---: | ---: | ---: |
-| 30 Mbps minimum | 292.52 seconds | 0.748 Mbps | 2.49% |
-| 100 Mbps recommended | 87.75 seconds | 70.748 Mbps | 70.75% |
+| 43 Mbps minimum | 254.66 seconds | 6.498 Mbps | 15.11% |
+| 100 Mbps recommended | 109.50 seconds | 63.498 Mbps | 63.50% |
 
-The model fits the 30-Mbps floor only under its stated limits, with a narrow
-additional margin after the explicit retransmission/recovery reserves. A
-100-Mbps link provides substantially more concurrent catch-up and burst
-capacity. This is interval-average serialization, not a propagation-latency
-bound or proof that a saturated 30-Mbps node can meet the 100-Mbps recovery
-target. Measure application and packet counters, actual handshakes, loss,
+A 100-Mbps link provides additional concurrent catch-up and burst capacity.
+The budget is interval-average serialization, not a propagation-latency bound.
+Measure application and packet counters, actual handshakes, loss,
 reconstruction traffic and queue growth with the real hybrid listener and
 compact-block implementation at both link classes. Report any exceedance;
-do not silently lower the 576-position consensus limit, weaken security or
-raise proof lengths to force a fit. Object-storage backup uploads and bulk
-checkpoint downloads need a separate rate-limited maintenance window or extra
-bandwidth; the 64-KiB control allowance covers manifests, not checkpoint bodies.
+do not silently lower the 576-position consensus limit or weaken security to
+force a fit. Future circuit optimization can reduce proof size and allow a
+separately reviewed reduction in the proof cap and minimum link. It must not
+change the currently selected profile or budget without regenerated evidence.
+Object-storage backup uploads and bulk checkpoint downloads need a separate
+rate-limited maintenance window or extra bandwidth; the 64-KiB control
+allowance covers manifests, not checkpoint bodies.

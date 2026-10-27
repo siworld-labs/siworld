@@ -86,8 +86,9 @@ Format v1 carries a 32-byte owner, a 1,184-byte ML-KEM encapsulation key and a f
 
 Status: selected design with isolated native three-output transaction AIR,
 codec, fixed-supply issuance proof and SI-reward settlement implementations.
-The multi-asset profile is reopened and unfrozen: its four-core two-second
-generation qualification is not met. See the
+The [multi-asset transaction engineering profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+binds the selected parameters, implementation, dependency graph, public verifier
+key and qualified measurements. See the
 [actual multi-asset evaluation](v1-multi-asset-evaluation.md). Node integration
 is planned and the route is not activated. The retained
 seven-node N=2 network keeps its current verifier, history, parameters and keys.
@@ -105,22 +106,21 @@ and imports no retained notes or proofs. See the
 | Output-encryption boundary | V1 byte binding; sender self-check before broadcast, private per-payment receipt material, recipient AEAD/commitment checks; padding uses real ephemeral-key ML-KEM encryption |
 | Fee tiers | Reward-linked standard and four-times-standard priority; Scheme B native confidential settlement ([design](fee-settlement.md), [evaluation](fee-settlement-evaluation.md)); independent review and node integration precede activation |
 | Public-data encoding | Implemented isolated three-output codec: 2,027-byte body plus 48-byte fee commitment and 40-byte snapshot selector, or 2,115 permanent bytes |
-| Relay envelope | Reopened three-output prefix: proposed 2,184 bytes plus proof body, maximum 526,472 bytes; private sidecar remains 78 bytes |
+| Relay envelope | Three-output prefix: 2,184 bytes plus the frozen transaction proof-body cap; private sidecar remains 78 bytes. Node decoder integration remains required |
 | Change encryption | ChaCha20-Poly1305 with a 256-bit key and domain-separated BLAKE3 derivation |
-| Blocks | Groups of 16; 64–576 positions; 300-second target; 30-Mbps minimum node uplink |
+| Blocks | Groups of 16; 64–576 positions; 300-second target; 43-Mbps minimum uplink from the complete bounded wire model with at least 15% unused link capacity; 100 Mbps recommended |
 | Reorganization bound | New-route local `MAX_REORG_DEPTH = 24`; existing implementation remains at 100 |
 | Proof retention | Transaction and settlement proofs plus private fee sidecars are retained for three elapsed days after final confirmation, then deleted; all public data remains permanent, no archive role is selected, and release checkpoint-plus-PoW trust is explicit |
-| Proof-body maximum | `MAX_LEAF_PROOF_LEN = 524288` (512 KiB); prefer larger blowup if exceeded, then report a 544-position fallback without raising this bound |
-| Production parameter choice | Smallest eligible proof with four-core generation at most two seconds on the actual AIR; the current multi-asset measurements do not meet this gate |
-| Parameter-freeze boundary | Multi-asset profile reopened and unfrozen; matching relation, dependency, key, codec, security and qualified resource artifacts are required; node/wallet integration, independent review and activation remain separate gates |
+| Proof-body maximum | Transaction admission cap: 655,360 bytes (640 KiB), 12.06% above the selected profile's largest measured proof and rounded to 64 KiB. Settlement and issuance remain capped at 524,288 bytes each; maximum block capacity remains 576 |
+| Transaction parameter choice | `log_blowup=7`, 41 queries, query/batch grinding 20, commitment grinding 0, binary folding, final-polynomial log length 0. Selected from blowup 5–8 × grinding 20/24, three trials each: all selected generations at most two seconds on a qualified EPYC 7763 four-vCPU VM, then smallest maximum measured proof |
+| Parameter-freeze boundary | Isolated transaction engineering freeze with matching relation, dependencies, public key, codec, security report and qualified resource evidence; node decoder/admission, wallet/network integration, independent review and activation remain separate gates |
 
 Nodes verify proofs on mempool admission. Blocks use compact references and
 public transaction data without duplicating proof bodies. The selected snapshot
 and byte-binding requirements still need node/wallet integration. Private fee
 collection, worker isolation and byte/CPU/in-flight quotas follow the
-[node and network plan](v1-node-network-plan.md). These remaining integrations
-do not prevent recording proof-parameter freeze after the relation, codec,
-verifier, security and resource gates pass. The
+[node and network plan](v1-node-network-plan.md). The transaction engineering freeze records the relation, codec, verifier,
+security and qualified resource evidence without claiming these node properties. The
 [fee-settlement design](fee-settlement.md) is not an activated rule; its
 [evaluation gate](fee-settlement-evaluation.md), independent review and node
 acceptance must pass before activation. The isolated issuance path verifies

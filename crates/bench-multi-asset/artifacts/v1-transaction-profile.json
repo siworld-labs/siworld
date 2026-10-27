@@ -1,0 +1,1441 @@
+{
+  "schema": 1,
+  "status": "engineering-frozen",
+  "suite": "KoalaBear-D8-Poseidon2-W24-digest12",
+  "cryptographic_approval": false,
+  "network_activation": false,
+  "dependency_revision": "d3d15b2b5d1325fb38ebc8979c1cae04b761e71f",
+  "measured_source_commit": "46b793e24ed42495d6c0c4c051e5a06fb4d56b13",
+  "air_source_sha256": "753d16770132e7cf22d8c485a543bc6442a888b940bccb6667296719a33a51f7",
+  "dependencies_sha256": "f19f34ddfd3d5ff8ee91c7a742aa75d25c54bddfb0762cef1dda30a63894ec6e",
+  "measurement_binary_sha256": "471d72d2b8b33f7fd4ad19a148e5e1a00698c733ece5d574293fdd04a14e680a",
+  "measurement_launcher_sha256": "7d32ba619e5d51d85525ecaeed1a3e04127157ad6bab6ffe5fefe4c04a584a1a",
+  "source_sha256": {
+    ".cargo/config.toml": "7d367cdae596ec470e10a40376cbec2d5e17e950cd28a14bc84f3c4c98414937",
+    ".github/workflows/multi-asset-native.yml": "75ffdbcf2d23e9b06764a436686f8bf6b2b34e1202fee8c53f2f56a600110abb",
+    "crates/bench-d8/Cargo.lock": "66ac717f68367604fe91cd20270c67ad2f8a5a0d76471fc29411b7bb752fbbb5",
+    "crates/bench-d8/Cargo.toml": "4b8db86ab2b7aa6582374d8c79f66e45a52cdaca08ae20a5ca954626e2328761",
+    "crates/bench-d8/src/agg.rs": "8938c4cd8aa11c845769258d7f07402087b653619cb8306181f2d2c1e6bfd5aa",
+    "crates/bench-d8/src/agg/fanin.rs": "b27f4e3120827c0eda195d444ce360d64258474fdff739ac1a5d5aa8d95ab56d",
+    "crates/bench-d8/src/air.rs": "f2ad495f685af6a4f32fe9efbeb184b4a6e9563a2704b09e55f9634a9feaa841",
+    "crates/bench-d8/src/bin/checkpoint.rs": "5e92666a8284666fcf4adb32e1394d8a55dea63992583284132cb5517ae78a24",
+    "crates/bench-d8/src/bin/fee-settlement-bench.rs": "91d5a0799665ad2899ccbf31dc36dcc1979a1f65d61b23afcc1342a891a5110f",
+    "crates/bench-d8/src/bin/native-verifier-bench.rs": "d1eda805b0ede8e5510c04b2c6d82729c988a43b75d2fc2d0d688f9542f944d5",
+    "crates/bench-d8/src/bin/v1-freeze-artifacts.rs": "8abf8a779a4f51469e4a60eba3400c812679d75e928fa9d633d2a92b5df62643",
+    "crates/bench-d8/src/bin/v1_transaction_scan.rs": "1858f0b0ea5b08fe202af15c11b27f07c26ae9176af1996f480f1932c9dd257e",
+    "crates/bench-d8/src/codec.rs": "701c18cf2325024726de26d9bb2c41853131676ce9ca15227a6d16635bcf5c29",
+    "crates/bench-d8/src/common.rs": "438c3c5a4366227312beab31b5da6b882181eeb588f9735bd8e2e7393038a4bd",
+    "crates/bench-d8/src/encryption.rs": "791d6f58cb3b7138b82038d06307e809987a8761b18eeec93c237f662e04361d",
+    "crates/bench-d8/src/envelope.rs": "c10ebdffacffe99bcf5eef20d899106ce1a7950700df7784cc5d4ad786628526",
+    "crates/bench-d8/src/fee_settlement.rs": "4e6d6cfd7df71f8a11695d0819bc7abe9b3b6c39db268b614b6eae778b0b1b47",
+    "crates/bench-d8/src/fee_settlement_air.rs": "55c5e0995df1f6eb557f68167a86056f2fccf8adce73b58fe7c668ca61239918",
+    "crates/bench-d8/src/lib.rs": "e204c3c32291c09cec04ebd8acdcbe17d74b2e91396f9a4355d1897f33d9b764",
+    "crates/bench-d8/src/native_security.rs": "9a7e8adf322465eaa383718061dfa5782cd93fe9c11f741ad7222555a7dc5ed3",
+    "crates/bench-d8/src/native_verifier.rs": "361f02c2be9376d1d0f844104295eea8cc5ac36adba471d49d760c6da1c75662",
+    "crates/bench-d8/src/padding_pool.rs": "17ea7229b0542ffffe3e974e2d2641658e3c63bbfa240a8ebcfb835359b25193",
+    "crates/bench-d8/src/profile.rs": "db124371ebb6d93bcc6b20c9e2c8ec8b16f53f026edd459f4ed4d7f02cc10ac2",
+    "crates/bench-d8/src/proof_codec.rs": "5f0efab7f375054835583fae3d1692d91169e4dc6756f9f010568b6791283c00",
+    "crates/bench-d8/src/security.rs": "7a08d20463c1a4b24fd97adc06c6b3fe0609ca801db0de823a745dd6ea148304",
+    "crates/bench-d8/src/snapshots.rs": "e3decb9c103e8766c04e7377eb808aa271a40a82e35a0f85e7ee3d2de1ff764c",
+    "crates/bench-d8/src/trace.rs": "2d52c913666acd1839b40c101a0bd990431590f33791808fc6a8478391a49ed2",
+    "crates/bench-d8/src/transaction.rs": "dcc5cf7d983d71975cf0ac4bd1b3167f19737f50582b2aeec8cd03a0acdda15c",
+    "crates/bench-multi-asset/Cargo.lock": "f19f34ddfd3d5ff8ee91c7a742aa75d25c54bddfb0762cef1dda30a63894ec6e",
+    "crates/bench-multi-asset/Cargo.toml": "5283ec818eb517a3d2af73bb71e88e36e20fbc3473e6a58844bc798f05b82cb3",
+    "crates/bench-multi-asset/src/bin/native-scan.rs": "a306f852cdd85c7adcd68cafa599a4d071ed1fe2b6715fa5bc79f00098e6b998",
+    "crates/bench-multi-asset/src/bin/profile-artifacts.rs": "252a2e2f811eb50fbc77fdb11a916c9294a3a0afd4a66472a94f61e1461f48b8",
+    "crates/bench-multi-asset/src/codec.rs": "96914d20d0c8cda8256f1428a856d217ab4ecc2343bf2791966a69cc500150e9",
+    "crates/bench-multi-asset/src/confidential_fees.rs": "33390ad2fa7e9cc804c310a8c6e97988daf75d3a5353c90215a3f84b6d885ecc",
+    "crates/bench-multi-asset/src/encryption.rs": "9c8597fb386add674dd63d841d26ea3259f1a5a83cd4a2b95275c096a98a4200",
+    "crates/bench-multi-asset/src/issuance.rs": "1e1aa436c51fcbad909ff6da9129b5a4e47305c5325218cc40af87d0cc1dddc1",
+    "crates/bench-multi-asset/src/issuance_air.rs": "fa765935881acbf65218feb56604d33b38fba3edeca86372fe8cbcea27d1e00b",
+    "crates/bench-multi-asset/src/lib.rs": "8383f7c23351043ad257fef613f476814f1b0a9b4d7cbecfef3d260bd4d7663e",
+    "crates/bench-multi-asset/src/multi_asset.rs": "12560c4bf40a457a09fd0741c34baad154932daaf3b0a60fc079c87d6c2ed6b3",
+    "crates/bench-multi-asset/src/multi_asset_air.rs": "aa8bf268f7cec12e50d5d6c6b80f154dc4b73db98d494c2847db0d6e5f8f619f",
+    "crates/bench-multi-asset/src/multi_asset_trace.rs": "46c385f6e65ad03635f34a03e6ce075a03c5d4d19209c79189ea44ef2f142c5c",
+    "crates/bench-multi-asset/src/multi_asset_transaction.rs": "18bc9d889c100dae876f029935a77aef2749bae14f1410c9aea31f3987a65d8b",
+    "crates/bench-multi-asset/src/security.rs": "c9dbd31907e8c5a51105278cf45eec8d37ca29e107759c3965002a8e87a89f6e",
+    "crates/bench-multi-asset/src/settlement.rs": "45c91ee6d1dbf075771e59efac7e8ff38e79efab8be24c042747fed1abe71797",
+    "rust-toolchain.toml": "5e7517b95a2b4e810124f84091dd4a6e3f2192523fcac7b6d52abc7fc6aff91d",
+    "scripts/build-composition-intra.py": "b77f4b77209a33b9de12ac7287a69644aa6fca2a41c3f8bb37849fdfc7bf7c3b",
+    "scripts/check-prover-isa.py": "7f0babfcb826a8fd4c4dd74200f9c553e460fdff0f0b6b835de66c9a23ec3583",
+    "scripts/freeze-multi-asset.py": "04601022dd3da9e75bb3a1bc0a47ec638675311a09600ef1b8335090bdae9938",
+    "scripts/measure-multi-asset.py": "17f85beb68699c84842350bb017a991da5c984f0bd3a71cbc65dc929aa62f4ba",
+    "scripts/measure-native-cgroup.py": "a1d610ce60aa855e958956fc9400ea3ce9dc8bddbf17f00b735b6aca22d66efc",
+    "scripts/measure-proof-cgroup.py": "18fde6dbe25bf0ae3fcc2f782abe74ca230084484ab29348fb490357f7d48372",
+    "scripts/prover-launcher.rs": "e2ececc1547045c2966f0cc5d09321e823bed1d20a050abcb9439263bed5a8dd"
+  },
+  "measured_source_sha256": {
+    ".cargo/config.toml": "7d367cdae596ec470e10a40376cbec2d5e17e950cd28a14bc84f3c4c98414937",
+    ".github/workflows/multi-asset-native.yml": "75ffdbcf2d23e9b06764a436686f8bf6b2b34e1202fee8c53f2f56a600110abb",
+    "crates/bench-d8/Cargo.lock": "66ac717f68367604fe91cd20270c67ad2f8a5a0d76471fc29411b7bb752fbbb5",
+    "crates/bench-d8/Cargo.toml": "4b8db86ab2b7aa6582374d8c79f66e45a52cdaca08ae20a5ca954626e2328761",
+    "crates/bench-d8/src/agg.rs": "8938c4cd8aa11c845769258d7f07402087b653619cb8306181f2d2c1e6bfd5aa",
+    "crates/bench-d8/src/agg/fanin.rs": "b27f4e3120827c0eda195d444ce360d64258474fdff739ac1a5d5aa8d95ab56d",
+    "crates/bench-d8/src/air.rs": "f2ad495f685af6a4f32fe9efbeb184b4a6e9563a2704b09e55f9634a9feaa841",
+    "crates/bench-d8/src/bin/checkpoint.rs": "5e92666a8284666fcf4adb32e1394d8a55dea63992583284132cb5517ae78a24",
+    "crates/bench-d8/src/bin/fee-settlement-bench.rs": "91d5a0799665ad2899ccbf31dc36dcc1979a1f65d61b23afcc1342a891a5110f",
+    "crates/bench-d8/src/bin/native-verifier-bench.rs": "d1eda805b0ede8e5510c04b2c6d82729c988a43b75d2fc2d0d688f9542f944d5",
+    "crates/bench-d8/src/bin/v1-freeze-artifacts.rs": "8abf8a779a4f51469e4a60eba3400c812679d75e928fa9d633d2a92b5df62643",
+    "crates/bench-d8/src/bin/v1_transaction_scan.rs": "1858f0b0ea5b08fe202af15c11b27f07c26ae9176af1996f480f1932c9dd257e",
+    "crates/bench-d8/src/codec.rs": "701c18cf2325024726de26d9bb2c41853131676ce9ca15227a6d16635bcf5c29",
+    "crates/bench-d8/src/common.rs": "438c3c5a4366227312beab31b5da6b882181eeb588f9735bd8e2e7393038a4bd",
+    "crates/bench-d8/src/encryption.rs": "791d6f58cb3b7138b82038d06307e809987a8761b18eeec93c237f662e04361d",
+    "crates/bench-d8/src/envelope.rs": "c10ebdffacffe99bcf5eef20d899106ce1a7950700df7784cc5d4ad786628526",
+    "crates/bench-d8/src/fee_settlement.rs": "4e6d6cfd7df71f8a11695d0819bc7abe9b3b6c39db268b614b6eae778b0b1b47",
+    "crates/bench-d8/src/fee_settlement_air.rs": "55c5e0995df1f6eb557f68167a86056f2fccf8adce73b58fe7c668ca61239918",
+    "crates/bench-d8/src/lib.rs": "e204c3c32291c09cec04ebd8acdcbe17d74b2e91396f9a4355d1897f33d9b764",
+    "crates/bench-d8/src/native_security.rs": "9a7e8adf322465eaa383718061dfa5782cd93fe9c11f741ad7222555a7dc5ed3",
+    "crates/bench-d8/src/native_verifier.rs": "361f02c2be9376d1d0f844104295eea8cc5ac36adba471d49d760c6da1c75662",
+    "crates/bench-d8/src/padding_pool.rs": "17ea7229b0542ffffe3e974e2d2641658e3c63bbfa240a8ebcfb835359b25193",
+    "crates/bench-d8/src/profile.rs": "db124371ebb6d93bcc6b20c9e2c8ec8b16f53f026edd459f4ed4d7f02cc10ac2",
+    "crates/bench-d8/src/proof_codec.rs": "5f0efab7f375054835583fae3d1692d91169e4dc6756f9f010568b6791283c00",
+    "crates/bench-d8/src/security.rs": "7a08d20463c1a4b24fd97adc06c6b3fe0609ca801db0de823a745dd6ea148304",
+    "crates/bench-d8/src/snapshots.rs": "e3decb9c103e8766c04e7377eb808aa271a40a82e35a0f85e7ee3d2de1ff764c",
+    "crates/bench-d8/src/trace.rs": "2d52c913666acd1839b40c101a0bd990431590f33791808fc6a8478391a49ed2",
+    "crates/bench-d8/src/transaction.rs": "dcc5cf7d983d71975cf0ac4bd1b3167f19737f50582b2aeec8cd03a0acdda15c",
+    "crates/bench-multi-asset/Cargo.lock": "f19f34ddfd3d5ff8ee91c7a742aa75d25c54bddfb0762cef1dda30a63894ec6e",
+    "crates/bench-multi-asset/Cargo.toml": "5283ec818eb517a3d2af73bb71e88e36e20fbc3473e6a58844bc798f05b82cb3",
+    "crates/bench-multi-asset/src/bin/native-scan.rs": "a306f852cdd85c7adcd68cafa599a4d071ed1fe2b6715fa5bc79f00098e6b998",
+    "crates/bench-multi-asset/src/codec.rs": "96914d20d0c8cda8256f1428a856d217ab4ecc2343bf2791966a69cc500150e9",
+    "crates/bench-multi-asset/src/confidential_fees.rs": "33390ad2fa7e9cc804c310a8c6e97988daf75d3a5353c90215a3f84b6d885ecc",
+    "crates/bench-multi-asset/src/encryption.rs": "9c8597fb386add674dd63d841d26ea3259f1a5a83cd4a2b95275c096a98a4200",
+    "crates/bench-multi-asset/src/issuance.rs": "1e1aa436c51fcbad909ff6da9129b5a4e47305c5325218cc40af87d0cc1dddc1",
+    "crates/bench-multi-asset/src/issuance_air.rs": "fa765935881acbf65218feb56604d33b38fba3edeca86372fe8cbcea27d1e00b",
+    "crates/bench-multi-asset/src/lib.rs": "8383f7c23351043ad257fef613f476814f1b0a9b4d7cbecfef3d260bd4d7663e",
+    "crates/bench-multi-asset/src/multi_asset.rs": "12560c4bf40a457a09fd0741c34baad154932daaf3b0a60fc079c87d6c2ed6b3",
+    "crates/bench-multi-asset/src/multi_asset_air.rs": "aa8bf268f7cec12e50d5d6c6b80f154dc4b73db98d494c2847db0d6e5f8f619f",
+    "crates/bench-multi-asset/src/multi_asset_trace.rs": "46c385f6e65ad03635f34a03e6ce075a03c5d4d19209c79189ea44ef2f142c5c",
+    "crates/bench-multi-asset/src/multi_asset_transaction.rs": "18bc9d889c100dae876f029935a77aef2749bae14f1410c9aea31f3987a65d8b",
+    "crates/bench-multi-asset/src/security.rs": "c9dbd31907e8c5a51105278cf45eec8d37ca29e107759c3965002a8e87a89f6e",
+    "crates/bench-multi-asset/src/settlement.rs": "45c91ee6d1dbf075771e59efac7e8ff38e79efab8be24c042747fed1abe71797",
+    "rust-toolchain.toml": "5e7517b95a2b4e810124f84091dd4a6e3f2192523fcac7b6d52abc7fc6aff91d",
+    "scripts/build-composition-intra.py": "b77f4b77209a33b9de12ac7287a69644aa6fca2a41c3f8bb37849fdfc7bf7c3b",
+    "scripts/check-prover-isa.py": "7f0babfcb826a8fd4c4dd74200f9c553e460fdff0f0b6b835de66c9a23ec3583",
+    "scripts/measure-multi-asset.py": "17f85beb68699c84842350bb017a991da5c984f0bd3a71cbc65dc929aa62f4ba",
+    "scripts/measure-native-cgroup.py": "a1d610ce60aa855e958956fc9400ea3ce9dc8bddbf17f00b735b6aca22d66efc",
+    "scripts/measure-proof-cgroup.py": "18fde6dbe25bf0ae3fcc2f782abe74ca230084484ab29348fb490357f7d48372",
+    "scripts/prover-launcher.rs": "e2ececc1547045c2966f0cc5d09321e823bed1d20a050abcb9439263bed5a8dd"
+  },
+  "reference_execution": {
+    "cpu_model": "AMD EPYC 7763",
+    "os": "Ubuntu 24.04",
+    "architecture": "x86_64",
+    "exposed_cores": 2,
+    "exposed_vcpus": 4,
+    "rayon_workers": 4,
+    "hiding_workers": 2,
+    "required_isa": "x86-64-v3"
+  },
+  "generation_limit_ns": 2000000000,
+  "selection_rule": "all-three-trials-within-limit-then-smallest-maximum-observed-proof",
+  "parameters": {
+    "log_blowup": 7,
+    "num_queries": 41,
+    "query_pow_bits": 20,
+    "commit_pow_bits": 0,
+    "batch_pow_bits": 20,
+    "max_log_arity": 1,
+    "log_final_poly_len": 0
+  },
+  "selected_security": {
+    "p3_security_version": "0.9.0-rc.2",
+    "accounting": "single-proof-johnson-halving-bht-v1",
+    "shape": {
+      "base_trace_rows": 256,
+      "main_width": 1420,
+      "preprocessed_width": 243,
+      "public_values": 97,
+      "num_constraints": 2940,
+      "max_constraint_degree": 3,
+      "num_quotient_chunks": 8,
+      "num_batched_functions": 3486,
+      "log_committed_trace_length": 9,
+      "challenge_field_bits_floor": 247,
+      "classical_collision_bits_floor": 185
+    },
+    "screen": {
+      "passes_selected_model": true,
+      "classical_conjectured_union_bits": 184.99999999999997,
+      "classical_johnson_union_bits": 163.38458391106965,
+      "quantum_johnson_challenge_union_bits": 81.69221886630498,
+      "bht_collision_bits": 123.33333333333333,
+      "johnson_m": 256,
+      "proof_multiplicity": 1
+    },
+    "conjectured": {
+      "terms": [
+        {
+          "label": "air-composition",
+          "bits": 235.47839956027627
+        },
+        {
+          "label": "deep-ali",
+          "bits": 234.82976194766334
+        },
+        {
+          "label": "ldt-query-phase",
+          "bits": 305.0119658664367
+        },
+        {
+          "label": "ldt-commit-phase",
+          "bits": 230.99997798638864
+        },
+        {
+          "label": "batch-combination",
+          "bits": 239.23305705924423
+        },
+        {
+          "label": "commitment-collision",
+          "bits": 185.0
+        }
+      ]
+    },
+    "proven_johnson": {
+      "terms": [
+        {
+          "label": "air-composition",
+          "bits": 223.97558454466923
+        },
+        {
+          "label": "deep-ali",
+          "bits": 223.3269469320563
+        },
+        {
+          "label": "low-degree-test",
+          "bits": 163.38458436011078
+        },
+        {
+          "label": "batch-combination",
+          "bits": 206.80675399408182
+        },
+        {
+          "label": "commitment-collision",
+          "bits": 185.0
+        }
+      ]
+    },
+    "johnson_fri_terms": [
+      {
+        "label": "fri-folding",
+        "bits": 198.5736969348376
+      },
+      {
+        "label": "fri-query",
+        "bits": 163.38458436011078
+      }
+    ],
+    "challenge_domain_terms": [
+      {
+        "label": "ood-deep-ali-domain",
+        "bits": 223.3269469320563
+      },
+      {
+        "label": "fri-folding-domain",
+        "bits": 191.92984074506288
+      }
+    ],
+    "application_binding": {
+      "algorithm": "BLAKE3-256",
+      "digest_bytes": 32,
+      "nominal_classical_collision_bits": 128,
+      "nominal_bht_collision_bits": 85.33333333333333,
+      "included_in_p3_security_report": false,
+      "model_status": "nominal-collision-model-requires-review"
+    }
+  },
+  "public_verifier_key": {
+    "encoding": "SWMV-v1",
+    "hex": "53574d56010001070000002900000014000000000000001400000001000000f30000000900000061000000028105dd4d72cefd42fcd94118ed958268e5beef18c110012751088605ad507a5c70831b0e57d24c6ddf942a20173d591b3842cf3e18c5700ede5dde55c59492226678655bf3f4321aa6a83356d9fdaf27e9c57a0a2501c11494a7596316730b05",
+    "sha256": "6761ed6dd7bb1da62bbcf5ba0441f142af9ee969557f8928b046412c24f82bf5",
+    "width": 243,
+    "degree_bits": 9
+  },
+  "max_leaf_proof_bytes": 655360,
+  "max_settlement_proof_bytes": 524288,
+  "max_issuance_proof_bytes": 524288,
+  "proof_cap_policy": "at-least-ten-percent-above-observed-maximum-rounded-up-to-65536-bytes",
+  "proof_size_scope": "observed synthetic proof bodies; admission cap is not a mathematical size bound",
+  "measurement_memory_scope": "whole setup-prove-verify process tree including recorder",
+  "diagnostic_memory_max_bytes": 5368709120,
+  "memory_boundary_is_miner_requirement": false,
+  "public_transaction_bytes": 2027,
+  "permanent_position_bytes": 2115,
+  "profiles": [
+    {
+      "coordinate": {
+        "log_blowup": 5,
+        "grinding": 20
+      },
+      "parameters": {
+        "log_blowup": 5,
+        "num_queries": 57,
+        "query_pow_bits": 20,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 20,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1420,
+          "preprocessed_width": 243,
+          "public_values": 97,
+          "num_constraints": 2940,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3486,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 185.0,
+          "classical_johnson_union_bits": 162.33954389277855,
+          "quantum_johnson_challenge_union_bits": 81.16975929471838,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.47839956027627
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 302.88253321831274
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 232.99991194756987
+            },
+            {
+              "label": "batch-combination",
+              "bits": 241.23305705924423
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 224.97558454466923
+            },
+            {
+              "label": "deep-ali",
+              "bits": 224.3269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 162.33954411039792
+            },
+            {
+              "label": "batch-combination",
+              "bits": 210.80675399408182
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 202.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 162.33954411039792
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 224.3269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 195.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "generation_ns": [
+        347745902,
+        431773075,
+        315287455
+      ],
+      "generation_median_ns": 347745902,
+      "generation_max_ns": 431773075,
+      "proof_bytes": [
+        688559,
+        685631,
+        693071
+      ],
+      "proof_bytes_min": 685631,
+      "proof_bytes_max": 693071,
+      "cgroup_peak_bytes": [
+        143482880,
+        143224832,
+        143196160
+      ],
+      "cgroup_peak_max_bytes": 143482880,
+      "memory_events_delta": {
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    },
+    {
+      "coordinate": {
+        "log_blowup": 5,
+        "grinding": 24
+      },
+      "parameters": {
+        "log_blowup": 5,
+        "num_queries": 55,
+        "query_pow_bits": 24,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 24,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1420,
+          "preprocessed_width": 243,
+          "public_values": 97,
+          "num_constraints": 2940,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3486,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 185.0,
+          "classical_johnson_union_bits": 161.3451740323769,
+          "quantum_johnson_challenge_union_bits": 80.67257806901077,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.47839956027627
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 296.956830298372
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 232.99991194756987
+            },
+            {
+              "label": "batch-combination",
+              "bits": 245.23305705924423
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 224.97558454466923
+            },
+            {
+              "label": "deep-ali",
+              "bits": 224.3269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 161.34517414161203
+            },
+            {
+              "label": "batch-combination",
+              "bits": 214.80675399408182
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 202.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 161.34517414161203
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 224.3269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 195.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "generation_ns": [
+        4687112686,
+        9904237453,
+        5536282224
+      ],
+      "generation_median_ns": 5536282224,
+      "generation_max_ns": 9904237453,
+      "proof_bytes": [
+        674707,
+        676387,
+        675811
+      ],
+      "proof_bytes_min": 674707,
+      "proof_bytes_max": 676387,
+      "cgroup_peak_bytes": [
+        143175680,
+        142876672,
+        143736832
+      ],
+      "cgroup_peak_max_bytes": 143736832,
+      "memory_events_delta": {
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    },
+    {
+      "coordinate": {
+        "log_blowup": 6,
+        "grinding": 20
+      },
+      "parameters": {
+        "log_blowup": 6,
+        "num_queries": 47,
+        "query_pow_bits": 20,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 20,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1420,
+          "preprocessed_width": 243,
+          "public_values": 97,
+          "num_constraints": 2940,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3486,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 185.0,
+          "classical_johnson_union_bits": 160.86769418801236,
+          "quantum_johnson_challenge_union_bits": 80.43383181021241,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.47839956027627
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 299.98700265055976
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 231.99995597311317
+            },
+            {
+              "label": "batch-combination",
+              "bits": 240.23305705924423
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 224.47558454466923
+            },
+            {
+              "label": "deep-ali",
+              "bits": 223.8269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 160.86769426646845
+            },
+            {
+              "label": "batch-combination",
+              "bits": 208.80675399408182
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 200.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 160.86769426646845
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 223.8269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 193.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "generation_ns": [
+        753689729,
+        842321730,
+        717343084
+      ],
+      "generation_median_ns": 753689729,
+      "generation_max_ns": 842321730,
+      "proof_bytes": [
+        624964,
+        616467,
+        624579
+      ],
+      "proof_bytes_min": 616467,
+      "proof_bytes_max": 624964,
+      "cgroup_peak_bytes": [
+        272478208,
+        272449536,
+        272424960
+      ],
+      "cgroup_peak_max_bytes": 272478208,
+      "memory_events_delta": {
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    },
+    {
+      "coordinate": {
+        "log_blowup": 6,
+        "grinding": 24
+      },
+      "parameters": {
+        "log_blowup": 6,
+        "num_queries": 46,
+        "query_pow_bits": 24,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 24,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1420,
+          "preprocessed_width": 243,
+          "public_values": 97,
+          "num_constraints": 2940,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3486,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 185.0,
+          "classical_johnson_union_bits": 161.87050912485688,
+          "quantum_johnson_challenge_union_bits": 80.93523304315248,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.47839956027627
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 298.02983238139893
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 231.99995597311317
+            },
+            {
+              "label": "batch-combination",
+              "bits": 244.23305705924423
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 224.47558454466923
+            },
+            {
+              "label": "deep-ali",
+              "bits": 223.8269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 161.87050928207552
+            },
+            {
+              "label": "batch-combination",
+              "bits": 212.80675399408182
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 200.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 161.87050928207552
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 223.8269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 193.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "generation_ns": [
+        2049189683,
+        3087182025,
+        5130963467
+      ],
+      "generation_median_ns": 3087182025,
+      "generation_max_ns": 5130963467,
+      "proof_bytes": [
+        615278,
+        618254,
+        619838
+      ],
+      "proof_bytes_min": 615278,
+      "proof_bytes_max": 619838,
+      "cgroup_peak_bytes": [
+        272973824,
+        273338368,
+        272437248
+      ],
+      "cgroup_peak_max_bytes": 273338368,
+      "memory_events_delta": {
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    },
+    {
+      "coordinate": {
+        "log_blowup": 7,
+        "grinding": 20
+      },
+      "parameters": {
+        "log_blowup": 7,
+        "num_queries": 41,
+        "query_pow_bits": 20,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 20,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1420,
+          "preprocessed_width": 243,
+          "public_values": 97,
+          "num_constraints": 2940,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3486,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999997,
+          "classical_johnson_union_bits": 163.38458391106965,
+          "quantum_johnson_challenge_union_bits": 81.69221886630498,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.47839956027627
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 305.0119658664367
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 230.99997798638864
+            },
+            {
+              "label": "batch-combination",
+              "bits": 239.23305705924423
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 223.97558454466923
+            },
+            {
+              "label": "deep-ali",
+              "bits": 223.3269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.38458436011078
+            },
+            {
+              "label": "batch-combination",
+              "bits": 206.80675399408182
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 198.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 163.38458436011078
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 223.3269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 191.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "generation_ns": [
+        1332142999,
+        1315662444,
+        1316439952
+      ],
+      "generation_median_ns": 1316439952,
+      "generation_max_ns": 1332142999,
+      "proof_bytes": [
+        584848,
+        583552,
+        584032
+      ],
+      "proof_bytes_min": 583552,
+      "proof_bytes_max": 584848,
+      "cgroup_peak_bytes": [
+        531668992,
+        531398656,
+        531402752
+      ],
+      "cgroup_peak_max_bytes": 531668992,
+      "memory_events_delta": {
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    },
+    {
+      "coordinate": {
+        "log_blowup": 7,
+        "grinding": 24
+      },
+      "parameters": {
+        "log_blowup": 7,
+        "num_queries": 39,
+        "query_pow_bits": 24,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 24,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1420,
+          "preprocessed_width": 243,
+          "public_values": 97,
+          "num_constraints": 2940,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3486,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999997,
+          "classical_johnson_union_bits": 160.39021433497527,
+          "quantum_johnson_challenge_union_bits": 80.19508133593152,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.47839956027627
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 295.10894314124465
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 230.99997798638864
+            },
+            {
+              "label": "batch-combination",
+              "bits": 243.23305705924423
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 223.97558454466923
+            },
+            {
+              "label": "deep-ali",
+              "bits": 223.3269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 160.3902143913249
+            },
+            {
+              "label": "batch-combination",
+              "bits": 210.80675399408182
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 198.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 160.3902143913249
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 223.3269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 191.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "generation_ns": [
+        4084397470,
+        2223029119,
+        1694905654
+      ],
+      "generation_median_ns": 2223029119,
+      "generation_max_ns": 4084397470,
+      "proof_bytes": [
+        562020,
+        574500,
+        569796
+      ],
+      "proof_bytes_min": 562020,
+      "proof_bytes_max": 574500,
+      "cgroup_peak_bytes": [
+        530886656,
+        530915328,
+        531169280
+      ],
+      "cgroup_peak_max_bytes": 531169280,
+      "memory_events_delta": {
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    },
+    {
+      "coordinate": {
+        "log_blowup": 8,
+        "grinding": 20
+      },
+      "parameters": {
+        "log_blowup": 8,
+        "num_queries": 36,
+        "query_pow_bits": 20,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 20,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1420,
+          "preprocessed_width": 243,
+          "public_values": 97,
+          "num_constraints": 2940,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3486,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999994,
+          "classical_johnson_union_bits": 163.8986587968797,
+          "quantum_johnson_challenge_union_bits": 81.94915450451681,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.47839956027627
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 306.0514843810616
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 229.99998899315233
+            },
+            {
+              "label": "batch-combination",
+              "bits": 238.23305705924423
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 223.47558454466923
+            },
+            {
+              "label": "deep-ali",
+              "bits": 222.8269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.89865943814604
+            },
+            {
+              "label": "batch-combination",
+              "bits": 204.80675399408182
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 196.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 163.89865943814604
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 222.8269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 189.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "generation_ns": [
+        2238902045,
+        2298780702,
+        2315131492
+      ],
+      "generation_median_ns": 2298780702,
+      "generation_max_ns": 2315131492,
+      "proof_bytes": [
+        556963,
+        551539,
+        553411
+      ],
+      "proof_bytes_min": 551539,
+      "proof_bytes_max": 556963,
+      "cgroup_peak_bytes": [
+        1049178112,
+        1049620480,
+        1048645632
+      ],
+      "cgroup_peak_max_bytes": 1049620480,
+      "memory_events_delta": {
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    },
+    {
+      "coordinate": {
+        "log_blowup": 8,
+        "grinding": 24
+      },
+      "parameters": {
+        "log_blowup": 8,
+        "num_queries": 35,
+        "query_pow_bits": 24,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 24,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1420,
+          "preprocessed_width": 243,
+          "public_values": 97,
+          "num_constraints": 2940,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3486,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999994,
+          "classical_johnson_union_bits": 163.90147381123492,
+          "quantum_johnson_challenge_union_bits": 81.95056259522588,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.47839956027627
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 302.10560981492097
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 229.99998899315233
+            },
+            {
+              "label": "batch-combination",
+              "bits": 242.23305705924423
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 223.47558454466923
+            },
+            {
+              "label": "deep-ali",
+              "bits": 222.8269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.9014744537531
+            },
+            {
+              "label": "batch-combination",
+              "bits": 208.80675399408182
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 196.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 163.9014744537531
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 222.8269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 189.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "generation_ns": [
+        11778875402,
+        4021280471,
+        4217235409
+      ],
+      "generation_median_ns": 4217235409,
+      "generation_max_ns": 11778875402,
+      "proof_bytes": [
+        550973,
+        540317,
+        536477
+      ],
+      "proof_bytes_min": 536477,
+      "proof_bytes_max": 550973,
+      "cgroup_peak_bytes": [
+        1050329088,
+        1048903680,
+        1048657920
+      ],
+      "cgroup_peak_max_bytes": 1050329088,
+      "memory_events_delta": {
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    }
+  ]
+}

@@ -23,9 +23,11 @@ DOCUMENTS = {
     "v1-node-network-plan.md", "v1-deployment.md", "v1-network-design.md",
     "route-a-v1.md", "fee-settlement.md", "fee-settlement-evaluation.md",
     "v1-multi-asset.md", "v1-multi-asset-evaluation.md", "v1-storage-and-sync.md", "v1-network-budget.md",
+    "multi-asset-air-optimization.md",
 }
 PUBLIC_ARTIFACTS = {
     "crates/bench-d8/artifacts/v1-native-freeze.json",
+    "crates/bench-multi-asset/artifacts/v1-transaction-profile.json",
     *(f"crates/prover/keys/root-n{n}.bin" for n in (2, 4, 8, 16, 32, 64, 128)),
     "crates/prover/tests/data/root-proof-n16.bin",
     "crates/prover/tests/data/root-statement-n16.bin",

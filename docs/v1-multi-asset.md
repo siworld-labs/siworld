@@ -1,10 +1,12 @@
 # V1 Multi-Asset Transaction Format
 
-**Status:** Proposed V1 extension with an isolated native implementation in
-`crates/bench-multi-asset`. The earlier single-asset proof freeze is reopened.
-The implementation and the instance-specific reports do not activate a network
-format or freeze a new production parameter set. Node integration, protocol
-review, resource qualification and external review remain required.
+**Status:** Selected V1 design with an isolated native implementation in
+`crates/bench-multi-asset` and an engineering-frozen transaction profile.
+The [profile artifact](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+binds the selected parameters, measured implementation and public preprocessing
+key. It is not independent cryptographic approval or network activation.
+Node integration, protocol review, resource qualification and external review
+remain required. The prior two-output implementation is an unchanged baseline.
 
 ## Scope and invariants
 
@@ -250,20 +252,37 @@ halving for all Fiat--Shamir challenge terms, including FRI queries and
 grinding. Challenge-domain terms and BHT collision resistance must also reach
 80 bits. Assess each native proof relation separately.
 
-Record actual proof bytes, four-worker generation, single-core verification,
-peak memory and three-trial statistics. The selected transaction proof must
-fit the existing 524,288-byte cap and four-worker generation budget. If the
-production proof is oversized, first evaluate larger blowup; if it still does
-not fit, report the 544-position fallback for review. Reducing block capacity
-cannot make an individually oversized proof valid.
+The engineering-frozen transaction profile uses `log_blowup=7`, 41 queries,
+20-bit query/batch grinding, zero commitment grinding, binary folding and final
+polynomial log length zero. Its three EPYC 7763 four-worker generation trials
+are 1.332143, 1.315662 and 1.316440 seconds. The measured body range is
+583,552--584,848 bytes and the maximum process-tree charged memory is
+531,668,992 bytes. The [complete eight-profile scan](v1-multi-asset-evaluation.md)
+records all three trials, peak memory and actual security terms. It selects
+the smallest maximum observed proof among profiles whose three generation
+trials each complete within two seconds. The selected quantum Johnson
+challenge union is 81.6922 bits.
 
-The fixed maximum remains 576 positions with a minimum 30-Mbps uplink and
-100-Mbps deployment recommendation. Recompute relay, validation and storage
-budgets with the implemented 2,115-byte permanent position record and bounded
-issuance records. The [network wire budget](v1-network-budget.md) accounts for
-inventories, framing, authenticated transport, ACKs, handshake, retransmission
-and recovery allowances. Calculated headroom remains conditional until the
-transport and full-load measurements validate every allowance.
+The body cap is **655,360 bytes (640 KiB)**, at least 10% above the largest
+observed selected-profile proof and rounded up to 64 KiB; the measured margin
+is 12.0565%. It is a future wallet/node admission limit, not a theorem that
+every randomized proof fits it. Multi-asset envelope/decoder integration and
+standalone verifier resource qualification remain required. The earlier
+`bench-d8` decoder retains its independent 512-KiB limit. Settlement and
+issuance keep independent 524,288-byte body caps and their b8/q36/g20 profiles.
+
+The fixed maximum remains 576 positions. The conditional full-network ledger
+is 36.50164 Mbps; minimum uplink is **43 Mbps** to leave at least 15% of link
+capacity unused, and deployment recommends **100 Mbps**. Relay, validation
+and storage budgets use the implemented 2,115-byte permanent position record
+and bounded issuance records. The [network wire budget](v1-network-budget.md)
+includes inventories, framing, authenticated transport, ACKs, handshake,
+retransmission and recovery allowances. Actual wire/full-load measurements
+and issuance resource policy remain qualification gates.
+
+Column and query-opening optimization proceeds independently of this freeze.
+A smaller proof or lower uplink requirement requires a new measured profile
+revision; it does not silently change the selected verifier or security target.
 
 ## Compatibility and remaining work
 

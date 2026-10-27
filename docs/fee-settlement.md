@@ -3,8 +3,10 @@
 Status: selected V1 design with an isolated native AIR/prover implementation. This
 document specifies Scheme B, a confidential settlement mechanism for the
 native, non-recursive transaction route. The direction is selected for V1, but
-it is not an activated consensus rule. The multi-asset extension reopens the
-previous proof profile; the new profile is not frozen. Its isolated settlement
+it is not an activated consensus rule. The multi-asset transaction profile is
+[engineering-frozen](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+at b7/q41/g20 with a 655,360-byte transaction body cap. Settlement remains an
+independent b8/q36/g20 relation with its own 524,288-byte body cap. Its isolated
 AIR constrains the reward asset to SI and uses the five-block asset-bound note
 commitment. See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md).
 Independent review and node integration remain activation gates, and the
@@ -40,8 +42,9 @@ This design uses a separate native block-level settlement proof. It does not
 recurse over transaction proofs and does not replace transaction proof
 verification. The proof is the selected V1 direction for making the private
 sum publicly checkable. Its actual AIR shape, proof size, generation cost,
-memory cost and security must be recorded before parameter freeze, with
-independent review and node integration required before activation.
+memory cost and security have isolated diagnostic evidence. Full production
+witness/payout preparation, block validation, independent review and node
+integration remain required before activation.
 
 ## Private fee binding in a transaction proof
 
@@ -93,7 +96,6 @@ the proof body is pruned. Together with the 40-byte canonical snapshot selector
 the implemented permanent per-position record is 2,115 bytes before amortized
 block context. The isolated AIR proves the following; node acceptance remains
 separate work:
-following:
 
 - the two inputs and three outputs satisfy independent per-asset balances and SI-only fees;
 - every positive-amount input proves ownership and commitment-tree membership;
@@ -251,10 +253,14 @@ requirements.
 The per-transaction accounting must list the 48-byte `F_i` commitment and the
 fixed-size fee-opening sidecar separately from the implemented 2,027-byte public
 transaction body, totaling 2,075 bytes with the fee commitment. The permanent
-snapshot selector adds 40 bytes, for a 2,115-byte per-position record. Preserve the fixed
-`MAX_LEAF_PROOF_LEN = 524288` (512 KiB). Mempool byte caps, concurrent-verification
-limits and complete relay capacity require the production codec ledger and
-qualified transaction/576-position settlement measurements. The
+snapshot selector adds 40 bytes, for a 2,115-byte per-position record. Use the
+transaction body admission cap of 655,360 bytes (640 KiB); the independent
+settlement and issuance body caps remain 524,288 bytes each. The prior
+`bench-d8` decoder is unchanged; the multi-asset envelope and node decoder
+must enforce the new transaction limit before activation. Mempool byte caps,
+concurrent-verification limits and complete relay capacity require the
+production codec ledger and qualified transaction/576-position settlement
+measurements. The
 [node integration plan](v1-node-network-plan.md) specifies the proposed
 2,184-byte envelope prefix, 78-byte sidecar and initial local byte/CPU policies.
 Its new reward-note AIR must bind the reserved SI asset ID inside the circuit;
@@ -364,10 +370,11 @@ confirmed transaction; no fee opening is retained in the permanent record.
 
 ## Parameter freeze and activation gates
 
-Proof-parameter freeze records the implemented AIR, public/sidecar/proof codecs,
-trusted verifier, fixed dependency revisions, matching security reports and
-successful resource measurements. It does not require the complete node or
-wallet path to have been implemented. The isolated code must include the
+The engineering transaction-profile freeze records the implemented AIR,
+parameters, public preprocessing commitment, fixed implementation/dependency
+identities, matching security reports and successful generation measurements.
+It does not finalize the multi-asset envelope/decoder or qualify a complete
+node or wallet. Full protocol qualification additionally requires the
 following evidence:
 
 - a fixed AIR layout replacing clear fee limbs with the private fee witness
@@ -399,13 +406,15 @@ milestones. Clear fee limbs in the older recursive AIR remain measurement
 fixtures and are not the native V1 settlement statement. No part of this work
 is enabled on the retained network.
 
-The multi-asset implementation reopens the previous proof freeze. Its actual
-one-recipient/two-change body is 2,027 bytes, plus a 48-byte fee commitment and
-40-byte snapshot selector, giving 2,115 permanent bytes per position. The
-isolated settlement AIR binds SI in the five-block miner reward commitment and
-has matching native proof and rejection tests. The
-[multi-asset evaluation](v1-multi-asset-evaluation.md) records the new relation;
-the transaction's two-second generation qualification is not met, so this is
-not a new parameter freeze. External ML-DSA issuance authentication is paired
-with a separate native fixed-supply proof and verified SI fee-payment gate;
-node issuance integration and the issuance fee policy remain open.
+The selected multi-asset transaction profile is b7/q41/g20; all three qualified
+four-worker generation trials complete within two seconds. Its 655,360-byte
+cap has at least 10% margin over the largest observed body. The independent
+settlement b8/q36/g20 profile retains a 524,288-byte body cap, SI reward-asset
+constraints and the five-block reward commitment. The
+[multi-asset evaluation](v1-multi-asset-evaluation.md) records actual dimensions,
+all transaction scan trials, security terms and separate settlement evidence.
+These engineering profiles are not cryptographic approval or activated
+consensus. External ML-DSA issuance authentication is paired with a separate
+native fixed-supply proof and an SI fee-payment verification gate; real
+payment consumption, node issuance atomicity and issuance fee policy remain
+open.

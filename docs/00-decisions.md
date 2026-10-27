@@ -1,13 +1,12 @@
 # Current Protocol Decisions
 
-Status: V1 proof parameters and codec are reopened for the required
-multi-asset, two-input/three-output relation. The previous single-asset
-[freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json) remains an
-unchanged, reproducible diagnostic baseline; it is not acceptance of the new
-relation.
-Independent cryptographic approval, hosted resource acceptance and network
-activation remain separate requirements. Resource artifacts identify the
-measured commit and actual CPU.
+Status: the native two-input/three-output transaction profile is engineering-frozen
+in the [multi-asset profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json).
+Its qualified EPYC 7763 measurements meet the selected wallet-generation gate.
+The previous single-asset [freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
+remains an unchanged diagnostic baseline. Independent cryptographic approval,
+standalone verifier qualification, node/wallet integration and network
+activation remain separate requirements.
 
 ## Network and proof architecture
 
@@ -68,27 +67,43 @@ encryption-correctness circuits remain future research.
 ## Capacity and resource boundaries
 
 The block target is 300 seconds with 64 through 576 positions in groups of 16.
-Minimum node uplink is 30 Mbps; deployment recommends 100 Mbps. Preserve `MAX_LEAF_PROOF_LEN = 524288`
-(512 KiB); do not derive a larger maximum from bandwidth or observed samples.
-The implemented isolated private asset-ID, three-output codec uses 2,027 public body
-bytes, 48 fee-commitment bytes and a 40-byte snapshot selector: 2,115 permanent
-bytes per position. Its proposed relay prefix is 2,184 bytes and a private
-sidecar is 78 bytes. The maximum combined transaction payload is 526,550 bytes
-at the retained proof cap. The body encoding is tested; complete envelope
-framing still requires node integration. The settlement prefix remains a baseline
-159 bytes and must be rechecked after the reward-note asset binding changes.
-At 576 positions and three copies including a capped settlement envelope,
-the provisional payload requires 24.30537976 Mbps, before inventories,
-framing, retransmissions, issuance and recovery traffic. A payload fit is not
-full-network acceptance. The [conditional full wire budget](v1-network-budget.md)
-adds explicit protocol/control, packetization, reciprocal ACK, bounded issuance,
-handshake, retransmission and recovery assumptions: approximately 29.252 Mbps,
-leaving 2.49% additional margin at 30 Mbps. Qualify actual traffic before launch.
-If the frozen production proof exceeds the cap, first evaluate larger blowup.
-If no eligible profile fits, report a proposed 544-position capacity and revised
-budgets; this fallback does not increase the proof cap or authorize activation.
-Reducing block capacity cannot make an individually oversized proof valid;
-a profile at or below 512 KiB is still required before activation.
+Keep the maximum at 576; there is no capacity-reduction fallback. Prioritize
+transaction proving within two seconds on the EPYC 7763 four-vCPU reference.
+Select from log blowups 5 through 8 and query/batch grinding 20 or 24, using
+three fresh trials per configuration. All three generation times must pass;
+rank passing configurations by their largest observed serialized proof.
+
+Freeze `log_blowup=7`, 41 queries, query grinding 20, opening-batch grinding 20,
+commitment grinding zero, binary folding and `log_final_poly_len=0`.
+The [actual-AIR report and measurements](v1-multi-asset-evaluation.md) record
+three generation times of 1.332143, 1.315662 and 1.316440 seconds, maximum
+whole-process charged memory 531,668,992 bytes and quantum-halved Johnson
+challenge union 81.692219 bits. These are three-sample qualification results,
+not worst-case latency or independent cryptographic approval.
+
+The multi-asset `MAX_LEAF_PROOF_LEN` is 655,360 bytes (640 KiB). This is the
+smallest 64-KiB multiple at least 10% above the largest observed selected proof
+of 584,848 bytes, giving 12.056% sample headroom. It is an enforced admission
+requirement for the new integration, not a mathematical encoded-size bound.
+Settlement and issuance proof caps remain independently 524,288 bytes.
+The old 512-KiB decoder and retained network are unchanged; a new prepared
+multi-asset decoder and envelope must enforce this profile before activation.
+
+The implemented public body is 2,027 bytes; its fee commitment and snapshot
+selector bring permanent bytes to 2,115 per position. A proposed 2,184-byte
+relay prefix and 78-byte sidecar bring the capped combined payload to
+657,622 bytes. Full three-copy traffic for 576 positions, settlement, bounded
+issuance, inventories, requests, AEAD/multiplexing, IPv6/TCP/link framing,
+reciprocal ACKs, handshakes, retransmission and recovery is modeled at
+36.501639 Mbps. Require at least 43 Mbps sustained uplink, computed as
+`ceil(wire_mbps / 0.85)`; 15.112% remains unused at that floor. Deployment
+recommends 100 Mbps. The [full wire budget](v1-network-budget.md) is conditional
+planning; measure the actual transport before network acceptance.
+
+The [independent layout prototype](multi-asset-air-optimization.md) targets
+fewer columns and smaller openings. It does not change the frozen relation or
+block capacity. Re-screen and measure any adopted optimization before
+refreezing its key and reducing proof/bandwidth limits.
 
 ## Confidential fees and retention
 
@@ -134,8 +149,9 @@ abuse caches are 1 MiB each; reconstruction is 640 MiB/two blocks. TTLs and
 admission rules are in [the integration plan](v1-node-network-plan.md).
 
 Maintain at least 64 usable pregenerated padding transactions when ready,
-with at most 128 entries and 65 MiB of serialized payload. Account metadata
-separately. Use fresh nullifiers, genuine ephemeral-recipient ML-KEM encryption
+with at most 128 entries and 65 MiB of serialized payload. At the new wire
+maximum the byte cap permits at most 103 entries before metadata; 64 entries
+need 42,087,808 bytes and fit. Account metadata separately. Use fresh nullifiers, genuine ephemeral-recipient ML-KEM encryption
 and the same proof profile. Expiry, orphaning, inclusion and confirmed/pending
 nullifier conflicts invalidate entries before selection and release their
 reservations. Refill below 64; shortages delay production rather than permit
@@ -165,25 +181,27 @@ miners, with 500 GB usable SSD minimum and 1 TB recommended, plus separately
 budgeted backups. These profiles
 are unqualified until sustained integrated measurements pass. Linux x86-64-v3
 is the measured platform; macOS and Windows need their own adapters and
-qualification. Keep the 30-Mbps uplink floor; prefer 100-Mbps links for margin
+qualification. Keep the 43-Mbps uplink floor; prefer 100-Mbps links for margin
 and qualify actual full-capacity relay/recovery at both bandwidth classes.
 
-At the target block rate, ordinary proofs/sidecars including nominal
-depth-24 finality require 268,672,484,352 rolling bytes. One additional capped
-issuance proof/block adds 465,567,744 bytes. The 2,115-byte position
-codec adds 128,061,388,800 permanent bytes/year at full load. The
-[finite storage planning model](v1-storage-and-sync.md) additionally reserves
+At the target block rate, proofs and sidecars including the nominal depth-24
+finality tail require 336,179,807,232 rolling bytes at the separate caps.
+The 2,115-byte position codec adds 128,061,388,800 permanent bytes/year at
+full load. The [finite storage model](v1-storage-and-sync.md) also reserves
 8 KiB/block for permanent block records, 16 KiB/block for issuance records,
-25% of all permanent records for indexes/state, 16 GB database working space,
-20 GB system files and 20% device free. These are proposed budgets, not
-measured final record/database costs or activated issuance limits.
+25% of permanent records for indexes/state, 16 GB database working space,
+20 GB system files and 20% device free. These remain proposed allowances
+pending actual database and encoded-record measurements.
 
-Under that scenario, 1 TB lasts approximately three full-load years, while
-500 GB lasts more than five years at the stated early 10k/50k-per-day usage.
-Freeze actual encoded sizes, issuance byte/work limits and measured database
-growth/maintenance before qualification; revise the horizons if they exceed
-the allowances. Faster blocks increase elapsed-time retention storage. Never
-prune required public records or unexpired proofs.
+With that free-space reserve, full-load device needs at years 1/3/5 are
+669.357/1,077.622/1,485.887 GB. One TB therefore does not cover three full-load
+years with the reserve intact. At 10,000 submitted transactions/day, the
+minimum-block case needs 118.996/171.535/224.074 GB. At 50,000/day, adaptive
+packing needs 236.827/365.521/494.216 GB; uniform 176-position blocks require
+239.387/369.741/500.095 GB. A 500-GB device is an early-load profile, not a
+full-load year-one guarantee. Retain the 500-GB minimum and 1-TB recommendation
+as workload-qualified profiles and plan expansion from measured growth.
+Never shorten retention or prune permanent public data to meet a disk target.
 
 Every validator independently enforces consensus. Miners add production;
 bootstrap nodes add discovery; project-operated object storage backs up public
@@ -239,7 +257,7 @@ transactions. The AIR balances every private asset independently; fees are
 paid only in SI. Issuance publishes declared supply, name and precision and
 uses a domain-separated ML-DSA-65 signature verified natively by the node.
 The isolated native implementation covers ID derivation and fixed-supply issuance-to-note binding in
-[the reopened design](v1-multi-asset.md). The SI issuance-fee amount/destination,
+[the multi-asset design](v1-multi-asset.md). The SI issuance-fee amount/destination,
 asset-aware minimum output rule, metadata/note limits and per-block issuance
 byte/CPU budget remain open protocol values; do not settle them implicitly in
 consensus code. All remain implementation/review gates rather than enabled rules.
@@ -250,7 +268,8 @@ All nodes permanently retain headers/PoW, output commitments and tree state,
 ciphertexts, nullifiers, fee commitments, proof-free settlement declarations,
 miner reward notes, development-fund spend records with ML-DSA signatures,
 asset issuance records and recent-root snapshots. Only transaction proofs,
-settlement proofs and sidecars expire, three elapsed days after finality.
+settlement proofs, native issuance proofs and sidecars expire, three elapsed
+days after final confirmation.
 There is no V1 archive role. Release-pinned checkpoint plus PoW is the default
 new-node path; full historical proof validation is a future upgrade.
 
@@ -262,26 +281,20 @@ required implementation work. Project-operated permanent-public-data backups
 and mandatory mnemonic backup/full ciphertext rescan are described in
 [deployment](v1-deployment.md) and [the storage model](v1-storage-and-sync.md).
 
-## Multi-asset implementation and diagnostic result
+## Multi-asset implementation and engineering freeze
 
 The isolated [multi-asset crate](../crates/bench-multi-asset/README.md) implements
-native two-input/three-output asset conservation, the 2,027-byte public codec,
-ML-DSA-authenticated fixed-supply issuance and the SI-only reward asset inside
-the settlement AIR. No retained node uses this crate. Public body plus fee
-commitment and snapshot selector is 2,115 bytes per position; relay-envelope
-framing remains proposed until node integration.
+native asset conservation, the three-output codec, ML-DSA-authenticated
+fixed-supply issuance and the SI-only settlement reward asset. No retained
+node uses this crate. The [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+pins source/dependency identities, all 24 EPYC trials, actual-instance security
+terms, selected parameters, proof cap and canonical public verifier data.
+CI reproduces that key and report and rejects measured-runtime source drift.
+The unreferenced optimization prototype is excluded from this frozen relation.
 
-The actual `p3-security` scan and [native measurements](v1-multi-asset-evaluation.md)
-reopen parameter selection. Requested log blowups 4--8 exceed the proof cap.
-A log-blowup-9, 31-query, 24-bit query/batch-grinding diagnostic fits the cap in
-observed samples and gives approximately 81.706 bits in the selected quantum
-Johnson challenge ledger. Its local four-worker generation median is 4.7473
-seconds, above the two-second target. It is not a frozen production profile.
-The matching source commit was measured on a hosted EPYC 7763 with two
-exposed physical cores and four vCPUs: generation median 6.3081 seconds,
-one-worker verification median 14.8915 ms, maximum whole-process cgroup peak
-2,083,336,192 bytes, and observed bodies 512,469--523,702 bytes. All memory
-event deltas were zero under the diagnostic five-GiB scope with swap disabled.
-The near-cap samples are not a deterministic proof-length bound.
-Keep the 524,288-byte cap, 576-position limit and security target unchanged;
-report failed qualification before any production integration or activation.
+Transaction selection is complete under the stated engineering measurement
+model. Settlement and issuance keep their separately measured b8/q36/g20
+profiles and 512-KiB caps. Independent verifier CPU/memory qualification,
+full valid-block timings, node admission/decoder integration, issuance-fee
+policy and durable issuance transitions remain separate gates. A successful
+standalone proof does not activate consensus or establish testnet acceptance.

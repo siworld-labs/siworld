@@ -14,15 +14,16 @@ node, wallet or network activation. Durable wallet receipt integration and the
 remaining node work below do not, by themselves, prevent that freeze. They
 remain prerequisites for accepting user transactions on the new network.
 
-The selected native profile is KoalaBear D8, standard Poseidon2 W24,
-twelve-element digests, `log_blowup=8`, 36 queries, 20 query-grinding bits,
-20 opening-batch-grinding bits and zero commitment-grinding bits. Folding is
-binary and the last polynomial has logarithmic size zero. The
-[engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
-pins the source, public verifier artifacts and actual-instance security
-reports. Hosted resource evidence, independent cryptographic review and node
-activation are separate gates. A diagnostic row alone does not establish
-cryptographic approval.
+The [multi-asset transaction engineering profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+selects KoalaBear D8, standard Poseidon2 W24, twelve-element digests, log
+blowup 7, 41 queries, query/batch grinding 20 and commitment grinding zero.
+Folding is binary and final polynomial log length is zero. It binds matching
+source, actual-AIR security, canonical public preprocessing and all 24
+qualified EPYC scan trials. Three selected generation times meet two seconds.
+Independent review, new decoder/envelope qualification, standalone verifier
+limits and node activation remain separate gates. The unchanged
+[old bundle](../crates/bench-d8/artifacts/v1-native-freeze.json) describes the
+two-output baseline only.
 
 No V1 node path may use a verification key, suite or proof parameters supplied
 by a peer. Resource exhaustion, a local timeout and an unavailable peer are
@@ -45,8 +46,8 @@ its source and artifact hashes remain baseline evidence only.
 | Confidential fee commitment | 48 |
 | Proof-body length | 4 |
 | **Fixed envelope prefix** | **2,184** |
-| Proof-body maximum | 524,288 |
-| **Maximum envelope** | **526,472** |
+| Transaction proof-body maximum | 655,360 |
+| **Maximum envelope** | **657,544** |
 
 The separate fee sidecar is 78 bytes: four-byte magic, two-byte version,
 32-byte transaction identity, eight-byte fee and eight canonical field-element
@@ -67,10 +68,11 @@ same statement therefore preserves the identity. A verification cache also
 keys on the proof digest and locally trusted verifier identity; statement
 identity alone cannot authenticate a replacement proof.
 
-The proposed maximum envelope plus sidecar is **526,550 bytes** before stream
+The proposed maximum envelope plus sidecar is **657,622 bytes** before stream
 framing. The proposed permanent record is **2,115 bytes**: 2,027 public bytes,
 48 fee-commitment bytes and a 40-byte snapshot selector. Recheck both values
-against the actual three-output codec and AIR; they are not measured artifacts.
+against the integrated envelope and state transition. The 2,115-byte permanent
+record is tested in the isolated codec; complete envelope framing is not yet integrated.
 Version, suite and
 network context may be amortized in the authenticated block header. A full
 32-byte compact reference is additional transmission data when sent, rather
@@ -108,14 +110,21 @@ an invalid-proof verdict. Candidate-block validation must reschedule or report
 unavailability rather than reject a cryptographically valid block because a
 local deadline expired.
 
-At maximum wire size, the 512-MiB transaction budget holds at most 1,020
-transactions before bookkeeping; the 64-MiB queue holds at most 127. The
-128-entry padding pool needs 67,361,920 wire bytes, about 64.24 MiB; the
-65-MiB serialized-payload cap leaves limited payload headroom. Bounded map
-metadata is accounted separately in the node budget; it is not covered by
-this payload cap.
-The 64-entry target is a readiness condition, not permission to exceed a cap.
-Padding generation pauses rather than exceeding memory or CPU budgets.
+At maximum wire size, the 512-MiB transaction budget holds at most 816
+transactions before bookkeeping; the 64-MiB queue holds at most 102 and the
+2-MiB per-peer ingress cap at most three. Entry limits remain secondary to
+owned bytes. The 64-entry padding readiness target needs 42,087,808 wire bytes.
+The 65-MiB padding byte cap permits at most 103 maximum-size entries before
+metadata, even though the entry-count ceiling is 128. Do not grow the byte
+budget automatically to reach that ceiling.
+
+Two fully buffered maximum-size block payloads exceed the 640-MiB
+reconstruction budget. Retain at most two candidate identities, but stream
+verified bodies to bounded disk storage and backpressure/reschedule the
+second candidate rather than holding both complete bodies in memory. Reserve
+metadata and temporary copies within the same budget. Pool shortages delay
+production or admission; they do not allow oversized allocations or invalid
+padding.
 
 Admission order is:
 
@@ -204,20 +213,21 @@ the public fee commitments and settlement proof establish its validity.
 Sidecar recovery is a private relay operation over the hybrid connection;
 it must not publish fee openings to an explorer or public block endpoint.
 
-The proposed multi-asset transaction plus sidecar is 526,550 bytes at the
-proof cap; 576 positions and three relay copies plus capped settlement use
-24.30537976 Mbps before transport/control costs. The minimum uplink is 30 Mbps;
-100 Mbps is recommended. The [complete conditional wire budget](v1-network-budget.md)
-adds explicit inventories, requests, AEAD/multiplexing, IPv6/TCP/link framing,
-reciprocal ACKs, handshakes, keepalive, bounded issuance, retransmission and
-recovery allowances: approximately 29.252 Mbps, leaving 2.49% additional margin
-at the floor. Validate and measure each assumption with the actual listener.
-Neither a payload fit nor this planning envelope is network acceptance.
+The capped multi-asset transaction plus sidecar is 657,622 bytes. At 576
+positions and three copies, transaction and settlement payload is 30.345178
+Mbps. The [complete conditional wire budget](v1-network-budget.md) includes
+inventory/requests, AEAD/multiplexing, IPv6/TCP/link framing, reciprocal ACKs,
+handshakes, keepalive, bounded issuance, retransmission and recovery costs:
+36.501639 Mbps. Reserve at least 15% of link capacity after those costs;
+`ceil(wire_mbps / 0.85)` gives a 43-Mbps minimum. Recommend 100 Mbps.
+Measure the deployed listener before acceptance.
 
-Retain `MAX_LEAF_PROOF_LEN=524288`. If no eligible final relation fits the
-bound, select a larger blowup first, then report the 544-position fallback if
-necessary. Local pool pressure does not change consensus capacity. There is no
-automatic increase above 576 positions.
+Set the new transaction profile's `MAX_LEAF_PROOF_LEN` to 655,360 bytes,
+independently of the 524,288-byte settlement and issuance caps. Preserve
+576 positions and the 80-bit quantum screen. The old 512-KiB prepared decoder
+is baseline-only; the new shape/key/limit require an integrated decoder and
+admission tests. Future layout optimization does not block this engineering
+freeze and cannot reduce bandwidth requirements without new measurements.
 
 ## Proof retention and synchronization
 
@@ -338,18 +348,6 @@ Apply the [native acceptance matrix](prover-acceptance.md), including
 trials, seven-day independent-host observation, real retention lifecycle and
 explicit recovery targets. No short standalone proof run closes those gates.
 None of these milestones imports or migrates retained seven-node state.
-
-## Reopened multi-asset capacity
-
-Measurements of the two-output implementation remain baseline evidence only.
-The proposed three-output codec uses 2,027 public body bytes and 2,115
-permanent bytes per position. At capped proof sizes and three relay copies,
-including one capped settlement per block, the payload is approximately
-24.3054 Mbps at 576 positions/300 seconds, before framing, recovery and public
-issuance traffic. Updated year-1/3/5 capacity and low-use tables are in
-[V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md); reproduce them
-with `python3 scripts/v1-storage-budget.py`. The final encoded artifact and
-actual-AIR scan must replace these estimates before acceptance.
 
 ## Backup checkpoint freshness
 

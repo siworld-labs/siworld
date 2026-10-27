@@ -1,9 +1,10 @@
 # Native V1 Deployment and Observability
 
 Status: qualification design for the independent native V1 engineering network.
-The prior two-output profile is a diagnostic baseline; the multi-asset profile is reopened; node integration, operating
-profiles, network capacity and supported deployment platforms remain subject
-to acceptance. This document does not change the retained seven-node network.
+The prior two-output profile is a diagnostic baseline. Multi-asset parameter
+selection requires the actual-AIR security and reference-host performance
+evidence; node integration, operating profiles, network capacity and supported
+deployment platforms remain subject to acceptance. This document does not change the retained seven-node network.
 [Decisions](00-decisions.md), [native transaction design](route-a-v1.md) and the
 [node integration plan](v1-node-network-plan.md) define protocol requirements.
 
@@ -63,20 +64,26 @@ Freeze supported hardware only after real maximum-load sustained acceptance.
 SSD capacity means usable capacity after filesystem/array overhead, before
 allocating separate backups. Disk redundancy does not replace backups. Measure
 power-loss behavior, synchronous commits, write amplification and compaction.
-The protocol minimum is **30-Mbps uplink**. The deployment recommendation
-remains **100 Mbps sustained uplink**. The proposed multi-asset three-copy
-payload plus capped settlement uses 24.30537976 Mbps. The
-[complete conditional wire budget](v1-network-budget.md) includes control,
-authenticated-channel framing, IPv6/TCP/link overhead, reciprocal ACKs,
-bounded issuance, handshakes, 2% retransmission and 5% missing-body recovery
-reserves: approximately 29.252 Mbps. It leaves 0.748 Mbps (2.49%) additional
-margin at 30 Mbps, compared with 70.748 Mbps at 100 Mbps. These are explicit
-planning assumptions; measure packet counters and queue growth before accepting
-576-position operation. Schedule bulk backup/checkpoint transfers separately.
+The minimum uplink is **43 Mbps**, with **100 Mbps sustained uplink**
+recommended. Keep all 576 positions. The selected transaction proof cap is
+655,360 bytes (640 KiB); settlement and issuance caps remain 524,288 bytes.
+The [complete conditional wire budget](v1-network-budget.md) charges three
+application copies, settlement and bounded issuance, control, authenticated
+framing, IPv6/TCP/link serialization, reciprocal ACKs, handshakes, 2%
+retransmission and 5% missing-body recovery. After these costs, reserve at
+least 15% of the selected minimum link's capacity:
+`minimum_link_mbps = ceil(wire_mbps / 0.85)`. Transaction, settlement and
+issuance proof caps are independent. The full wire model uses 36.50163939 Mbps;
+43 Mbps leaves 6.498 Mbps (15.11%) spare, while 100 Mbps leaves 63.498 Mbps.
+Measure packet counters and queue growth
+before accepting maximum-load operation, and schedule bulk backup/checkpoint
+transfers separately.
 
 Account for all simultaneous consumers. Current planned payload/worker ceilings
-sum to 1,539 MiB: verified pool 512, unverified queue 64, two verifier workers
-256, reconstruction 640, padding payload 65 and two one-MiB caches. These are
+must be reconciled with the selected 640-KiB transaction proof cap in the
+[native admission policy](route-a-v1.md). Count the verified pool, unverified
+queue, verifier workers, compact reconstruction, padding payload and caches
+under their independent byte ceilings. These are
 policy ceilings, not resident-memory measurements; metadata, decoder copies,
 network buffers, database caches, accepted state and allocator overhead are
 additional. Avoid double counting shared ownership and count actual duplicate
@@ -87,36 +94,42 @@ restart on candidate hosts. Measure the node with its largest legitimate pools,
 cold database opening, replay, pruning and compaction. Measure prover setup,
 key loading, steady generation and teardown separately and together with node
 work. Miner tests must include concurrent settlement and permitted padding
-refill. Isolated charged peaks of 393,834,496 B for transaction generation and
-2,942,472,192 B for settlement do not bound that aggregate. Neither a clean
-single-process run nor spare page cache establishes long-term memory safety.
+refill. Isolated proof measurements do not bound that aggregate. Use the selected
+multi-asset profile's charged process-tree peak, including preparation and
+verification, from the [reference measurements](v1-multi-asset-evaluation.md).
+Neither a clean single-process run nor spare page cache establishes long-term
+memory safety.
 
 ## Storage ledger and capacity gate
 
 Use [V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md) and reproduce
 the explicit planning model with `python3 scripts/v1-storage-budget.py`.
-The proposed three-output codec has 2,115 permanent bytes/position. Ordinary
-proofs/sidecars require 268.672 GB at the nominal 888-block window; an additional
-one-capped-issuance-proof/block allowance brings the rolling budget to
-269.138 GB. Include 8 KiB permanent block records and 16 KiB permanent issuance
+The three-output codec has 2,115 permanent bytes/position. At the 640-KiB
+transaction cap, ordinary transaction proofs, settlement proofs and sidecars
+require 335.714 GB at the nominal 888-block window; an additional capped
+issuance proof/block brings the rolling budget to 336.180 GB. Include 8 KiB permanent block records and 16 KiB permanent issuance
 records/block, 25% of all permanent bytes for indexes/state, 16 GB database
 working space, 20 GB system/recovery files, and 20% device free:
 
 | Workload | Device year 1 | Device year 3 | Device year 5 |
 | --- | ---: | ---: | ---: |
-| Maximum 576 positions/block | 585.555 GB | 993.820 GB | 1,402.085 GB |
-| 10,000/day, minimum 64-position blocks | 109.684 GB | 162.223 GB | 214.762 GB |
-| 50,000/day, adaptive grouping | 211.567 GB | 340.261 GB | 468.956 GB |
-| 50,000/day, uniform 176 positions | 213.781 GB | 344.135 GB | 474.489 GB |
+| Maximum 576 positions/block | 669.357 GB | 1,077.622 GB | 1,485.887 GB |
+| 10,000/day, minimum 64-position blocks | 118.996 GB | 171.535 GB | 224.074 GB |
+| 50,000/day, adaptive grouping | 236.827 GB | 365.521 GB | 494.216 GB |
+| 50,000/day, uniform 176 positions | 239.387 GB | 369.741 GB | 500.095 GB |
 
 **500 GB usable SSD is the installation minimum; 1 TB is recommended** for
-both miners and validators. Under this finite planning scenario, a 1-TB device
-provides approximately three years at continuous maximum load; early
-10k/50k-per-day usage fits 500 GB for more than five years. These horizons
-depend on the final measured overheads and workload. The 1-TB year-three
-margin beyond the free reserve is narrow, and 500 GB does not qualify a year
-of full load. Publish measured growth and expand storage before reserves are
-consumed.
+both miners and validators. That minimum does not qualify continuous maximum
+load: year-one used bytes are 535.486 GB before the 20% free reserve. A 1-TB
+device reaches the modeled free-space threshold after approximately 2.62 full
+load years; year three needs 1,077.622 GB, rather than fitting 1 TB.
+
+At 10,000/day, 500 GB has modeled headroom beyond five years. At 50,000/day,
+adaptive packing needs 494.216 GB in year five, leaving only 5.784 GB beyond
+the reserve; uniform 176-position blocks need 500.095 GB and exceed 500 GB.
+These conditional horizons depend on the final measured overheads, packing
+and workload. Publish actual growth and expand storage before reserves are
+consumed; retain 576 positions and the complete three-day proof window.
 
 The block/issuance ceilings and database allowance remain proposed engineering
 budgets: final encoding must bound headers/PoW, settlement declarations,
@@ -173,7 +186,8 @@ of at most 24 missing blocks within 30 minutes. Measure available residual
 bandwidth under concurrent relay before accepting those targets. For lower
 bandwidth, derive the catchup allowance from missing bytes divided by measured
 spare bandwidth plus verification/replay work; do not promise 30 minutes on a
-saturated 30-Mbps connection. Require zero loss of durably accepted records.
+connection with only the modeled minimum headroom. Require zero loss of
+durably accepted records.
 Database corruption halts participation and requires verified backup/recovery;
 it must not silently rewind accepted history.
 
@@ -219,17 +233,28 @@ host profiles, capacity acceptance, telemetry feed and panel integration above
 remain planned work. Accept them only after independent-host end-to-end tests,
 including observer loss, stale sessions, node restart, peak load and recovery.
 
-## Reopened multi-asset capacity
+## Multi-asset proof performance gate
 
-Measurements of the two-output implementation remain baseline evidence only.
-The proposed three-output codec uses 2,027 public body bytes and 2,115
-permanent bytes per position. At capped proof sizes and three relay copies,
-including one capped settlement per block, the payload is approximately
-24.3054 Mbps at 576 positions/300 seconds, before framing, recovery and public
-issuance traffic. Updated year-1/3/5 capacity and low-use tables are in
-[V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md); reproduce them
-with `python3 scripts/v1-storage-budget.py`. The final encoded artifact and
-actual-AIR scan must replace these estimates before acceptance.
+Keep 576 positions per block and the 80-bit quantum security requirement.
+Select the smallest measured proof body among profiles whose three
+four-worker generation trials on the EPYC 7763 reference host each complete
+within two seconds. Set the body cap at least 10% above the largest observed
+selected-profile proof, rounded up to 64 KiB. The selected b7/q41/g20 profile
+generated in 1.315662–1.332143 seconds across three reference-host trials, with
+a 1.316440-second median and a 531,668,992-byte charged process-tree peak.
+Its 655,360-byte cap is 12.056% above the largest 584,848-byte sampled proof.
+Refer to the [complete measurement record](v1-multi-asset-evaluation.md) for
+the pinned security report and measurement scope. Enforce this byte cap in the
+wallet and node, and account for it independently in network, memory and
+retention budgets. The proof-size bound remains an admission rule rather than
+a guarantee that every randomized valid proof will fit it.
+
+Circuit-width and opening-size optimization proceeds separately. The selected
+profile remains fixed until replacement security, timing, memory and size
+evidence justifies an explicit revision. The prior two-output and prior
+multi-asset scans remain reproducible diagnostic evidence, not alternate
+production parameter profiles. Neither parameter selection nor isolated
+measurements qualify whole-node sustained operation.
 
 ## Backup checkpoint freshness
 

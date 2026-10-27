@@ -1,9 +1,12 @@
-# Native Multi-Asset Proof Evaluation
+# Native Multi-Asset Proofs and Engineering Profile
 
-Status: isolated executable relations and measurement tools. No node depends on
-this crate. The earlier single-asset engineering freeze remains unchanged;
-these new relations, domains, preprocessing and verifier keys require a new
-review and acceptance process before activation.
+Status: isolated executable relations, a transaction engineering profile and
+measurement tools. No node depends on this crate. The
+[source-bound profile](artifacts/v1-transaction-profile.json) records the
+transaction parameter choice and public verifier key. The earlier two-output
+`bench-d8` implementation and freeze remain unchanged baseline evidence. Node
+decoding, admission, wallet/network integration and independent cryptographic
+review remain separate requirements before activation.
 
 The suite is KoalaBear D8, standard Poseidon2 W24, twelve-element digests and
 hiding FRI, using pinned Plonky3 dependencies and `p3-security` 0.9.0-rc.2.
@@ -42,10 +45,10 @@ bits, worker count and a new output file. For example:
 
 ```sh
 RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
-  crates/bench-multi-asset/target/release/native-scan transaction 8 36 20 4 result.json
+  crates/bench-multi-asset/target/release/native-scan transaction 7 41 20 4 result.json
 ```
 
-This example is a diagnostic profile, not a parameter recommendation. The
+This example reproduces the selected transaction parameter coordinate. The
 executable measures real setup, native generation and verification separately.
 It encrypts and locally checks actual transaction outputs; issuance also checks
 a real ML-DSA-65 signature. Use a separate one-worker process for single-worker
@@ -53,10 +56,43 @@ verification. Process peak memory includes setup, proving and verification;
 it is not an independent verifier-only memory measurement. Hosted cgroup
 measurements and the full parameter scan are defined by the dedicated workflow.
 
-The 512-KiB proof cap, 576-position block limit, 30-Mbps minimum uplink and
-security target are unchanged by a diagnostic result. A profile exceeding any
-selected resource target is recorded as rejected rather than weakening that
-target. Synthetic keys and fixture data in this crate have no network use.
+The transaction choice scans blowup 5–8 and grinding 20/24, with three
+four-worker trials per configuration on a qualified EPYC 7763 four-vCPU VM.
+All three generation times must be at most two seconds. The selected passing
+configuration minimizes the maximum observed proof body. Its admission cap
+adds at least 10% to that maximum and rounds up to 64 KiB; it is an engineering
+admission policy, not a mathematical proof-size bound. The frozen JSON records
+all eight profiles, all 24 measurements, source/dependency identities,
+actual-instance security reports, public verifier key and cgroup memory peaks.
+The selected profile is `log_blowup=7`, 41 queries and 20-bit query/batch
+grinding, with zero commitment grinding, binary folding and final-polynomial
+log length zero. Three EPYC 7763 generation times were 1.332143, 1.315662 and
+1.316440 seconds; proof bodies were 583,552–584,848 bytes. The maximum combined
+process-tree cgroup peak was 531,668,992 bytes, with zero memory-event deltas.
+The source-bound artifact records the exact security report; its quantum
+Johnson union is approximately 81.692 bits. The cap is 655,360 bytes (640 KiB),
+12.06% above the largest measured proof. Five GiB remains a diagnostic process
+boundary rather than a miner RAM minimum.
+
+Settlement and issuance caps remain 524,288 bytes each. Block capacity remains
+576. Minimum uplink is recalculated from the transaction cap, three relay
+copies and complete bounded network overhead with at least 15% unused link
+capacity: 43 Mbps minimum; deployment recommendation remains 100 Mbps. Synthetic keys and
+fixture data in this crate have no network use.
+
+Reproduce the selected public preprocessing and check the engineering profile:
+
+```sh
+cargo run --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml \
+  --features security-report --bin profile-artifacts -- 7 41 20 verifier.json
+python3 scripts/freeze-multi-asset.py \
+  --check crates/bench-multi-asset/artifacts/v1-transaction-profile.json \
+  --verifier-key verifier.json
+```
+
+The parameter arguments must match the artifact's `parameters` fields.
+The Rust tool only prepares public preprocessing and security data;
+it does not run a transaction-generation benchmark.
 
 ## Admission integration boundary
 

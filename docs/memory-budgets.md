@@ -59,12 +59,18 @@ See [proof composition](proof-composition.md) for that research scope.
 
 ## Native V1 resource qualification
 
-The [frozen native profile](../crates/bench-d8/artifacts/v1-native-freeze.json)
-has independent transaction and fixed-576 settlement measurements. The hosted
-5-GiB zero-swap scopes are measurement boundaries, not an approved node/miner
-RAM requirement. The [V1 ledger](v1-node-network-plan.md#admission-and-local-resource-policy)
-specifies new pool and isolated-verifier policy; it does not change retained
-node limits. Its 4-MiB decoder budget bounds declared vectors, not total RSS.
+The [multi-asset transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+records a maximum setup/prove/verify process-tree peak of 531,668,992 bytes
+for the selected b7/q41/g20 EPYC 7763 trials. Separate settlement and issuance
+measurements remain in the [evaluation](v1-multi-asset-evaluation.md). The old
+[baseline bundle](../crates/bench-d8/artifacts/v1-native-freeze.json) is unchanged.
+Hosted 5-GiB zero-swap scopes are measurement boundaries, not approved
+node/miner RAM requirements or independent verifier-memory bounds.
+The [V1 ledger](v1-node-network-plan.md#admission-and-local-resource-policy)
+specifies separate pool and isolated-verifier guards. Its byte ceilings remain
+binding when the transaction cap grows to 640 KiB: count limits do not permit
+extra allocations. The new decoder requires its own trusted shape and cap;
+the old 4-MiB declared-vector budget is not a total RSS bound.
 
 Qualify [candidate hosts](v1-deployment.md) using simultaneous node, generation,
 verification and maintenance limits, startup and steady peaks, state/cache

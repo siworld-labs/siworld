@@ -1,10 +1,10 @@
 # Native V1 Testnet Acceptance
 
 Status: engineering acceptance requirements for the independent native-proof
-testnet. Transaction and settlement parameter acceptance is reopened for
-the required two-input/three-output multi-asset relation. The earlier
-single-asset freeze is a diagnostic baseline; node, wallet, transport and
-recovery integration remain incomplete. A passed
+testnet. The two-input/three-output transaction engineering profile is frozen
+with matching source, public key and qualified generation measurements.
+The earlier single-asset freeze is an unchanged diagnostic baseline; node,
+wallet, transport, independent-verifier and recovery integration remain incomplete. A passed
 standalone benchmark is not testnet acceptance. Operating thresholds below
 are qualification targets, not claims of achieved behavior.
 
@@ -29,14 +29,16 @@ work. N=32 and retained-history verifier migration are excluded.
 
 ## Gate 1: proof identity and independent review
 
-Before refreezing, implement [the multi-asset relation](v1-multi-asset.md),
-including signed issuance-to-note supply linkage, and rerun actual-AIR security,
-proof-size, generation, independent verification and memory measurements.
-The old keys must reject the new format. Reproduce the prior baseline [freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
-from pinned source and dependencies, and compare canonical public verifier
-artifacts, suite identifiers, envelopes and actual-AIR security reports.
-Run `python3 scripts/check-v1-freeze.py`; artifact reproduction is a separate
-cryptographic check, not a consequence of the document check passing.
+Reproduce the [multi-asset transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+from pinned source and dependencies. Run `scripts/freeze-multi-asset.py --check`
+with a newly generated `profile-artifacts` public-key/report JSON; source-only
+checking cannot reproduce the preprocessing commitment. The matched
+[actual-AIR scan](v1-multi-asset-evaluation.md) qualifies native transaction
+generation, not standalone verifier resources or complete block acceptance.
+Require old keys to reject the new relation and bind all trusted envelope and
+decoder identities before activation. Independently reproduce the unchanged
+prior [baseline bundle](../crates/bench-d8/artifacts/v1-native-freeze.json) with
+`python3 scripts/check-v1-freeze.py`; its old codec cannot admit the new profile.
 
 The prior two-output native profile is KoalaBear D8, standard Poseidon2 W24, twelve-element
 digests, random-codeword hiding, log blowup 8, 36 queries, query grinding 20,
@@ -165,10 +167,13 @@ settings, process-tree limits, CPU quota/throttling, peak charged memory,
 `memory.events`, swap, wall/CPU time and proof bytes. Report every attempt,
 individual values, medians and maxima. No OOM, restart or silent retry passes.
 
-The selected transaction-generation gate remains at most two seconds with
-four workers on the qualified reference. Both proof bodies must fit
-524,288 bytes. Measure independent transaction and settlement verification
-separately. Cold start and readiness are separate timing markers; startup
+The selected transaction-generation gate is at most two seconds in all three
+four-worker trials on the qualified reference. The frozen b7/q41/g20 profile
+passes that measured gate. Transaction proof bodies must fit 655,360 bytes;
+settlement and issuance bodies retain separate 524,288-byte caps. The 640-KiB
+transaction cap gives at least 10% margin over the selected measured maximum;
+it is not a deterministic size theorem. Measure independent transaction and
+settlement verification separately. Cold start and readiness are separate timing markers; startup
 memory remains inside the lifetime resource boundary.
 
 Then run three actual end-to-end trials for each capacity class, including a
@@ -186,15 +191,15 @@ offered maximum load. Match complete public state roots and cumulative work
 at the same block identity, with explicit idle/completed-state availability.
 Height equality or a cached busy response is insufficient.
 
-At the 30-Mbps uplink floor, the proposed multi-asset three-copy payload
-plus settlement uses 24.30537976 Mbps. The
-[conditional complete wire model](v1-network-budget.md) uses approximately
-29.252 Mbps after explicit control, transport, reciprocal ACK, bounded issuance,
-2% retransmission and 5% recovery reserves. Reconcile each assumption against
-packet/application counters and qualify the floor and recommended 100-Mbps
-profiles with the actual hybrid listener. Include concurrent ingress, losses,
-missing bodies and handshake churn. If the floor cannot sustain 576 positions,
-report the issue; do not silently reduce capacity or raise proof limits.
+At the 43-Mbps uplink floor, the capped multi-asset three-copy transaction
+and settlement payload requires 30.345178 Mbps. The
+[complete wire model](v1-network-budget.md) requires 36.501639 Mbps after
+control, transport, reciprocal ACK, bounded issuance, retransmission and
+recovery costs. The floor leaves 15.112% capacity unused; recommend 100 Mbps.
+Reconcile every assumption against packet/application counters and qualify
+both bandwidth profiles using the actual hybrid listener, concurrent ingress,
+losses, missing bodies and handshake churn. Report overload without silently
+reducing the fixed 576-position capacity or weakening proof security.
 
 ## Gate 6: sustained observation, retention and recovery
 
@@ -237,7 +242,7 @@ free space.
 | Accepted durable block/state and wallet journal | RPO zero for acknowledged durable records; a crash may lose unacknowledged work only |
 | Ordinary restart with intact durable state | Return to the pre-stop validated tip and read service within 10 minutes; replay only the required authenticated tail |
 | Partition with at most 24 missing blocks | Catch up within 30 minutes on the qualified 100-Mbps full-duplex reference while live traffic continues; verify measured spare bandwidth and CPU suffice |
-| Lower-bandwidth catch-up | Publish a separate bound from missing bytes, measured spare bandwidth, serial verification and disk cost; do not promise the 100-Mbps result at 30 Mbps |
+| Lower-bandwidth catch-up | Publish a separate bound from missing bytes, measured spare bandwidth, serial verification and disk cost; do not promise the 100-Mbps result at 43 Mbps |
 | Beyond-finality fork or corrupt/missing state | Halt affected production, preserve evidence and require explicit authenticated recovery; no automatic rollback to an old database |
 | Monitoring | Sample every five seconds, mark stale after 15 seconds, alert on persistent actionable failures; never use monitor timeouts as consensus verdicts |
 

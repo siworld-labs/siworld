@@ -136,7 +136,7 @@ diagnostic evidence and neither run is a qualified-host result.
 
 The individual samples were retained in the private measurement bundle. The
 576-position proof was 448,059--459,627 bytes across the three trials and
-is below the separate 524,288-byte transaction-proof maximum. Settlement
+is below the separate 524,288-byte settlement-proof maximum. Settlement
 proofs have their own capacity budget; their size does not select or replace
 the transaction proof limit. The benchmark now resolves the process's cgroup v2
 membership from `/proc/self/cgroup` before reading `memory.max`,

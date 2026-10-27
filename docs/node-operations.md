@@ -35,7 +35,8 @@ Native V1 hosted proof measurements used a 5-GiB zero-swap cgroup; that
 boundary does not set minimum miner RAM. The [deployment profiles](v1-deployment.md)
 start qualification at 16 GiB for a full validator, 32 GiB for a miner and
 500 GB usable SSD minimum and 1 TB recommended, with 100-Mbps uplink
-recommended over the 30-Mbps floor.
+recommended over the 43-Mbps minimum derived from the frozen proof cap and
+[complete bounded wire budget](v1-network-budget.md).
 These are candidate profiles, not accepted minimums. Account separately for
 prover, node, verifier, OS, caches, maintenance and reserves, then qualify the
 aggregate under sustained maximum load. macOS and Windows require separate
@@ -51,19 +52,26 @@ and [production acceptance plan](prover-acceptance.md).
 
 ## Native V1 bandwidth target
 
-The selected native V1 route requires at least **30 Mbps uplink** per node;
-**100 Mbps** is the deployment recommendation. Capacity stays 576 positions
-per 300-second target block. At the proposed three-output codec and proof cap,
-three transaction/sidecar copies plus settlement use 24.30537976 Mbps.
-The [complete conditional wire model](v1-network-budget.md) includes bounded
-issuance, control, authenticated-channel framing, IPv6/TCP/link overhead,
-reciprocal ACKs, retransmission and recovery allowances: approximately
-29.252 Mbps. Its narrow 30-Mbps margin must be qualified using the actual
-listener; it is not a throughput measurement. Bulk backup/checkpoint traffic
-requires separate scheduling or bandwidth. Re-extract final codec sizes after
-the multi-asset scan. Preserve the 512-KiB `MAX_LEAF_PROOF_LEN` and report any
-capacity failure rather than silently changing consensus limits. These targets
-do not alter the retained network or establish production RAM requirements.
+Capacity stays **576 positions per 300-second target block**. The selected
+transaction profile prioritizes at most two-second generation on a qualified
+EPYC 7763 four-vCPU VM. Its admission cap includes at least 10% over the largest
+measured proof body, rounded up to 64 KiB. The
+[source-bound engineering profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+records the **655,360-byte (640-KiB)** transaction cap; the earlier 512-KiB
+transaction cap is baseline evidence.
+Settlement and issuance proof caps remain 524,288 bytes each.
+
+The [complete conditional wire model](v1-network-budget.md) derives minimum
+uplink from 576 positions, three relay copies, the selected proof cap, bounded
+issuance and control traffic, authenticated-channel framing, IPv6/TCP/link
+overhead, reciprocal ACKs, retransmission and recovery allowances. Minimum
+provisioned uplink must leave at least 15% of link capacity unused by that model.
+**43 Mbps is the minimum; 100 Mbps remains recommended**. The model uses
+approximately 36.502 Mbps, leaving 15.112% of the minimum link unused.
+Actual listener qualification is required;
+this model is not a throughput measurement. Bulk backup/checkpoint traffic
+requires separate scheduling or bandwidth. These requirements do not change
+the retained network, its existing decoders or container limits.
 
 ## Retained implementation commands
 
@@ -122,14 +130,20 @@ Bundled sends additionally require an independent encrypted order ledger and wit
 
 Stop the node before offline key migration, reconciliation or credential rotation. Startup replays full stored blocks including proofs. Pruning is not implemented. Monitor disk use and test restart/recovery on disposable networks. Proving memory, history growth and the local reorganization bound limit the operating envelope.
 
-## Reopened multi-asset capacity
+## Multi-asset proof and capacity boundary
 
-Measurements of the two-output implementation remain baseline evidence only.
-The proposed three-output codec uses 2,027 public body bytes and 2,115
-permanent bytes per position. At capped proof sizes and three relay copies,
-including one capped settlement per block, the payload is approximately
-24.3054 Mbps at 576 positions/300 seconds, before framing, recovery and public
-issuance traffic. Updated year-1/3/5 capacity and low-use tables are in
+The three-output codec uses 2,027 public body bytes and 2,115 permanent bytes
+per position. The selected `b7/q41/g20` profile generated in 1.316 seconds
+median across three trials, with a maximum of 1.332 seconds. Observed proof
+bodies were 583,552–584,848 bytes and the combined process-tree cgroup peak
+was 531,668,992 bytes. These are synthetic proof measurements, not full-node
+throughput or a minimum RAM specification. The new transaction engineering freeze belongs to the isolated
+`bench-multi-asset` implementation. The `bench-d8` source and two-output freeze
+remain unchanged baseline evidence. The new key, codec and cap must be wired
+into a separate native node decoder and admission path before network use.
+
+Updated year-1/3/5 capacity and low-use tables are in
 [V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md); reproduce them
-with `python3 scripts/v1-storage-budget.py`. The final encoded artifact and
-actual-AIR scan must replace these estimates before acceptance.
+with `python3 scripts/v1-storage-budget.py` using the frozen transaction cap.
+Three-day rolling proof storage and permanent public records are separate
+budgets. Database/index allowances require persistent-node measurement.

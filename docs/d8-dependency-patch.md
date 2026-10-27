@@ -95,15 +95,32 @@ and successful resource measurements. It does not depend on an upstream merge or
 completion of the node/wallet/network implementation. A diagnostic scanner row
 alone is insufficient; its source, shape and artifacts must match the checked
 freeze manifest. Independent cryptographic review remains separate.
-The [native engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
-contains both actual-instance reports and public verifier artifacts.
+The [two-output engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
+remains unchanged baseline evidence. The
+[multi-asset transaction engineering profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+separately binds the three-output relation, dependency graph, public verifier
+key, selected actual-instance security report and all 24 qualified generation
+trials. Its fixed source boundary excludes unreferenced layout experiments.
 
-The 524,288-byte proof-body maximum is selected independently of measured sample
-lengths. The canonical envelope adds a 1,899-byte prefix; the private sidecar is
-78 bytes. The [node and network plan](v1-node-network-plan.md) defines initial
+The selected transaction profile is `log_blowup=7`, 41 queries and 20-bit
+query/batch grinding, with zero commitment grinding, binary folding and
+`log_final_poly_len=0`. Its selected quantum Johnson ledger is approximately
+81.692 bits. The scan compares blowup 5–8 with grinding 20/24. Every one of
+three generation trials must complete within two seconds on a qualified EPYC
+7763 four-vCPU VM. Among passing configurations, the smallest maximum observed
+proof body wins. Its admission cap is at least 10% above that sample maximum,
+rounded up to 64 KiB: 655,360 bytes (640 KiB) for the selected profile. This
+policy does not claim a mathematical proof-size bound.
+The three-output envelope adds a 2,184-byte prefix, and its private sidecar is
+78 bytes. Settlement and issuance retain independent 524,288-byte proof caps.
+Block capacity remains 576; minimum uplink follows complete bounded wire
+accounting: 43 Mbps minimum, at least 15% unused link capacity, and 100 Mbps
+recommended. The [node and network plan](v1-node-network-plan.md) defines initial
 byte/CPU/in-flight policies and the remaining shared transition, compact relay,
 retention, synchronization and hybrid-transport milestones.
 
+This transaction freeze does not update retained node decoders or admission
+policy. The new key, codec and cap need explicit native-node integration.
 A passing resource diagnostic does not complete integration of trusted
 4,096-canonical-snapshot selection or durable wallet receipt/change-key storage.
 Node admission still needs isolated single-core verifier-memory and

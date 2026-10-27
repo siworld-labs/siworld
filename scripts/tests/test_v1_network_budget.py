@@ -19,8 +19,16 @@ class NetworkBudgetTests(unittest.TestCase):
         self.assertGreater(result['remaining_bytes_per_interval'], 0)
         self.assertLess(result['remaining_percent'], 3)
 
+    def test_selected_640_kib_profile_requires_43_mbps(self):
+        result = budget.report()
+        self.assertEqual(result['parameters']['transaction_proof_cap_bytes'], 655_360)
+        self.assertEqual(result['wire_bytes_per_interval'], 1_368_811_477)
+        self.assertEqual(result['minimum_link_mbps'], 43)
+        self.assertTrue(result['meets_capacity_headroom'])
+        self.assertFalse(budget.report(link_mbps=42)['meets_capacity_headroom'])
+
     def test_minimum_link_keeps_fifteen_percent_of_capacity_free(self):
-        for cap in (524_288, 704 * 1024, 768 * 1024, 832 * 1024):
+        for cap in (524_288, 655_360, 704 * 1024, 768 * 1024, 832 * 1024):
             result = budget.report(transaction_proof_cap=cap)
             minimum = result['minimum_link_mbps']
             self.assertEqual(result['evaluated_link_mbps'], minimum)
@@ -58,8 +66,8 @@ class NetworkBudgetTests(unittest.TestCase):
                                          300 * 1_000_000 * 85))
 
     def test_network_floor_does_not_change_the_wire_load(self):
-        floor = budget.report()
-        recommended = budget.report(link_mbps=100)
+        floor = budget.report(transaction_proof_cap=524_288)
+        recommended = budget.report(link_mbps=100, transaction_proof_cap=524_288)
         self.assertEqual(floor['wire_bytes_per_interval'], recommended['wire_bytes_per_interval'])
         self.assertGreater(recommended['remaining_percent'], 70)
         self.assertLess(budget.report(link_mbps=25)['remaining_bytes_per_interval'], 0)

@@ -18,10 +18,12 @@ defines the process-tree resource-control method.
 
 The selected [native V1 transaction route](route-a-v1.md) and
 [confidential fee settlement](fee-settlement.md) define the implemented native
-relations and codecs. The [engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
-binds the earlier two-output baseline's parameters, source hashes, public
-verifier keys and actual-instance security reports. The multi-asset relation
-reopens that freeze; independent review and network activation remain separate.
+relations and codecs. The [two-output engineering baseline](../crates/bench-d8/artifacts/v1-native-freeze.json)
+remains unchanged. The [multi-asset transaction engineering profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+binds its own parameters, source hashes, public verifier key, actual-instance
+security report and qualified three-trial measurements. Native node decoding,
+admission and wallet/network integration, independent review and activation
+remain separate gates.
 The [node and network plan](v1-node-network-plan.md) covers bounded admission,
 compact relay, retention, synchronization and hybrid transport.
 [Native V1 acceptance](prover-acceptance.md) defines the current release gates;
@@ -35,9 +37,9 @@ aggregation is deferred to V2 and its experiments are paused.
 - [Commitment collision accounting](bht-security-accounting.md)
 - [D8 dependency patch and review boundary](d8-dependency-patch.md)
 
-- [V1 Multi-Asset Transaction Format](v1-multi-asset.md): reopened relation, issuance and measurement gates.
+- [V1 Multi-Asset Transaction Format](v1-multi-asset.md): three-output relation, issuance and integration gates.
 - [V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md): permanent records, three-day proof lifecycle, backup and recovery.
 
-- [Native V1 Network Capacity Budget](v1-network-budget.md): conditional full-wire accounting at the 30-Mbps floor and 100-Mbps recommendation.
+- [Native V1 Network Capacity Budget](v1-network-budget.md): complete bounded wire accounting at the 43-Mbps minimum, with at least 15% unused link capacity and a 100-Mbps recommendation.
 
-- [Native Multi-Asset Proof Measurements](v1-multi-asset-evaluation.md): actual AIR shapes, rejected parameter grid and hosted reproduction.
+- [Native Multi-Asset Proof Measurements](v1-multi-asset-evaluation.md): actual AIR shapes, eight-profile wallet-speed selection, proof-size and memory evidence, and hosted reproduction.
