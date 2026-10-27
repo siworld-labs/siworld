@@ -243,7 +243,8 @@ The isolated native implementation covers ID derivation and fixed-supply issuanc
 asset-aware minimum output rule, metadata/note limits and per-block issuance
 byte/CPU budget remain open protocol values; do not settle them implicitly in
 consensus code. All remain implementation/review gates rather than enabled rules.
-No private transfer asset ID or holding is published.
+No private transfer asset ID or holding is published. The unresolved values
+and qualification evidence are recorded in [the open-question register](11-risks-open-questions.md).
 
 All nodes permanently retain headers/PoW, output commitments and tree state,
 ciphertexts, nullifiers, fee commitments, proof-free settlement declarations,
@@ -276,6 +277,11 @@ A log-blowup-9, 31-query, 24-bit query/batch-grinding diagnostic fits the cap in
 observed samples and gives approximately 81.706 bits in the selected quantum
 Johnson challenge ledger. Its local four-worker generation median is 4.7473
 seconds, above the two-second target. It is not a frozen production profile.
-Hosted x86-64-v3 cgroup results must identify their actual CPU and source.
+The matching source commit was measured on a hosted EPYC 7763 with two
+exposed physical cores and four vCPUs: generation median 6.3081 seconds,
+one-worker verification median 14.8915 ms, maximum whole-process cgroup peak
+2,083,336,192 bytes, and observed bodies 512,469--523,702 bytes. All memory
+event deltas were zero under the diagnostic five-GiB scope with swap disabled.
+The near-cap samples are not a deterministic proof-length bound.
 Keep the 524,288-byte cap, 576-position limit and security target unchanged;
 report failed qualification before any production integration or activation.

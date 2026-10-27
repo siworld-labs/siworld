@@ -19,8 +19,9 @@ defines the process-tree resource-control method.
 The selected [native V1 transaction route](route-a-v1.md) and
 [confidential fee settlement](fee-settlement.md) define the implemented native
 relations and codecs. The [engineering freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
-binds their parameters, source hashes, public verifier keys and actual-instance
-security reports. Independent review and network activation remain separate.
+binds the earlier two-output baseline's parameters, source hashes, public
+verifier keys and actual-instance security reports. The multi-asset relation
+reopens that freeze; independent review and network activation remain separate.
 The [node and network plan](v1-node-network-plan.md) covers bounded admission,
 compact relay, retention, synchronization and hybrid transport.
 [Native V1 acceptance](prover-acceptance.md) defines the current release gates;
@@ -30,6 +31,7 @@ states identity, source-relay and bootstrap trust requirements. Recursive
 aggregation is deferred to V2 and its experiments are paused.
 
 - [Current protocol decisions](00-decisions.md)
+- [Risks and Open Protocol Questions](11-risks-open-questions.md)
 - [Commitment collision accounting](bht-security-accounting.md)
 - [D8 dependency patch and review boundary](d8-dependency-patch.md)
 

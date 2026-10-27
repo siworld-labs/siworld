@@ -108,6 +108,56 @@ exponent 128 and BHT exponent 256/3; it is explicitly separate from the raw
 p3-security report. The full JSON reports include all raw terms, actual shapes,
 source/dependency/binary identities and lack of approval or activation.
 
+## Hosted EPYC 7763 diagnostics
+
+[Hosted run 40458954984](https://github.com/siworld-labs/siworld/actions/runs/40458954984)
+passed for source commit
+`d546783c760d3c0910d838df82d43f8b2a5b691e`. Its sanitized JSON artifact records
+the full requested grid, fallback profiles, three-trial statistics, security
+terms and source/dependency/binary identities.
+
+The runner reported Ubuntu 24.04, AMD EPYC 7763, two exposed physical cores
+and four vCPUs under Microsoft virtualization. AVX2 was available; AVX-512
+was absent. Exclusive physical-host access was not established. The release
+used the fixed x86-64-v3 baseline, four Rayon workers and two internal hiding
+workers; instruction inspection found AVX2 packed-multiply instructions.
+
+All 36 fresh process-tree trials produced valid proofs and exited zero under
+`memory.max=5368709120`, `memory.swap.max=0`. Every `memory.events` delta,
+including `max`, `oom` and `oom_kill`, was zero. `cpu.max` reported
+`max 100000`, so these scopes imposed no CPU quota.
+
+The following timing medians use three four-worker generation runs and three
+separate one-worker verification runs. Proof ranges and maximum charged
+memory cover all six repeats of each relation. Setup is excluded from the
+generation timer. The memory scope includes fresh setup, generation,
+verification, descendants and the recorder; it is not verifier-only memory.
+
+| Relation/profile | Observed proof bytes | Four-worker generation median (s) | One-worker verification median (ms) | Maximum cgroup peak (bytes) |
+| --- | ---: | ---: | ---: | ---: |
+| Transaction b9/q31/g24 | 512,469--523,702 | 6.3081 | 14.8915 | 2,083,336,192 |
+| 576-slot settlement b8/q36/g20 | 485,115--498,747 | 4.6014 | 16.0873 | 2,976,501,760 |
+| Three-note issuance b8/q36/g20 | 272,673--282,609 | 0.7320 | 8.4428 | 210,628,608 |
+
+Per-trial four-worker values retain the variability hidden by the medians:
+
+| Relation | Three generation times (s) | Three cgroup peaks (bytes) |
+| --- | --- | --- |
+| Transaction b9/q31/g24 | 8.7617 / 5.1430 / 6.3081 | 2,083,336,192 / 2,083,299,328 / 2,082,828,288 |
+| 576-slot settlement b8/q36/g20 | 4.6856 / 4.6014 / 4.5881 | 2,976,501,760 / 2,976,468,992 / 2,976,477,184 |
+| Three-note issuance b8/q36/g20 | 0.7320 / 0.9624 / 0.5511 | 210,370,560 / 210,407,424 / 210,628,608 |
+
+No transaction profile met both the proof cap and two-second generation
+criterion. Every requested blowup-4--8 profile was oversized; the separately
+measured blowup-9 fallback fits the cap in these samples but its median is
+6.3081 seconds. Its largest observed body leaves only 586 bytes below the
+524,288-byte cap, which is not a deterministic encoded-size guarantee.
+Grinding and shared-runner variability require explicit treatment in any
+future qualification. The instance security terms match the ledger above.
+These measurements do not freeze parameters, establish independent verifier
+resource bounds or activate a network. Five GiB remains a diagnostic scope
+boundary rather than an adopted miner hardware requirement.
+
 ## Hosted reproduction and remaining gates
 
 The dedicated `multi-asset-native.yml` workflow reruns the actual grid on

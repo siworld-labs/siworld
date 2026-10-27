@@ -73,13 +73,14 @@ restoration; no finite offline duration may silently omit a receipt.
 
 ## Encoding and component model
 
-The proposed fixed roles are one recipient ML-KEM output and two symmetric
-sender-change outputs. A 32-byte asset ID fits in the existing 96-byte zero
-padding of each 208-byte encrypted plaintext: meaningful fields grow from 112
-to 144 bytes, padding shrinks to 64, and the ciphertext body length stays 208.
-The resulting proposed transaction body is 2,027 bytes. Adding a 48-byte fee
-commitment and 40-byte snapshot selector gives 2,115 permanent bytes/position.
-These are derived budgets pending the actual multi-asset codec and AIR.
+The isolated multi-asset codec implements one recipient ML-KEM output and
+two symmetric sender-change outputs. Each 208-byte encrypted plaintext contains
+144 meaningful bytes, including the 32-byte asset ID, and 64 padding bytes.
+The encoded public transaction body is exactly 2,027 bytes. Adding the 48-byte
+fee commitment and proposed 40-byte canonical snapshot selector gives a
+2,115-byte permanent-position planning ledger. The body codec and AIR are
+implemented; final relay/block serialization, persistent record layout and
+measured database overhead remain integration work.
 
 Use decimal GB, 365-day years, 288 target blocks/day and 576 positions/block.
 At capped 512-KiB transaction and settlement proofs and 78-byte sidecars:
