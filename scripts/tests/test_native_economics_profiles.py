@@ -16,7 +16,7 @@ SPEC.loader.exec_module(P)
 SPEC = importlib.util.spec_from_file_location('native_measurement_fixtures', ROOT / 'scripts/tests/test_multi_asset_measurement.py')
 FIXTURE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(FIXTURE)
-SHAPES = ((256, 1424, 247), (1024, 581, 609), (128, 438, 10))
+SHAPES = ((256, 1392, 247), (1024, 581, 609), (128, 438, 10))
 PUBLIC_VALUES = (101, 7050, 72)
 
 
@@ -130,6 +130,7 @@ class EconomicNativeProfileTests(unittest.TestCase):
             lambda p: p['relations'][0]['security']['shape'].update(main_width=1420),
             lambda p: p['relations'][0]['security']['shape'].update(main_width=1488),
             lambda p: p['relations'][0]['security']['shape'].update(main_width=1440),
+            lambda p: p['relations'][0]['security']['shape'].update(main_width=1424),
             lambda p: p['relations'][0]['security']['shape'].update(preprocessed_width=243),
             lambda p: p['relations'][1]['security']['shape'].update(main_width=580),
             lambda p: p['relations'][0]['security']['shape'].update(public_values=100),

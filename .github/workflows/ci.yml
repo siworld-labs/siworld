@@ -334,6 +334,8 @@ jobs:
           cargo clippy --locked --manifest-path crates/native-node/Cargo.toml --all-targets -- -D warnings
       - name: Native protocol, transition, persistence and audit rejection tests
         run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml
+      - name: Actual fixed-profile transaction and settlement mutation rejection
+        run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib proofs::tests::fixed_profiles_roundtrip_rejects_context_and_body_mutation -- --ignored --exact
       - name: Actual wallet transfer proof, admission and receiver authentication
         run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib wallet::tests::actual_native_wallet_proof_passes_admission_and_recipient_authentication -- --ignored --exact
       - name: Actual proof block, restart and private reward recovery

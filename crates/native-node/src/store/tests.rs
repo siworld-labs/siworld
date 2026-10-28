@@ -580,6 +580,225 @@ fn higher_work_reorganization_replaces_all_fork_specific_state_and_is_durable() 
     );
 }
 
+fn economic_candidate(state: &State, seed: u32, mode: crate::state::RewardMode) -> Block {
+    let mut block = candidate(state, seed);
+    block.reward_mode = mode;
+    if mode == crate::state::RewardMode::Holder {
+        block.rewards = (0..5)
+            .map(|index| RewardRecord {
+                commitment: felt(seed + 20_000 + index),
+                ciphertext: [index as u8; REWARD_CIPHERTEXT_BYTES],
+            })
+            .collect();
+    }
+    remine(&mut block, state);
+    block
+}
+
+fn signed_economic_fund_spend(
+    network: Hash,
+    account: u8,
+    amount: u64,
+) -> crate::fund_spend::FundSpend {
+    use libcrux_ml_dsa::ml_dsa_65;
+    use native::codec::decode_digest;
+    use native::multi_asset::{Hasher, Note, SIP_ASSET_ID};
+    let pair = ml_dsa_65::generate_key_pair([83 + account; 32]);
+    let mut spend = crate::fund_spend::FundSpend {
+        account,
+        counter: 0,
+        amount,
+        owner: felt(180_000_000 + u32::from(account)),
+        rho: encode_digest(&crate::fund_spend::canonical_rho(network, account, 0)),
+        rseed: felt(180_000_010 + u32::from(account)),
+        commitment: [0; 48],
+        ciphertext: [account + 3; 1313],
+        verifying_key: *pair.verification_key.as_ref(),
+        signature: [0; crate::fund_spend::SIGNATURE_BYTES],
+    };
+    let note = Note {
+        asset_id: SIP_ASSET_ID,
+        owner: decode_digest(&spend.owner).unwrap(),
+        value: amount,
+        unlock_height: 0,
+        rho: decode_digest(&spend.rho).unwrap(),
+        rseed: decode_digest(&spend.rseed).unwrap(),
+    };
+    spend.commitment = encode_digest(&Hasher::new().note_cm(&note));
+    spend.signature = *ml_dsa_65::sign(
+        &pair.signing_key,
+        &spend.message(network),
+        b"siworld v0",
+        [84 + account; 32],
+    )
+    .unwrap()
+    .as_ref();
+    spend
+}
+
+#[test]
+fn mixed_mode_reorganization_restores_maturity_vesting_and_independent_fund_spends_durably() {
+    use crate::chain::{BranchOutcome, CandidatePolicy, ChainError};
+    use crate::state::RewardMode;
+    use siworld_core::v1_economics::{EconomicsParams, FundAccount, FundAllocation};
+    // The first credit matures at height 25 and first vests at height 289.
+    // Both forks cross the same boundary; the accepted fork has more work.
+    for boundary in [25u64, 289] {
+        let directory = TestDir::new();
+        let mut cfg = config()
+            .with_economics(EconomicsParams::engineering([60, 120, 180, 240], 3).unwrap())
+            .unwrap()
+            .with_fund_allocation(FundAllocation::new(vec![3, 7]).unwrap())
+            .unwrap();
+        for account in 0..2u8 {
+            let spend = signed_economic_fund_spend(cfg.network, account, 1);
+            cfg.fund_key_hashes[usize::from(account)] =
+                *blake3::hash(&spend.verifying_key).as_bytes();
+        }
+        let mut store = Store::open(directory.db(), cfg.clone(), &TestVerifier::default()).unwrap();
+        for height in 1..=(boundary - 2) {
+            let mode = if height % 2 == 1 {
+                RewardMode::Holder
+            } else {
+                RewardMode::Voyager
+            };
+            let block = economic_candidate(store.state(), height as u32 * 100_000, mode);
+            store.append(&block, &TestVerifier::default()).unwrap();
+        }
+        let ancestor = store.state().clone();
+        let mut old = Vec::new();
+        for index in 0..2u32 {
+            let mut block = economic_candidate(
+                store.state(),
+                50_000_000 + index * 100_000,
+                RewardMode::Voyager,
+            );
+            if block.height == boundary {
+                let before = store.state().economics.fund(FundAccount::First);
+                let mut released = store.state().economics.clone();
+                released.advance(boundary, block.reward_mode).unwrap();
+                let after = released.fund(FundAccount::First);
+                assert!(after.direct_unlocked > before.direct_unlocked);
+                if boundary == 25 {
+                    assert_eq!(before.direct_unlocked, 0);
+                    assert_eq!(after.vesting_unlocked, 0);
+                } else {
+                    assert_eq!(before.vesting_unlocked, 0);
+                    assert!(after.vesting_unlocked > 0);
+                }
+                block.fund_spends.push(signed_economic_fund_spend(
+                    cfg.network,
+                    0,
+                    u64::try_from(after.available().unwrap()).unwrap(),
+                ));
+                remine(&mut block, store.state());
+            }
+            store.append(&block, &TestVerifier::default()).unwrap();
+            old.push(block);
+        }
+        let orphan = store.state().clone();
+        assert!(orphan.economics.fund(FundAccount::First).spent > 0);
+        assert_eq!(orphan.economics.fund(FundAccount::Second).spent, 0);
+        let orphan_payout = old[1].fund_spends[0].commitment;
+
+        let mut expected = ancestor.clone();
+        let mut replacement = Vec::new();
+        let mut spend_parent = None;
+        let mut first_available = 0;
+        for (index, mode) in [RewardMode::Holder, RewardMode::Voyager, RewardMode::Holder]
+            .into_iter()
+            .enumerate()
+        {
+            let mut block =
+                economic_candidate(&expected, 100_000_000 + index as u32 * 100_000, mode);
+            if block.height == boundary {
+                spend_parent = Some(expected.clone());
+                let mut released = expected.economics.clone();
+                released.advance(boundary, mode).unwrap();
+                first_available =
+                    u64::try_from(released.fund(FundAccount::First).available().unwrap()).unwrap();
+                let second_available =
+                    u64::try_from(released.fund(FundAccount::Second).available().unwrap()).unwrap();
+                assert!(second_available > first_available + 1);
+                block.fund_spends.push(signed_economic_fund_spend(
+                    cfg.network,
+                    1,
+                    second_available,
+                ));
+                remine(&mut block, &expected);
+            }
+            expected.apply(&block, &TestVerifier::default()).unwrap();
+            replacement.push(block);
+        }
+        let accepted_payout = replacement[1].fund_spends[0].commitment;
+        let mut overdraft = replacement.clone();
+        overdraft[1].fund_spends[0] =
+            signed_economic_fund_spend(cfg.network, 0, first_available + 1);
+        remine(&mut overdraft[1], &spend_parent.unwrap());
+        let before = store.state().fingerprint();
+        let result = store.consider_branch(
+            ancestor.height,
+            &overdraft,
+            CandidatePolicy::default(),
+            &TestVerifier::default(),
+        );
+        match result {
+            Err(ChainError::Invalid(reason)) => {
+                assert!(reason.contains("exceeds unlocked unspent entitlement"));
+            }
+            other => panic!("independent fund overdraft must reject atomically: {other:?}"),
+        }
+        assert_eq!(store.state().fingerprint(), before);
+        assert_eq!(store.state().economics, orphan.economics);
+        assert_eq!(store.block(boundary).unwrap(), old[1]);
+        assert_eq!(store.detached_count().unwrap(), 0);
+
+        assert!(matches!(
+            store.consider_branch(
+                ancestor.height,
+                &replacement,
+                CandidatePolicy::default(),
+                &TestVerifier::default(),
+            ),
+            Ok(BranchOutcome::Adopted {
+                detached: 2,
+                attached: 3,
+                ..
+            })
+        ));
+        assert_ne!(
+            orphan.economics.totals().holder_pool,
+            expected.economics.totals().holder_pool
+        );
+        assert!(orphan.economics.totals().burned > expected.economics.totals().burned);
+        assert_ne!(
+            orphan.economics.locked_schedule(),
+            expected.economics.locked_schedule()
+        );
+        assert_eq!(expected.economics.fund(FundAccount::First).spent, 0);
+        assert_eq!(expected.economics.fund(FundAccount::First).spend_count, 0);
+        assert!(expected.economics.fund(FundAccount::Second).spent > 0);
+        assert_eq!(expected.economics.fund(FundAccount::Second).spend_count, 1);
+        assert_eq!(store.state().fingerprint(), expected.fingerprint());
+        assert_eq!(store.state().economics, expected.economics);
+        assert!(!store.state().commitments.contains(&orphan_payout));
+        assert!(store.state().commitments.contains(&accepted_payout));
+        assert_eq!(store.detached_count().unwrap(), 2);
+        for block in &old {
+            assert_eq!(store.detached_block(&block.id().unwrap()).unwrap(), *block);
+        }
+        expected.economics.assert_supply_invariant().unwrap();
+        drop(store);
+        let reopened = Store::open_existing(directory.db(), cfg, &TestVerifier::default()).unwrap();
+        assert_eq!(reopened.state().fingerprint(), expected.fingerprint());
+        assert_eq!(reopened.state().economics, expected.economics);
+        assert!(!reopened.state().commitments.contains(&orphan_payout));
+        assert!(reopened.state().commitments.contains(&accepted_payout));
+        assert_eq!(reopened.block(boundary).unwrap(), replacement[1]);
+        assert_eq!(reopened.detached_count().unwrap(), 2);
+    }
+}
+
 #[test]
 fn invalid_candidate_proofs_snapshot_and_ancestry_are_atomic() {
     use crate::chain::{CandidatePolicy, ChainError};

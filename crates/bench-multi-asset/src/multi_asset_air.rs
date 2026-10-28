@@ -84,15 +84,19 @@ pub const FEE: usize = REG + 2 * IN_W + 3 * OUT_W;
 /// are equal.
 pub const NEQ: usize = FEE + FEE_W;
 /// Exact equality witnesses: three group references (input 0, input 1, SIP) and
-/// five notes. Each cell has a boolean equality and sixteen inverse coefficients.
+/// five notes. Self-comparisons retain only their equality flag; other cells
+/// also hold sixteen inverse coefficients.
 pub const MATCH: usize = NEQ + DIGEST;
 pub const MATCH_CELL: usize = 1 + ASSET_LIMBS;
-pub const MATCH_W: usize = 3 * 5 * MATCH_CELL;
+pub const MATCH_W: usize = 3 * 5 * MATCH_CELL - 2 * ASSET_LIMBS;
 pub const ASSET_CARRY: usize = MATCH + MATCH_W;
 pub const ALLOWED_INV: usize = ASSET_CARRY + 3 * 3 * (LIMBS - 1);
 pub const MAIN_WIDTH: usize = ALLOWED_INV + 3;
 pub const fn match_col(group: usize, note: usize) -> usize {
-    MATCH + (group * 5 + note) * MATCH_CELL
+    let index = group * 5 + note;
+    // The two self-cells are indices 0 and 6 in group-major order.
+    let skipped = (index > 0) as usize + (index > 6) as usize;
+    MATCH + index * MATCH_CELL - skipped * ASSET_LIMBS
 }
 pub const fn asset_col(base: usize, is_input: bool, limb: usize) -> usize {
     if limb < 4 {
@@ -847,6 +851,11 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
         for group in 0..3 {
             for note in 0..5 {
                 let m = match_col(group, note);
+                if group < 2 && group == note {
+                    // The reference and note use exactly the same asset registers.
+                    b.assert_eq(l[m], one.clone());
+                    continue;
+                }
                 let eq = x(l[m]);
                 b.assert_bool(l[m]);
                 let mut nonzero = AB::Expr::ZERO;

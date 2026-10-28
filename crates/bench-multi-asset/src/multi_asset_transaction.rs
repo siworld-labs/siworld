@@ -444,9 +444,69 @@ mod tests {
     }
 
     #[test]
+    fn self_asset_matches_retain_flags_without_unused_inverse_columns() {
+        let mut next = a::MATCH;
+        for group in 0..3 {
+            for note in 0..5 {
+                assert_eq!(a::match_col(group, note), next);
+                next += if group < 2 && group == note {
+                    1
+                } else {
+                    1 + m::ASSET_LIMBS
+                };
+            }
+        }
+        assert_eq!(next, a::ASSET_CARRY);
+        assert_eq!(
+            a::MATCH_W,
+            3 * 5 * (1 + m::ASSET_LIMBS) - 2 * m::ASSET_LIMBS
+        );
+        let air = TransactionAir::new();
+        for witness in [
+            m::sample_witness(119),
+            m::sample_token_witness(120),
+            m::sample_empty_witness(121),
+        ] {
+            let (valid, public) = air.generate(&witness);
+            assert!(
+                check_all_constraints(&air, &valid, &public, None)
+                    .failures
+                    .is_empty()
+            );
+            for group in 0..3 {
+                for note in 0..5 {
+                    let reference = if group < 2 {
+                        witness.slot.inputs[group].asset_id
+                    } else {
+                        SIP_ASSET_ID
+                    };
+                    let compared = if note < 2 {
+                        witness.slot.inputs[note].asset_id
+                    } else {
+                        witness.slot.outputs[note - 2].asset_id
+                    };
+                    let column = a::match_col(group, note);
+                    let expected = F::from_bool(reference == compared);
+                    assert_eq!(valid.values[column], expected);
+                    let mut changed = valid.clone();
+                    for row in changed.values.chunks_exact_mut(changed.width) {
+                        row[column] = F::ONE - expected;
+                    }
+                    assert!(
+                        !check_all_constraints(&air, &changed, &public, None)
+                            .failures
+                            .is_empty(),
+                        "asset equality flag mutation accepted for group {group}, note {note}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn snapshot_height_reuses_existing_range_lane_without_height_growth() {
         let air = TransactionAir::new();
-        assert_eq!(air.width(), 1424);
+        assert_eq!(air.width(), 1392);
         assert_eq!(air.preprocessed_width(), 247);
         assert_eq!(air.num_public_values(), 101);
         assert_eq!(air.slot.range.len(), 168);

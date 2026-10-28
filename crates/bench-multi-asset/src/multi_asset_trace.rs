@@ -266,6 +266,11 @@ fn build(
     // Exact equality witnesses and independent per-asset integer carries.
     for group in 0..3 {
         for note in 0..5 {
+            let m = match_col(group, note);
+            if group < 2 && group == note {
+                put(&mut regs, m, &[F::ONE]);
+                continue;
+            }
             let mut differences = [F::ZERO; 16];
             for limb in 0..16 {
                 let reference = if group < 2 {
@@ -276,7 +281,6 @@ fn build(
                 differences[limb] =
                     reference - regs[asset_col(note_base(note), note < 2, limb) - REG];
             }
-            let m = match_col(group, note);
             if let Some(limb) = (0..16).find(|&k| differences[k] != F::ZERO) {
                 put(&mut regs, m + 1 + limb, &[differences[limb].inverse()]);
             } else {
