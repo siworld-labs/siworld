@@ -80,6 +80,7 @@ Usage:
                        [--peer MULTIADDR]... [--rpc ADDR] [--mine] [--dev-fund FILE]
                        [--enable-wallet-spend] [--password-file FILE]
                        [--allow-plaintext-wallet] [--fund-password-file FILE] [--fund-witness DIR]
+                       [--worker-control FILE]
   siworld-node wallet-migrate --datadir DIR [--password-file FILE]
   siworld-node wallet-backup  --datadir DIR --out FILE [--password-file FILE]
   siworld-node wallet-check   --backup FILE [--password-file FILE]
@@ -1455,9 +1456,15 @@ fn run_node(args: &[String]) -> Result<(), String> {
             "--dev-fund",
             "--fund-password-file",
             "--fund-witness",
+            "--worker-control",
         ],
     )?;
-    for name in ["--dev-fund", "--fund-password-file", "--fund-witness"] {
+    for name in [
+        "--dev-fund",
+        "--fund-password-file",
+        "--fund-witness",
+        "--worker-control",
+    ] {
         if all(&flags, name).len() > 1 {
             return Err(format!("duplicate option {name}"));
         }
@@ -1503,6 +1510,14 @@ fn run_node(args: &[String]) -> Result<(), String> {
             )?,
         }),
         mine: one(&flags, "--mine").is_some(),
+        worker: one(&flags, "--worker-control")
+            .map(|path| {
+                siworld_node::worker_transport::load_config(
+                    Path::new(path),
+                    genesis.params.container_size,
+                )
+            })
+            .transpose()?,
     };
 
     let store =

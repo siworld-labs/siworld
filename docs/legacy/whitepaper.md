@@ -1,5 +1,7 @@
 # SIWORLD: Shielded Payments with Fixed-Capacity STARK Containers
 
+> **Superseded by V1 (Route A).** This page documents the legacy recursive implementation. The retained seven-node N=2 engineering testnet uses this classical proof route; it is not a native V1 testnet or post-quantum acceptance result. See the [current V1 overview](../v1-overview.md).
+
 ## Abstract
 
 SIWORLD combines encrypted notes with fixed-capacity blocks and recursive STARK verification. Each block publishes the same number and shape of transaction slots, including zero-value padding. A fixed-width additive accumulator binds recursive proofs to the public slot bytes. Fees accumulate privately inside the proof tree and enter a shielded miner note. The construction targets reduced on-chain activity leakage while retaining public validation of ownership, conservation and state transitions.
@@ -48,6 +50,6 @@ The [security model](security-model.md) distinguishes these observers and record
 
 ## Implementation scope
 
-The implementation includes SI-only notes, real note encryption, recursive Plonky3 proofs, peer relay, persistent blocks, authenticated local RPC, encrypted wallet files, durable payment journals and fund-account controls. It retains reward-linked fee tiers and replay-based storage. Anonymous relay, multi-asset notes, payment channels, fast pre-confirmation, a quantum-sound recursive suite and a production release are not implemented by this repository.
+The implementation includes SI-only notes, real note encryption, recursive Plonky3 proofs, peer relay, persistent blocks, authenticated local RPC, encrypted wallet files, durable payment journals and fund-account controls. It retains reward-linked fee tiers and replay-based storage. This legacy runtime does not implement native V1 multi-asset transactions, hybrid transport or the selected native proof lifecycle. Separate native V1 proof relations exist outside this runtime.
 
 Detailed parameters are in [protocol](protocol.md), component boundaries in [architecture](architecture.md), and reproducible measurement commands in [benchmarks](benchmarks.md).

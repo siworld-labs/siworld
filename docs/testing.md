@@ -1,10 +1,22 @@
 # Validation and Regression Coverage
 
+## Proof and runtime boundaries
+
+The root workspace tests the legacy recursive runtime. Native V1 transaction,
+issuance and settlement relations execute in `crates/bench-multi-asset`; its
+proof/profile checks are separate from complete native node/network acceptance.
+The earlier `bench-d8` two-output freeze remains an unchanged baseline. No
+passed proof-only job establishes native block propagation, retained-history
+pruning, checkpoint bootstrap, standalone verifier budgets or public-testnet
+operation. See [testnet acceptance](prover-acceptance.md).
+
 ## Required checks
 
 ```sh
 python3 scripts/check-repository.py
 python3 scripts/check-node-features.py
+python3 scripts/check-native-proof-profiles.py --check crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json
+cargo test --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --lib
 cargo fmt --all --check
 cargo fmt --manifest-path crates/bench-stark/Cargo.toml --all --check
 cargo check --locked -p siworld-node --bins
@@ -21,7 +33,8 @@ All-features tests intentionally enable development helpers. Release artifacts u
 
 | Area | Location |
 |---|---|
-| Every-input validation, nullifiers and atomic rollback | `crates/consensus/tests/counterexamples.rs` |
+| Native multi-asset conservation, issuance signatures and SI-reward settlement | `crates/bench-multi-asset/src` and its native proof tests |
+| Every-input validation, nullifiers and atomic rollback (legacy runtime) | `crates/consensus/tests/counterexamples.rs` |
 | Canonical encodings | `crates/consensus/tests/encoding.rs` |
 | Producer/validator agreement | `producer_seed.rs`, `state_delta.rs` in consensus tests |
 | Statement binding and miner notes | `container_statement.rs`, `miner_package.rs`, `crates/prover/tests` |

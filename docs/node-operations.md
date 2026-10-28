@@ -1,60 +1,48 @@
-# Node Operations
+# Native V1 Node Operations Boundary
 
-## Build
+Status: native V1 node and network integration is incomplete. The isolated
+proof executable is not a node runtime, and no native V1 deployment command is
+available. The existing node executable runs the
+[legacy recursive route](legacy/node-operations.md).
 
-```sh
-cargo build --release --locked -p siworld-node
-python3 scripts/check-node-features.py
-```
+## Roles and platform qualification
 
-Default node binaries enable Plonky3 and reject mock networks. Explicit `development` builds support forgeable mock proofs. All-features builds are for verification, not deployment. Secret-file checks are implemented on Unix; unsupported adapters fail closed.
+Every full validator independently enforces consensus. A miner adds block
+production, padding preparation and native settlement proving. There is no
+privileged main node. Discovery services and the control panel are operational
+services outside consensus.
 
-## Wallet initialization
+The Linux qualification baseline is Ubuntu 24.04, EPYC 7763 class, four vCPUs
+and fixed `x86-64-v3` release builds with AVX2 and CPU/OS-state admission checks.
+The initial validator RAM profile is 16 GiB; miner qualification starts at a
+separate 32-GiB profile. These are qualification floors to test, not proven
+minimum hardware requirements. The isolated 5-GiB proof cgroup does not set
+node/miner RAM requirements. macOS/Apple Silicon and Windows require separate
+native packaging, crypto vectors, isolation, storage/recovery and load tests.
 
-```sh
-target/release/siworld-node init --datadir "$HOME/.siworld-test"
-target/release/siworld-node address --datadir "$HOME/.siworld-test"
-```
+Both node roles use a 500-GB usable SSD installation floor and 1-TB
+recommendation. This does not guarantee full-load lifetime; permanent public
+data grows while proofs roll through three days after final confirmation.
+The conditional minimum uplink is 43 Mbps with 100 Mbps recommended. See
+[deployment qualification](v1-deployment.md), [wire budget](v1-network-budget.md)
+and [storage model](v1-storage-and-sync.md).
 
-Initialization asks for a password through hidden terminal input. It creates an encrypted key and distinct role credentials, refuses key overwrite, and uses directory mode 0700 and secret-file mode 0600. Keep authenticated backups independently. Runtime files must remain outside the repository.
+## Integration and recovery requirements
 
-## Real-proof genesis
+Native release packaging must bind the accepted network identity, suite,
+source/dependency hashes, trusted verifier artifacts and explicit checkpoint
+trust policy. Operators must distinguish proof tools, a native runtime and a
+legacy runtime; one cannot substitute for another. Start only reviewed native
+deployment artifacts after the [acceptance gates](prover-acceptance.md) pass.
 
-Collect public owner digests and run in an external runtime directory. Replace OWNER_HEX with the intended 64-hex public owner:
+Public health telemetry must be authenticated, bounded and private to the
+operator. It may report progress, resource pressure, stale samples and durable
+incidents; it must not disclose fee openings, sender endpoints, transaction
+classifications or payment associations. Panel actions cannot change
+consensus validity or justify automatic destructive recovery.
 
-```sh
-siworld-node genesis --network siworld-test-1 \
-  --alloc OWNER_HEX:100 --proofs plonky3 \
-  --container-size 4 --block-time 60 --miners 1 > genesis.json
-```
-
-Genesis calibrates work on the coordinator's machine. Distribute the same file and compare genesis IDs. Create it shortly before mining because its timestamp anchors difficulty. Small capacity reduces preparation cost; it is not a production throughput measurement.
-
-## Run
-
-```sh
-siworld-node run --datadir "$HOME/.siworld-test" \
-  --genesis genesis.json --mine
-```
-
-```sh
-siworld-node run --datadir "$HOME/.siworld-peer" \
-  --genesis genesis.json --peer /dns4/seed.example.org/tcp/30333
-```
-
-Peer TCP defaults to 30333; authenticated loopback RPC defaults to 127.0.0.1:30334. A configured peer node waits for synchronization before mining and pauses when disconnected. Transactions flood directly, without a source-anonymity layer.
-
-## Wallet access
-
-```sh
-siworld-cli --auth-file "$HOME/.siworld-test/rpc-read.token" info
-siworld-cli --auth-file "$HOME/.siworld-test/rpc-read.token" walletstatus
-```
-
-Spending requires startup with `--enable-wallet-spend`, the separate spend credential and password unlock. Balance scans require an unlocked wallet. `walletunlock` accepts 1 through 3,600 seconds, default 60.
-
-Bundled sends additionally require an independent encrypted order ledger and witness initialized by `siworld-node orders-init`. Retain its current checkpoint separately. Generate a payment ID offline with `siworld-cli new-payment-id`, retain the complete order, and retry identical parameters with the same ID. Consult binary usage for ledger, backup, checkpoint and reconciliation commands, and read [RPC and recovery](rpc.md) before submitting payments.
-
-## Maintenance
-
-Stop the node before offline key migration, reconciliation or credential rotation. Startup replays full stored blocks including proofs. Pruning is not implemented. Monitor disk use and test restart/recovery on disposable networks. Proving memory, history growth and the local reorganization bound limit the operating envelope.
+Native reset, pause/resume and recovery interfaces require explicit state and
+network identity checks, operation serialization, durable results and key/data
+preservation. Existing legacy operational commands do not establish these
+native features. See [implementation milestones](v1-node-network-plan.md) and
+[RPC requirements](rpc.md).

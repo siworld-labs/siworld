@@ -204,6 +204,7 @@ fn start(
     let rpc = socket();
     let address = |s: SocketAddr| format!("/ip4/127.0.0.1/tcp/{}", s.port()).parse().unwrap();
     let config = Config {
+        worker: None,
         listen: vec![address(p2p)],
         peers: peers.into_iter().map(address).collect(),
         rpc: Some(RpcConfig {

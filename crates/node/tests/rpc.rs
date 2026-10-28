@@ -19,7 +19,7 @@ use siworld_node::hex;
 use siworld_node::node::Node;
 use siworld_node::rpc_auth::{RpcAuth, RpcToken};
 use siworld_node::service::{
-    call as unauthenticated_call, call_authenticated, run, Config, RpcConfig,
+    call as unauthenticated_call, call_authenticated, run_with_rpc_listener, Config, RpcConfig,
 };
 
 fn token(byte: u8) -> RpcToken {
@@ -105,8 +105,10 @@ fn start_configured(spend: bool, protected: bool) -> RunningNode {
         }],
     })
     .unwrap();
-    let rpc = format!("127.0.0.1:{}", free_port());
+    let rpc_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let rpc = rpc_listener.local_addr().unwrap().to_string();
     let config = Config {
+        worker: None,
         listen: vec![format!("/ip4/127.0.0.1/tcp/{}", free_port())
             .parse()
             .unwrap()],
@@ -136,7 +138,7 @@ fn start_configured(spend: bool, protected: bool) -> RunningNode {
     let thread = std::thread::spawn(move || {
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(run(node, config, async {
+            .block_on(run_with_rpc_listener(node, config, rpc_listener, async {
                 let _ = stop_rx.await;
             }))
             .unwrap();

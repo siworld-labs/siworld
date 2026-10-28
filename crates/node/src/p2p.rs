@@ -15,7 +15,6 @@
 
 use std::io;
 
-use async_trait::async_trait;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use libp2p::StreamProtocol;
 use siworld_core::codec::{decode_all, DecodeError, Reader, MAX_PROOF_LEN};
@@ -179,7 +178,6 @@ fn invalid(e: DecodeError) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, format!("{e:?}"))
 }
 
-#[async_trait]
 impl libp2p::request_response::Codec for Codec {
     type Protocol = StreamProtocol;
     type Request = Request;

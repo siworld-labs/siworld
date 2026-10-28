@@ -1,39 +1,44 @@
-# Proof-System Benchmarks
+# Proof Measurement Requirements
 
-## Scope
+Status: reproducible isolated native proof measurements. Benchmark results
+are not full-node, wallet-latency, network or hardware acceptance.
 
-The separate `crates/bench-stark` workspace contains a native witness reference, Plonky3 AIR and recursion, and optional SP1 comparisons. The node prover imports the same accumulator circuits. Concatenated and chained modes are comparisons, not alternate node consensus modes.
+## Native V1
 
-No device-independent latency or throughput claim is made. Every published result requires revision, hardware, toolchain, dependency revisions, proof parameters, capacity, concurrency and sample count. Historical working measurements are not release evidence.
-
-## Reproduction
-
-```sh
-cargo test --release --locked --manifest-path crates/bench-stark/Cargo.toml \
-  -p siworld-bench-plonky3 -p siworld-bench-common
-```
+The [multi-asset workspace](../crates/bench-multi-asset/README.md) implements
+transaction, issuance and settlement relations. The
+[actual-AIR evaluation](v1-multi-asset-evaluation.md) records the eight-profile
+transaction scan and source-bound selected profile. Settlement and issuance
+have separate measured profiles; identify the exact proof kind in every result.
 
 ```sh
-cd crates/bench-stark
-cargo run --release --locked -p siworld-bench-plonky3 \
-  -- --acc --leaves 32 --reps 5
+cargo test --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --lib
+cargo build --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --bin native-scan
 ```
 
-Use `--chain` for chained aggregation or omit the mode for concatenation. Run comparisons sequentially to avoid CPU contention. Keep unreviewed raw measurements outside version control.
+Use fresh result paths and explicit worker settings. Generate one-worker
+verification measurements in separate processes; a verifier call inside a
+four-worker proving process does not establish single-worker performance.
+Follow [Linux process-tree measurement](linux-proof-measurement.md) and
+[resource accounting](memory-budgets.md) for cgroup peaks/events and hardware
+qualification. The 5-GiB diagnostic scope is not a miner hardware minimum.
 
-## Parameters and artifacts
+## Evidence requirements
 
-`--log-blowup`, `--queries` and `--pow` override proof parameters. `--fast` is insecure debugging and cannot substantiate secure proving performance. Parameter changes require soundness analysis at every layer.
+Record source, dependency and artifact identities; proof kind and actual AIR
+shape; parameters; toolchain/target features; CPU/model/quota/hypervisor; worker
+and hiding-kernel settings; sample count; canonical proof bytes; and per-stage
+wall/CPU time and charged memory. Separate one-time preparation from proving
+and verification. Report memory-event deltas and process-tree scope.
 
-```sh
-cargo run --release --locked -p siworld-bench-plonky3 \
-  -- --acc --leaves 16 --reps 1 --export /tmp/siworld-proof-artifacts
-```
+Publish only inspected reproducible technical evidence. Do not publish private
+raw logs, credentials, personal paths or runtime reports. Three passing trials
+do not bound randomized grinding tails or shared-host contention. Source/key
+freeze, independent cryptographic review and integrated acceptance are distinct.
 
-Exports contain public verification data, proof and statement. `--dump-root` supplies JSON to `scripts/proof_breakdown.py`; `leaf_params` compares leaf configurations. `scripts/set_hash_security.py` evaluates generic accumulator attacks under its stated assumptions.
+## Legacy and paused research
 
-SP1 has its own workspace and toolchain prerequisites. Comparison reports must identify proof form and zero-knowledge properties. An unwrapped STARK result is not automatically a confidential node proof system.
-
-## Measurement requirements
-
-Separate setup from steady-state leaf, internal-node and root proving. Record verification time, canonical proof size, peak memory and wall/CPU time. Label assumed parallel critical paths as estimates. Measure sustained operation and memory at the intended concurrency before drawing deployment conclusions.
+The [legacy benchmark commands](legacy/benchmarks.md) describe the recursive
+workspace used by the retained runtime. [V2 research](v2/README.md) is paused;
+its recursive timing/memory targets do not apply to native V1. Reduced-security
+or mock-proof debugging cannot substantiate secure native performance.

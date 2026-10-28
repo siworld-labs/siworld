@@ -1,36 +1,74 @@
-# Cryptographic Construction
+# Native V1 Cryptographic Construction
 
-## Primitives
+Status: implemented isolated native proof relations and selected integration
+requirements. **Engineering target ≥80-bit quantum security, pending independent review.**
+No independent full-system cryptographic approval is recorded.
 
-| Use | Construction |
-|---|---|
-| Notes, nullifiers, anchors and tree nodes | Tagged Poseidon2 over KoalaBear |
-| Work, headers and ciphertext digest | BLAKE3 |
-| Output key encapsulation | ML-KEM-768, libcrux |
-| Output encryption | ChaCha20-Poly1305; commitment as associated data |
-| Fund signatures | ML-DSA-65, libcrux |
-| Leaf proofs | Plonky3 hiding FRI |
-| Aggregation | Plonky3-recursion with pinned keys |
-| Keystore | Argon2id and XChaCha20-Poly1305 |
+## Suite and relations
 
-Plonky3 is pinned to 0.9.0-rc.2 and recursion to revision `3a69ba61f713c8400b14eb3d8f0e52caa13512c7`. The degree-four proof suite uses log blowup 2, 42 queries and 16 grinding bits. Its approximately 100-bit classical target is conjectural and unaudited. There is no final SNARK wrapper.
+The native suite is KoalaBear D8, standard Plonky3 Poseidon2 W24 and twelve
+canonical base-field elements per digest. Plonky3 and `p3-security` are pinned;
+D8 support and modified transcript/grinding behavior are covered by the
+[dependency patch boundary](d8-dependency-patch.md).
 
-## Statement binding
+The [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+uses log blowup 7, 41 queries, 20-bit query/batch grinding, zero commitment
+grinding, binary folding and final-polynomial log length zero. It binds
+source/dependency identities, public verifier data and actual-instance security
+and resource evidence. Settlement and issuance use separately measured
+b8/q36/g20 profiles. The [three-relation engineering manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+freezes exactly 576 settlement positions and three initial issuance notes with
+reproduced public preprocessing keys and complete actual-AIR reports. These
+fixed scopes do not adopt issuance policy or qualify other capacity keys;
+independent approval and activation remain separate. See
+[reproduction](native-proof-profiles.md).
 
-BLAKE3 derive-key context `siworld d_ct v1` hashes both ciphertexts followed by both view tags. The digest packs into 16 little-endian 16-bit limbs. E binds that digest, both nullifiers and both output commitments.
+The two-input/three-output transaction relation enforces per-asset integer
+conservation and SI-only confidential fees. It checks anchor membership in a
+depth-12 recent-root tree, and binds ciphertext bytes, the accepted snapshot
+context and fee commitment. Native issuance constrains hidden minted supply;
+ML-DSA-65 verifies the declaration outside its AIR. Native settlement binds
+fee commitments to an SI-only miner reward note. Node acceptance must
+reconstruct all trusted statements rather than accept peer-supplied roots,
+keys, subsidies or asset registry decisions.
 
-Recursion checks child verification keys and statement digests. Fee limbs are range-checked and added with checked carries. The root derives the miner note from private fees, public share, height, owner and randomness. Validators recompute every public input from block and prior state.
+## Security accounting
 
-## Additive accumulator assumptions
+Require conjectured classical security ≥128 bits. Johnson Fiat–Shamir query
+and enforced-grinding terms must retain ≥80 bits after quantum halving;
+challenge-domain terms receive the same floor. Selected Merkle/commitment BHT
+collision terms must be ≥80 bits. Evaluate each AIR and protocol composition.
+The selected transaction ledger reports approximately 81.692 quantum-halved
+Johnson challenge bits; it is an estimator result for the fixed instance.
 
-The root equates the sum of proved E values with the sum from published slots. Multiset binding depends on cryptographic assumptions and bounded leaf multiplicity. Fixed tree depth, trusted child keys, count-one leaves, checked node counts and a capacity-specific root key are security-critical.
+The [BHT ledger](bht-security-accounting.md) explains model and digest-capacity
+conversions. Raw classical estimator values, quantum conversions and
+application hashes are separate quantities. A passing screen is not a
+full-system post-quantum security proof. Hiding randomness, transcript
+consistency, dependency changes, signature/transport authentication and
+resource admission require independent review.
 
-Without the multiplicity bound, 49 vectors in 48 dimensions admit a linear dependency. The regression `unbounded_multiplicities_break_the_sum` demonstrates that failure mode. Canonical encoding is also required: arbitrary reduction modulo the field would give multiple byte representations of one element. Decoders reject them. Native checks enforce duplicate-slot and nullifier rejection; addition alone cannot.
+## Encryption and fee commitments
 
-`crates/bench-stark/scripts/set_hash_security.py` evaluates generic attacks for its stated model. Estimates are not an independent audit or a security proof for the entire protocol.
+ML-KEM-768 and ChaCha20-Poly1305 protect recipient outputs. Change uses a
+256-bit ChaCha20-Poly1305 key derived with domain-separated BLAKE3 KDF.
+Output commitments are authenticated, and all ciphertext bytes are bound by
+the transaction proof. The AIR does not prove encryption correctness.
+Wallets must self-check before broadcast and validate AEAD and recovered
+commitments on receipt. Padding performs genuine ephemeral-key encryption.
 
-## Public verification artifacts
+Fee commitments conceal openings on chain. The private sidecar carries the
+opening without an extra signature or encryption layer; recipients validate
+its transaction binding and recomputed commitment. Planned authenticated
+hybrid transport protects sidecar contents on the connection. It does not
+hide them from the recipient or hide peer endpoints. Fee sidecars and proving
+randomness must not enter public logs or immutable public data.
 
-`crates/prover/keys` contains public root verification artifacts for capacities 2 through 128. `crates/prover/tests/data` contains a public proof and statement fixture. These are not secret keys. Key generation is deterministic; proof hiding randomness must remain fresh. Miners compare rebuilt keys with pinned artifacts.
+## Legacy and V2 boundaries
 
-Ciphertext correctness is outside the relation. Note encryption does not establish full-system quantum security, and buffer zeroization does not establish full-memory erasure. See [the security model](security-model.md).
+The runnable legacy node uses D4/W16 and recursive aggregation with pinned
+root keys; that classical configuration fails the selected native quantum
+target. See [legacy cryptography](legacy/cryptography.md) for its set-hash and
+multiplicity assumptions. Recursive aggregation and historical compression
+are [paused V2 work](v2/README.md). Neither legacy timing nor a recursive
+parameter estimate qualifies native V1.

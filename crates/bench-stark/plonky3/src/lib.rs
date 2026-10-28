@@ -8,6 +8,12 @@
 
 pub mod agg;
 pub mod air;
+#[cfg(feature = "d8-geometry")]
+pub mod d8_geometry;
+#[cfg(feature = "phase-profile")]
+pub mod profile;
+#[cfg(feature = "security-report")]
+pub mod security;
 pub mod trace;
 
 use p3_recursion::VerifierLimits;
@@ -28,8 +34,9 @@ pub use air::SlotAir;
 /// and hiding FRI with random codewords (zero knowledge).
 pub type Cfg = KoalaBearD4Poseidon2RandomCodewordConfig<StdRng>;
 
-/// FRI parameters. `secure()` gives about 100 bits (conjectured security); `fast()` is for
-/// debugging only and is not secure.
+/// Legacy D4 prototype parameters. The nominal query score is not a complete
+/// soundness estimate; no configuration here meets the selected quantum target.
+/// `fast()` is for debugging only.
 #[derive(Clone, Copy, Debug)]
 pub struct FriParams {
     pub log_blowup: u32,
@@ -38,8 +45,8 @@ pub struct FriParams {
 }
 
 impl FriParams {
-    /// log_blowup 2 (rate 1/4) × 42 queries + 16 bits of pre-query grinding ≈ 100 bits of
-    /// conjectured security, the target for every layer.
+    /// Existing prototype profile: nominal score 2 * 42 + 16 = 100.
+    /// This is neither the conjectured composite nor the Johnson security bound.
     pub const fn secure() -> Self {
         Self {
             log_blowup: 2,
@@ -62,6 +69,7 @@ impl FriParams {
         (2 * (4 * 2 + self.num_queries as usize)).next_power_of_two()
     }
 
+    /// Historical query/grinding score only; use instance-specific security reports.
     pub fn conjectured_bits(&self) -> u32 {
         self.log_blowup * self.num_queries + self.query_pow_bits
     }

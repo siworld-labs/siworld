@@ -10,6 +10,7 @@ FORBIDDEN = {
     "siworld-crypto": {"insecure-deterministic"},
     "siworld-state": {"test-utils"},
     "siworld-node": {"development"},
+    "siworld-bench-plonky3": {"experimental-fanin", "phase-profile", "security-report", "d8-geometry"},
 }
 
 

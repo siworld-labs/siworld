@@ -52,6 +52,9 @@ use siworld_bench_common::{
 use crate::air::{ACC_COUNT, ACC_ENTRY, ACC_FEE, ACC_ROOT, ACC_SET, NUM_ACC_PUBLIC};
 use crate::{Cfg, SlotAir, SlotProver};
 
+#[cfg(feature = "experimental-fanin")]
+pub mod fanin;
+
 type Challenge = <Cfg as StarkGenericConfig>::Challenge;
 pub type Backend = FriRecursionBackendForExt<4, 16, 8, Poseidon2Config>;
 type VRes = <Backend as PcsRecursionBackend<Cfg, BatchOnly, 4>>::VerifierResult;
@@ -826,7 +829,13 @@ impl AccAggregation {
             .set_private(&self.backend, &self.left, &lp, left, &mut runner)?;
         self.child
             .set_private(&self.backend, &self.right, &rp, right, &mut runner)?;
-        let traces = runner.run().map_err(err)?;
+        let traces = {
+            #[cfg(feature = "phase-profile")]
+            let _phase = crate::profile::Span::new("recursive_witness");
+            runner.run().map_err(err)?
+        };
+        #[cfg(feature = "phase-profile")]
+        let _phase = crate::profile::Span::new("recursive_stark");
         let (proof, _) = self.prepared.prove_with_legacy_data(&traces).map_err(err)?;
         Ok(proof)
     }

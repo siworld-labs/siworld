@@ -6,3 +6,4 @@
 
 # Unified diffs use a single space to mark unchanged empty context lines.
 experiments/pq-recursion/*.patch whitespace=-blank-at-eol
+crates/bench-stark/patches/*.patch whitespace=-blank-at-eol

@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "project": "siworld",
+  "audits": [
+    {
+      "id": "proof-composition",
+      "area": "proofs",
+      "status": "planned",
+      "scope": "Native D8 multi-asset transaction, fixed-supply issuance and confidential-fee settlement AIRs; pinned D8/W24 dependency changes; random-codeword PCS; challenger and MMCS geometry; source, suite and public verifier artifacts; enforced query/batch grinding; two-worker hiding and RNG use; ciphertext/fee binding; bounded decoding and canonical snapshot admission. Recursive application aggregation is separate paused V2 research.",
+      "excluded": [
+        "unmodified upstream Plonky3",
+        "unmodified upstream Plonky3-recursion"
+      ],
+      "implementation_paths": [
+        "crates/circuits",
+        "crates/prover",
+        "crates/bench-stark/plonky3",
+        "crates/bench-d8",
+        "crates/bench-stark/patches/recursion-d8-w24.patch",
+        "docs/bht-security-accounting.md",
+        "docs/d8-dependency-patch.md",
+        "crates/bench-multi-asset",
+        "crates/bench-multi-asset/artifacts/v1-transaction-profile.json"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    },
+    {
+      "id": "hash-and-consensus",
+      "area": "consensus",
+      "status": "planned",
+      "scope": "SIWORLD Poseidon2 instances, BLAKE3 consensus hashes, ASERT, proof-of-work and cumulative-work fork choice.",
+      "excluded": [
+        "unmodified upstream BLAKE3",
+        "unmodified upstream Poseidon2 reference code"
+      ],
+      "implementation_paths": [
+        "crates/poseidon2",
+        "crates/consensus",
+        "crates/state"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    },
+    {
+      "id": "post-quantum-integration",
+      "area": "cryptography",
+      "status": "planned",
+      "scope": "SIWORLD integration of ML-KEM-768, ML-DSA-65, sender output self-checks, selective payment receipts, genuine padding encryption, key lifecycle, encoding, authorization and downgrade boundaries.",
+      "excluded": [
+        "unmodified upstream ML-KEM",
+        "unmodified upstream ML-DSA"
+      ],
+      "implementation_paths": [
+        "crates/crypto",
+        "crates/node",
+        "docs/protocol.md",
+        "crates/bench-d8/src/encryption.rs",
+        "crates/bench-multi-asset/src/encryption.rs",
+        "crates/bench-multi-asset/src/issuance.rs"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    },
+    {
+      "id": "transport-and-worker-boundary",
+      "area": "network",
+      "status": "planned",
+      "scope": "Legacy miner/worker authentication and retry/resource boundaries, distinct from planned native V1 transcript-bound hybrid peer identities, X25519 plus ML-KEM transport and Dandelion++ source relay. No external review engagement or completed report is represented.",
+      "excluded": [
+        "unmodified libp2p transport implementation"
+      ],
+      "implementation_paths": [
+        "crates/node/src/miner_protocol.rs",
+        "crates/node/src/p2p.rs",
+        "docs/legacy/worker-control.md",
+        "crates/node/src/worker_transport.rs",
+        "crates/node/tests/worker_listener.rs",
+        "docs/v1-network-design.md"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    },
+    {
+      "id": "operations-and-memory",
+      "area": "operations",
+      "status": "planned",
+      "scope": "Memory measurement acceptance ceilings, missing-data rejection and process resource measurement.",
+      "excluded": [
+        "host kernel and Docker VM behavior"
+      ],
+      "implementation_paths": [
+        "tools/control-panel/memory_trend.py",
+        "docs/memory-budgets.md",
+        "scripts/measure-native-cgroup.py",
+        ".github/workflows/d8-native-cgroup.yml"
+      ],
+      "report": null,
+      "accepted_commit": null,
+      "findings": []
+    }
+  ]
+}

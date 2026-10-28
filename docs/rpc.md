@@ -1,39 +1,39 @@
-# Local RPC, Custody and Recovery
+# Native V1 RPC and Control Boundary
 
-## Transport
+Status: native V1 RPC and wallet integration remains design work. Existing
+newline-delimited loopback RPC commands belong to the
+[legacy runtime](legacy/rpc.md). No HTTP native node API or native reset/mining
+control is implied by the control-panel interface.
 
-RPC is newline-delimited JSON over loopback TCP, not HTTP or JSON-RPC 2.0. Every request carries a 64-hex bearer credential in `auth`. Authentication and method authorization are per request. The CLI uses `--auth-file FILE`; live secrets must not enter arguments, environment variables, URLs or logs.
+## Required capabilities
 
-The listener limits concurrent connections to 32, request lines to 64 KiB and read/write deadlines to 30 seconds. Malformed JSON and HTTP close the connection without processing a following body. Errors do not echo malformed input. Unknown methods fail closed.
+Separate read-only health access from wallet, mining and recovery capabilities.
+Authenticate each endpoint, bind it to the intended network and node, and
+limit request/response sizes and concurrent operations. Remote monitoring
+collectors must not hold spend keys or permit arbitrary shell execution.
 
-## Capabilities
+Read APIs should expose public chain/work progress, explicit busy/idle state,
+sample freshness, bounded resource accounting and durable incident state.
+Do not return individual fee openings, nullifier/time associations, public
+padding classifications or sender endpoint information.
 
-| File | Authority | Server enablement |
-|---|---|---|
-| `rpc-read.token` | Chain, address and wallet-status reads | Default |
-| `rpc-spend.token` | Reads, wallet locking and payments | `--enable-wallet-spend` |
-| `rpc-devfund.token` | Fund status, grants, approvals and payouts | Explicit fund configuration and mining |
+Mutation APIs need operation IDs, serialized execution, durable status and
+idempotent recovery. Timeout is an unknown outcome until reconciliation; it
+must not silently create a new payment or repeat a destructive operation.
+Reset must distinguish disposable engineering state from retained keys,
+wallet journals and permanent public data. A panel button cannot bypass
+acceptance, checkpoint authentication or atomic state-transition rules.
 
-Credentials are distinct. Forged permission fields grant nothing. RPC read mode is not cryptographic watch-only recovery. Wallet-spend capability has no general per-payment amount budget of its own.
+## Wallet and recovery requirements
 
-## Custody
+Durable payment identity, input reservations, local output self-check, protected
+receipt material and exactly-once reconciliation are required. Backup creation
+must protect secrets and require mnemonic recovery verification. Restoration
+must scan permanent ciphertexts and reconstruct accepted notes without
+claiming that public RPC access is cryptographic watch-only custody.
 
-Wallet files use Argon2id and XChaCha20-Poly1305. Unlock reconstructs notes; lock removes owned spend/view keys and tracked plaintexts. Fund keys use separate encrypted custody and timed bounded grants.
-
-Unix secret reads reject symlinks, non-regular files, foreign ownership, group/other permissions and multiple hard links. Parent directories must remain trusted. Rotate credentials with the node stopped, using `rpc-keygen`, then restart.
-
-Owned secret buffers have redacted diagnostics and erasure where implemented. Compiler copies, traces, dependency work buffers, swap and crash dumps are not covered by a complete-memory-erasure guarantee.
-
-## Durable submission
-
-A payment ID identifies one immutable intent. Wallet inputs are reserved durably before proving; serialized artifacts survive restart. The bundled CLI additionally records an independent order and dispatch marker before RPC. Keep ledger, witness and independently current checkpoints in separate trust domains.
-
-Timeout does not cancel a dispatched operation. Retry only the same ID, recipient, amount and priority. A new ID creates a distinct payment. Unknown outcomes require reconciliation. Only tracked orders known never to have been dispatched qualify for explicit cancellation.
-
-## Recovery
-
-Key-only backups preserve identity but omit pending payments. Full snapshots retain keys and journals and gate restored custody behind explicit reconciliation. Safe recovery also needs independently retained orders, current checkpoints and an authenticated network view. A stale backup cannot prove its own freshness.
-
-Fund payouts use distinct payout IDs, durable intent/artifact records, witness checkpoints, single-use approvals and persistent cumulative budgets. Timed grants cannot refill persistent allowances. Restart does not restore active signing grants. Policy amendments and recovery require independent authenticated records.
-
-The binaries' usage output defines command arguments. Tests under `crates/node/tests` cover authentication, capability separation, durable IDs, interrupted persistence, snapshots, orders, fund controls and reconciliation. They do not replace operational recovery drills.
+The [node/network plan](v1-node-network-plan.md),
+[deployment requirements](v1-deployment.md) and
+[testnet acceptance](prover-acceptance.md) define implementation and validation
+milestones. No native V1 API is complete merely because those requirements
+are documented.

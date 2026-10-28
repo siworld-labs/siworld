@@ -21,6 +21,7 @@
 mod cache;
 mod convert;
 mod leaf;
+mod schedule;
 
 use std::sync::{Arc, Mutex};
 
@@ -33,6 +34,7 @@ use p3_recursion::builtin_config::koala_bear_d4_poseidon2_random_codeword;
 use p3_recursion::{ProveNextLayerParams, VerifierLimits};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+pub use schedule::{FixedAggregationSchedule, PRIVATE_WORKER_BATCHES};
 use siworld_bench_common::{acc_witnesses, sample_empty_slot, ANCHOR_DEPTH, FEE_BASE, TREE_DEPTH};
 use siworld_bench_plonky3::agg::{
     anchor_leaf, compose_acc, AccAggregation, Child, Input, MinerNote, NUM_ROOT_PUBLIC,
@@ -244,7 +246,9 @@ impl Plonky3System {
             key,
             verifier,
             layers,
-            parallel: std::thread::available_parallelism().map_or(1, |n| n.get()),
+            // Default to serial until a matched speed/memory comparison
+            // justifies an explicit opt-in to the two-proof envelope.
+            parallel: 1,
             cache: Mutex::new(cache::TreeCache::default()),
             #[cfg(test)]
             node_proofs: std::sync::atomic::AtomicUsize::new(0),
@@ -271,9 +275,9 @@ impl Plonky3System {
     }
 
     /// How many node proofs of one level are made at once. Each uses about
-    /// one core; memory grows with it. Defaults to the number of cores.
+    /// one core; memory grows with it. Defaults to serial and caps at two.
     pub fn set_parallelism(&mut self, nodes: usize) {
-        self.parallel = nodes.max(1);
+        self.parallel = nodes.clamp(1, PRIVATE_WORKER_BATCHES);
     }
 
     /// Proves every pair of one level, `self.parallel` nodes at a time.
@@ -430,6 +434,13 @@ impl ProofSystem for Plonky3System {
         let layers = self.layers.as_ref().ok_or_else(|| {
             prover_error("this node was not prepared to aggregate (Plonky3System::for_miner)")
         })?;
+        let schedule = FixedAggregationSchedule::for_container(self.container_size)
+            .expect("container size was validated during setup");
+        if !schedule.validate_leaf_count(leaves.len()) {
+            return Err(prover_error(
+                "fixed aggregation schedule requires dummy-filled leaves",
+            ));
+        }
         if leaves.len() != self.container_size as usize {
             return Err(prover_error(format!(
                 "{} leaves for a container of {}",
@@ -649,6 +660,11 @@ mod incremental_tests {
             ..ChainParams::devnet()
         };
         let mut system = Plonky3System::insecure_fast(&params, true).unwrap();
+        assert_eq!(system.parallel, 1);
+        system.set_parallelism(usize::MAX);
+        assert_eq!(system.parallel, 2);
+        system.set_parallelism(0);
+        assert_eq!(system.parallel, 1);
         system.set_parallelism(2);
         let state = ChainState::genesis(&params);
         let entropy = SecretSeed::from_os_rng().unwrap();

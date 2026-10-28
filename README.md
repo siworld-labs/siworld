@@ -1,81 +1,123 @@
-# SIWORLD
+# SIWORLD — post-quantum private payments (in development)
 
 [![CI](https://github.com/siworld-labs/siworld/actions/workflows/ci.yml/badge.svg)](https://github.com/siworld-labs/siworld/actions/workflows/ci.yml)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 
-A Rust implementation of a shielded payment protocol with fixed-capacity blocks, post-quantum note encryption, and recursive STARK aggregation.
+Rust implementation and research for shielded multi-asset payments with native
+STARK transaction proofs and confidential fee settlement.
 
-**Research prototype.** The implementation is unaudited and has no production release or mainnet. The current proof configuration targets conjectured classical soundness; it does not establish complete post-quantum security. Use disposable test keys and valueless test assets only.
+**Engineering target ≥80-bit quantum security, pending independent review.**
+The public native V1 test network and production network are not available. Use only
+disposable test keys and valueless test assets.
 
-## Design
+## Implementation status
 
-- **Uniform block structure.** Each block contains exactly N fixed-shape slots. Each slot has two nullifiers and two encrypted outputs; unused capacity is filled with valid zero-value padding.
-- **Recursive verification.** Plonky3 leaf proofs are aggregated through a fixed-depth binary tree. An additive set-hash accumulator binds the root statement to the published slots without exposing individual fees or the fee total on chain.
-- **Shared state transition.** Block construction and validation use the same deterministic, integer-only transition. Failed transitions leave state unchanged.
-- **Encrypted notes.** ML-KEM-768 and ChaCha20-Poly1305 protect output plaintexts. Poseidon2 commitments and nullifiers support shielded ownership and double-spend rejection.
-- **Explicit trust boundaries.** Network observers can see arrival times and fees, and producers recognize their own padding. Fixed-size blocks reduce particular activity signals; they do not guarantee payment-time or source anonymity.
+| Status | Scope |
+| --- | --- |
+| Done | Source-bound engineering freeze of three isolated native proof relations: two-input/three-output transaction, 576-position settlement and three-initial-note issuance; public verifier artifacts and proof measurements |
+| In progress | Native V1 node, wallet, block, storage and network integration |
+| Not yet | Independent security review: pending; public test network: not available; production network: not available |
 
-## Implementation
+Engineering freeze records implementation, dependency, parameter and artifact
+identities. It is not independent cryptographic approval or network activation.
+The [relation manifest](crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+freezes those fixed shapes and their public preprocessing keys. It does not
+adopt issuance policy, qualify smaller-capacity settlement keys or activate
+node/network behavior. See [current decisions](docs/00-decisions.md).
+The existing runnable node uses the **legacy recursive proof route**. The
+retained seven-node N=2 engineering testnet does not run native V1.
 
-| Component | Responsibility |
-|---|---|
-| `crates/core` | Canonical types, encodings, parameters and integer issuance |
-| `crates/poseidon2` | Tagged hashing, field encoding and domain separation |
-| `crates/crypto` | Note commitments, nullifiers, encryption and signatures |
-| `crates/state` | Commitment tree, nullifier set, anchor window and reward accounts |
-| `crates/circuits` | Native slot relation and proof-system interface |
-| `crates/prover` | Plonky3 leaf proofs, recursive aggregation and pinned verification keys |
-| `crates/consensus` | Atomic transitions, block production, difficulty and fork choice |
-| `crates/storage` | Persistent full-block storage and replay |
-| `crates/node` | Peer transport, authenticated local RPC, wallet and recovery controls |
-| `crates/bench-stark` | Separate proof-system benchmark workspace; its Plonky3 circuits are also dependencies of the prover |
+## Native V1 design
 
-## Build
+- **One transaction shape:** two inputs and three outputs, private 32-byte
+  asset identifiers in one shared privacy pool, per-asset conservation and
+  SI-only confidential fees. Standard transfers and valid zero-value padding
+  use the same public format.
+- **Native verification:** wallets produce one D8/W24 STARK transaction proof.
+  Nodes verify on admission; miners generate one separate native settlement
+  proof per block. V1 does not recursively aggregate transaction proofs.
+- **Blocks:** 64–576 positions in groups of 16, with a 300-second PoW target.
+  Strict ordering by proof-independent BLAKE3 statement identity and duplicate
+  rejection are required for the first native block-integration milestone.
+- **Lifecycle:** permanent public ledger data; transaction, settlement and
+  issuance proofs plus private fee sidecars expire three days after final
+  confirmation. Checkpoint bootstrap has an explicit trust boundary.
+- **Privacy limits:** on-chain commitments hide fee openings. Sidecar recipients
+  learn those openings; miners recognize their own padding. Uniform encodings
+  are intended to reduce on-chain classification. Headers/PoW, commitments,
+  ciphertexts, nullifiers, issuance and signed fund records remain public.
+  Source anonymity and computational indistinguishability require separate
+  analysis and acceptance.
 
-Rust is pinned in [rust-toolchain.toml](rust-toolchain.toml). Default node binaries enable Plonky3 and reject mock-proof networks.
+The Plonky3 proof suite uses **KoalaBear D8, standard Poseidon2 W24 and
+twelve-element (48-byte) digests**. Output encryption uses **ML-KEM-768** and
+ChaCha20-Poly1305; **ML-DSA-65** authenticates public development-fund payouts
+and issuance declarations. Their native wallet/node integration is a separate
+launch gate. The selected transaction body cap is **640 KiB**; settlement
+and issuance have separate **512-KiB** caps. The conditional complete network
+budget requires **43 Mbps minimum uplink**, with **100 Mbps recommended**.
+
+## Documentation
+
+| Start here | Scope |
+| --- | --- |
+| [V1 overview](docs/v1-overview.md) | Transaction flow, implementation boundaries and trust assumptions |
+| [Current decisions](docs/00-decisions.md) | Authoritative protocol requirements |
+| [Architecture](docs/architecture.md) and [protocol](docs/protocol.md) | Selected native design and legacy separation |
+| [Native transaction specification](docs/route-a-v1.md) | Transaction proofs and integration requirements |
+| [Multi-asset format](docs/v1-multi-asset.md) and [fee settlement](docs/fee-settlement.md) | Asset conservation, issuance and confidential reward accounting |
+| [Proof reproduction](docs/native-proof-profiles.md) and [measurements](docs/v1-multi-asset-evaluation.md) | Source-bound parameters, public keys, security accounting and measured limits |
+| [Node/network milestones](docs/v1-node-network-plan.md) | Integration work and exit conditions |
+| [Testnet acceptance](docs/prover-acceptance.md) | Independent review, state, network, resources and recovery gates |
+| [Deployment and monitoring](docs/v1-deployment.md) | Roles, candidate hardware and qualification |
+| [Documentation index](docs/README.md) | Storage, transport, development, legacy implementation and paused V2 research |
+
+| Resource | Qualification profile |
+| --- | --- |
+| Linux proof reference | Ubuntu 24.04, EPYC 7763 class, four vCPUs; requalify each actual allocation |
+| x86_64 release baseline | Fixed `x86-64-v3`, including AVX2 and CPU/OS-state admission checks; no scalar fallback |
+| Validator / miner RAM | 16 GiB validator profile; separate 32-GiB miner profile; integrated qualification pending |
+| Usable SSD | 500-GB installation floor; 1 TB recommended; lifetime depends on workload |
+| Uplink | Conditional 43-Mbps minimum; 100 Mbps recommended |
+| macOS / Windows | Native packaging, resource and recovery qualification pending |
+
+These are qualification profiles, not accepted minimum hardware guarantees.
+The 5-GiB proof experiment is not a miner RAM requirement. Follow
+[deployment qualification](docs/v1-deployment.md) before operating a new native
+network.
+
+## Proof validation
+
+Rust is pinned in [rust-toolchain.toml](rust-toolchain.toml). Reproduce the
+native proof components with the isolated workspace:
+
+```sh
+cargo test --release --locked --manifest-path crates/bench-multi-asset/Cargo.toml --features security-report --lib
+python3 scripts/check-repository.py
+```
+
+See [the proof workspace](crates/bench-multi-asset/README.md),
+[validation coverage](docs/testing.md) and [contribution requirements](CONTRIBUTING.md)
+for complete commands. Passing proof CI does not establish a running native V1
+network or hardware acceptance.
+
+## Legacy node builds
+
+The existing node commands build the legacy recursive runtime, not native V1:
 
 ```sh
 cargo build --release --locked -p siworld-node
 python3 scripts/check-node-features.py
 ```
 
-For a deterministic single-machine demonstration, explicitly enable development capabilities:
-
-```sh
-cargo run --locked -p siworld-node --no-default-features \
-  --features development --bin siworld-devnet -- demo
-```
-
-Development builds use forgeable mock proofs. They are test tools, not deployment artifacts.
-
-## Verification
-
-```sh
-python3 scripts/check-repository.py
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-features --locked
-cargo test --release --locked --manifest-path crates/bench-stark/Cargo.toml \
-  -p siworld-bench-plonky3 -p siworld-bench-common
-```
-
-The all-features build is for verification and includes development capabilities. See [test coverage](docs/testing.md) and [contribution requirements](CONTRIBUTING.md).
-
-## Documentation
-
-| Document | Scope |
-|---|---|
-| [Technical overview](docs/whitepaper.md) | Protocol construction and implementation boundaries |
-| [Architecture](docs/architecture.md) | Components, data flow and candidate lifecycle |
-| [Protocol](docs/protocol.md) | Notes, block rules, units, rewards and parameters |
-| [Cryptography](docs/cryptography.md) | Primitives, statement binding and accumulator assumptions |
-| [Security model](docs/security-model.md) | Adversaries, privacy limits and deployment restrictions |
-| [Node operations](docs/node-operations.md) | Builds, genesis, peer setup and wallet access |
-| [RPC and recovery](docs/rpc.md) | Capabilities, key custody and durable submission |
-| [Benchmarks](docs/benchmarks.md) | Reproducible commands and measurement requirements |
-| [Testing](docs/testing.md) | Regression coverage and validation commands |
-| [Development](docs/development.md) | Engineering invariants and release criteria |
+Default binaries enable Plonky3 and reject mock-proof networks. Explicit
+`development` builds use forgeable mock proofs and are test tools. Follow the
+[legacy node operations](docs/legacy/node-operations.md) and
+[legacy RPC/recovery](docs/legacy/rpc.md) documentation for that implementation.
+No native V1 launch command is available before runtime integration and
+acceptance are complete.
 
 ## License
 
-[GPL-3.0-only](LICENSE). Module-level references to the GPL-licensed [midstate](https://github.com/ciphernom/midstate) project are documented in [NOTICE](NOTICE).
+[GPL-3.0-only](LICENSE). Required third-party attribution, including references
+to [midstate](https://github.com/ciphernom/midstate), is recorded in [NOTICE](NOTICE).

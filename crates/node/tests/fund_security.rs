@@ -312,6 +312,7 @@ fn rpc_fund_capability_needs_password_and_grant_and_expires_without_activity() {
     let rpc = socket.to_string();
     let token = |b: u8| RpcToken::from_hex(&format!("{b:02x}").repeat(32)).unwrap();
     let config = Config {
+        worker: None,
         listen: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
         peers: vec![],
         mine: false,

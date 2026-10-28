@@ -1,33 +1,73 @@
 # System Architecture
 
-## Component boundaries
+Status: selected native V1 architecture with implemented isolated proof
+components. The complete native node, wallet and network path is not yet
+integrated. [Legacy architecture](legacy/architecture.md) documents the
+runnable recursive implementation.
 
-The `core` crate defines public types and canonical serialization. `poseidon2` defines the native tagged sponge and field encoding. `crypto` constructs notes, commitments, nullifiers, ciphertexts and signatures. `state` owns the commitment tree, recent roots, nullifier set, pending rewards and fund accounts.
+## Components and implementation boundaries
 
-`circuits` specifies the native slot relation and the proof-system interface. `prover` adapts the Plonky3 AIR and aggregation circuits in the benchmark workspace to that interface. The benchmark circuits are therefore part of the real-proof node's dependency and review surface, despite their separate Cargo workspace.
+| Component | Present scope | Native V1 boundary |
+| --- | --- | --- |
+| `crates/bench-multi-asset` | Transaction, issuance and settlement AIRs, native proof tools, public codecs and engineering profile | Isolated workspace; no native node depends on it yet |
+| `crates/bench-d8` | Earlier two-output native proof baseline and dependency adapter | Diagnostic baseline; does not activate the three-output profile |
+| `core`, `crypto`, `state` | Legacy types, encrypted notes, signatures, commitments, roots and nullifiers | Native types/state transitions require explicit integration |
+| `circuits`, `prover`, `bench-stark` | Legacy recursive proof route and pinned keys | Retained runtime and paused V2 review surface |
+| `consensus`, `storage`, `node` | Legacy block production/validation, persistent full-block replay, libp2p and local RPC | Native block codec, common transition, admission, retention and transport remain milestones |
+| `tools/control-panel` | Local operational interface for retained engineering nodes | It is outside consensus and is not native V1 deployment evidence |
 
-`consensus` implements construction, validation, proof of work, difficulty and fork choice. `storage` persists accepted full blocks in redb and replays them at startup. `node` supplies peer transport, a mempool, wallet operations and authenticated loopback RPC.
+The transaction engineering profile pins parameters, source/dependency
+identities, security data and public verifier artifacts. The
+[three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+also fixes public preprocessing identities for 576-position settlement and
+three-initial-note issuance. Those shapes do not adopt broader issuance policy
+or qualify other capacities. Standalone proof
+success does not establish wallet, node, database or network behavior.
 
-## Payment flow
+## Native transaction and block path
 
-1. The wallet reserves a durable payment ID and input notes before proving.
-2. Output randomness comes from the operating system. The wallet encrypts outputs and builds a leaf proof.
-3. The relay checks anti-spam work, the anchor and leaf proof before admitting the transaction.
-4. A producer selects transactions and supplies valid padding to reach capacity N.
-5. Native header preparation applies the shared transition. Recursive aggregation and nonce search proceed against the fixed candidate.
-6. Publication requires matching candidate generations, a valid proof and valid work.
-7. A receiver validates the block before updating chain state and scanning wallet notes.
+Wallets construct two-input/three-output transactions, encrypt and self-check
+all outputs, and generate a native proof. Nodes must resolve the selected
+snapshot from canonical local state, verify sidecars and proofs under bounded
+resource admission, then atomically reserve nullifiers.
 
-## Candidate lifecycle
+Miners assemble 64–576 positions in groups of 16. The M1 (N1) block-codec and
+transition milestone must enforce strictly ascending proof-independent BLAKE3
+statement IDs and reject equality. Proof bytes, proof lengths/randomness and
+fee sidecars do not affect those IDs. This native block-order validator is not
+yet implemented. A separate native settlement proof binds ordered commitments,
+subsidy context and the SI reward note.
 
-One background candidate task works from a state snapshot. Rebuild requests coalesce; generation checks discard stale proof and work results. Reusable padding and non-root proofs are held in bounded in-memory caches. Each new root uses fresh miner witnesses and proving randomness.
+Production, validation and historical application must use one deterministic,
+integer-only, atomic transition. Compact relay references accepted transaction
+identities and recovers bounded missing data; it does not authorize skipping
+proof validation. Isolated issuance proves exact hidden minted supply, while
+node acceptance must also verify ML-DSA-65 and atomically consume its SI fee
+payment and update the registry.
 
-Logical cancellation does not interrupt an active proof kernel. Wallet proving, inbound verification, snapshot cloning and storage can still delay service handling. Shutdown closes RPC and header delivery before waiting for outstanding work. These restrictions matter when sizing testnets and interpreting responsiveness measurements.
+## Storage and synchronization
 
-## Storage and reorganization
+Native V1 permanently retains public ledger data and deletes transaction,
+settlement and native issuance proofs plus fee sidecars three days after final
+confirmation. Finality/deletion metadata must survive restarts and recovery.
+The native local reorganization bound is 24 blocks; the accepted snapshot
+window is the newest 4,096 canonical identities.
 
-The store retains full blocks including proofs. Startup replays accepted blocks; pruning and bounded-history operation are not implemented. The chain index uses cumulative work with a local 100-block reorganization bound. Partitions extending beyond that bound require explicit operator recovery rather than automatic convergence.
+Default bootstrap uses a release checkpoint under explicit genesis-pinned
+quorum trust, followed by PoW and normal block verification. PoW cannot replace
+deleted historical proof validity. See [storage and bootstrap](v1-storage-and-sync.md).
+The legacy runtime retains full blocks/proofs and has a 100-block bound.
 
-## Interfaces
+## Network, platform and observability
 
-Peer messages use a genesis-specific libp2p protocol over TCP, Noise and Yamux. Transaction dissemination currently floods directly. The local RPC is authenticated newline-delimited JSON over loopback TCP, not HTTP. See [node operations](node-operations.md) and [RPC](rpc.md).
+Hybrid X25519 + ML-KEM transport, dual identity authentication and Dandelion++
+are selected designs, not completed listeners. The current legacy transport is
+TCP/Noise/Yamux with direct flooding. [Network design](v1-network-design.md)
+defines the native requirements and adversarial tests.
+
+Every validator independently enforces consensus; a miner adds production.
+Discovery services and private monitoring collectors have no authority over
+validity or fork choice. Telemetry must expose public health and bounded
+resource measures without fee openings, sender endpoints or private payment
+associations. See [deployment and observability](v1-deployment.md) and
+[the implementation milestones](v1-node-network-plan.md).

@@ -39,3 +39,7 @@ lcov.info
 *.svg
 *.mp4
 *.webm
+
+# Python test and validation bytecode
+__pycache__/
+*.py[cod]

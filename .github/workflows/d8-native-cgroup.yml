@@ -1,0 +1,173 @@
+name: Native D8 hosted cgroup diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/route-a-production-air"]
+    paths:
+      - ".github/workflows/d8-native-cgroup.yml"
+      - "scripts/measure-native-cgroup.py"
+      - "scripts/tests/test_native_cgroup_measurement.py"
+      - "scripts/build-d8-checkpoint.py"
+      - "scripts/prover-launcher.rs"
+      - "scripts/build-prover-release.py"
+      - ".cargo/config.toml"
+      - "crates/bench-d8/**"
+      - "crates/bench-stark/patches/recursion-d8-w24.patch"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-d8-cgroup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-cgroup:
+    name: Native proving and single-thread verification trials
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.local/native-cgroup-target
+      RAYON_NUM_THREADS: 4
+      SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Record hosted CPU identity
+        run: |
+          python3 - <<'PY_HARDWARE'
+          import json
+          from pathlib import Path
+          import runpy
+          helper = runpy.run_path('scripts/measure-proof-cgroup.py')
+          hardware, evidence = helper['qualify']()
+          output = Path('.local/native-cgroup-results')
+          output.mkdir(parents=True)
+          (output / 'hosted-hardware.json').write_text(json.dumps({
+              'hardware': hardware, 'lscpu': evidence['lscpu_json'],
+              'lscpu_text': evidence['lscpu_text'],
+              'hardware_profile': 'github-hosted-diagnostic',
+              'reserved_reference_machine': False}, indent=2) + '\n')
+          PY_HARDWARE
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/bench-d8 -> ../../.local/native-cgroup-target
+          cache-on-failure: true
+      - name: Check resource collector contracts and CPU admission
+        run: |
+          python3 -m unittest discover -s scripts/tests -p test_native_cgroup_measurement.py -v
+          rustc scripts/prover-launcher.rs --edition=2021 -O -D warnings -C target-cpu=x86-64 -o /tmp/native-cgroup-cpu-check
+          /tmp/native-cgroup-cpu-check --check-cpu
+          test -e /sys/fs/cgroup/cgroup.controllers
+          sudo --non-interactive systemctl --version
+      - name: Check a harmless scope before compiling proof executables
+        run: |
+          python3 scripts/measure-native-cgroup.py --smoke-scope --timeout 30 \
+            --output .local/native-cgroup-results/scope-smoke
+      - name: Prepare pinned native D8 dependencies
+        run: python3 scripts/build-d8-checkpoint.py --prepare-only --output .local/native-cgroup-build
+      - name: Build and inspect guarded x86-64-v3 proof executables
+        run: |
+          python3 - <<'PY_BUILD'
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          def module(name):
+              spec = importlib.util.spec_from_file_location(name, 'scripts/' + name + '.py')
+              value = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(value)
+              return value
+          build = module('build-d8-checkpoint')
+          controlled = module('build-composition-intra')
+          release = module('build-prover-release')
+          configuration = controlled.controlled_configuration(os.environ)
+          destination = Path('.local/native-cgroup-build')
+          manifest = destination / 'application/Cargo.toml'
+          build.run_logged(['cargo', 'build', '--release', '--manifest-path', str(manifest),
+              '--features', 'security-report', '--bin', 'v1-transaction-scan',
+              '--bin', 'fee-settlement-bench', '--bin', 'native-verifier-bench',
+              '--bin', 'v1-freeze-artifacts'], destination / 'native-build.log')
+          expected = build.registry_pins(Path('crates/bench-d8/Cargo.lock').read_text())
+          actual = build.registry_pins((destination / 'application/Cargo.lock').read_text())
+          assert actual == expected, 'Registry pins changed during native build'
+          for name in ('v1-transaction-scan', 'fee-settlement-bench', 'native-verifier-bench'):
+              worker = Path(os.environ['CARGO_TARGET_DIR']) / 'release' / name
+              receipt = {**configuration, 'binary_sha256': build.sha(worker),
+                  'cargo_working_directory': 'repository-root',
+                  'repository_config_sha256': build.sha(Path('.cargo/config.toml'))}
+              release.package([worker], destination / ('release-' + name), receipt)
+          PY_BUILD
+          .local/native-cgroup-build/release-v1-transaction-scan/bin/v1-transaction-scan --check-cpu
+          .local/native-cgroup-build/release-fee-settlement-bench/bin/fee-settlement-bench --check-cpu
+          .local/native-cgroup-build/release-native-verifier-bench/bin/native-verifier-bench --check-cpu
+      - name: Check the frozen engineering profile
+        run: |
+          python3 scripts/check-v1-freeze.py
+          prepare_unit="siworld-native-freeze-$(cat /proc/sys/kernel/random/uuid)"
+          sudo --non-interactive systemd-run --scope --quiet --unit="$prepare_unit" \
+            -p MemoryMax=5G -p MemorySwapMax=0 \
+            /usr/sbin/runuser --user "$(id -un)" -- \
+            /usr/bin/env RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
+            .local/native-cgroup-target/release/v1-freeze-artifacts \
+            --root "$GITHUB_WORKSPACE" --check crates/bench-d8/artifacts/v1-native-freeze.json
+          python3 - <<'PY_FREEZE'
+          import hashlib
+          import json
+          from pathlib import Path
+          manifest = Path('crates/bench-d8/artifacts/v1-native-freeze.json')
+          (Path('.local/native-cgroup-results') / 'engineering-freeze.json').write_text(json.dumps({
+              'engineering_profile_frozen': True,
+              'freeze_manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest(),
+              'cryptographic_approval': False, 'network_activation': False}, indent=2) + '\n')
+          PY_FREEZE
+      - name: Prepare synthetic native fixtures outside verification scopes
+        run: |
+          fixture_unit="siworld-native-fixture-$(cat /proc/sys/kernel/random/uuid)"
+          sudo --non-interactive systemd-run --scope --quiet --unit="$fixture_unit" \
+            -p MemoryMax=5G -p MemorySwapMax=0 \
+            /usr/sbin/runuser --user "$(id -un)" -- \
+            /usr/bin/env RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
+            .local/native-cgroup-build/release-native-verifier-bench/bin/native-verifier-bench \
+            --prepare-fixtures .local/native-cgroup-fixtures
+      - name: Measure proving and independent verification process trees with zero swap
+        run: |
+          python3 scripts/measure-native-cgroup.py \
+            --transaction .local/native-cgroup-build/release-v1-transaction-scan/bin/v1-transaction-scan \
+            --settlement .local/native-cgroup-build/release-fee-settlement-bench/bin/fee-settlement-bench \
+            --verifier .local/native-cgroup-build/release-native-verifier-bench/bin/native-verifier-bench \
+            --fixtures .local/native-cgroup-fixtures \
+            --output .local/native-cgroup-results/measurements
+      - name: Retain explicit workflow outcome even on build or scope startup failure
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          python3 - <<'PY_STATUS'
+          import json
+          import os
+          from pathlib import Path
+          output = Path('.local/native-cgroup-results')
+          output.mkdir(parents=True, exist_ok=True)
+          (output / 'workflow-status.json').write_text(json.dumps({
+              'job_status_before_upload': os.environ['JOB_STATUS'],
+              'preparation_memory_max_bytes': 5368709120,
+              'preparation_swap_max_bytes': 0,
+              'measurement_summary_present': (output / 'measurements/summary.json').is_file(),
+              'engineering_profile_frozen': (output / 'engineering-freeze.json').is_file(),
+              'cryptographic_approval': False, 'network_activation': False, 'acceptance': False}, indent=2) + '\n')
+          PY_STATUS
+      - name: Upload sanitized kernel counters, CPU identity and timing
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-d8-cgroup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/native-cgroup-results/**/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

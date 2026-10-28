@@ -30,7 +30,27 @@ p3-commit.workspace = true
 p3-dft.workspace = true
 p3-fri.workspace = true
 p3-merkle-tree.workspace = true
+p3-security = { version = "=0.9.0-rc.2", optional = true }
+p3-lookup = { version = "=0.9.0-rc.2", optional = true }
 
 [features]
 default = ["parallel"]
 parallel = ["p3-maybe-rayon/parallel", "p3-recursion/parallel", "p3-circuit-prover/parallel"]
+# Isolated higher-fan-in circuit evaluation; never enabled by the node.
+experimental-fanin = []
+# Fixed-label phase events for isolated process profiling.
+phase-profile = []
+# Offline instance-shape analysis; never enabled by the node.
+security-report = ["dep:p3-security", "dep:p3-lookup"]
+# Scalar packing scaffold only; no recursive suite activation.
+d8-geometry = []
+
+[[bin]]
+name = "composition-bench"
+path = "src/bin/composition_bench.rs"
+required-features = ["experimental-fanin", "phase-profile"]
+
+[[bin]]
+name = "d8-security-screen"
+path = "src/bin/d8_security_screen.rs"
+required-features = ["security-report"]

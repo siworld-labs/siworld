@@ -22,7 +22,6 @@ license = "GPL-3.0-only"
 repository = "https://github.com/siworld-labs/siworld"
 
 [workspace.dependencies]
-async-trait = "0.1"
 argon2 = { version = "0.5.3", default-features = false, features = ["alloc", "zeroize"] }
 rpassword = "7.4"
 blake3 = "1"
@@ -48,7 +47,7 @@ siworld-bench-plonky3 = { path = "crates/bench-stark/plonky3" }
 libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["mlkem768"] }
 libcrux-ml-dsa = { version = "0.0.11", default-features = false, features = ["mldsa65"] }
 futures = "0.3"
-libp2p = { version = "0.56", default-features = false, features = ["tokio", "tcp", "dns", "noise", "yamux", "request-response", "macros"] }
+libp2p = { version = "0.57.1", default-features = false, features = ["tokio", "tcp", "dns", "noise", "yamux", "request-response", "macros"] }
 primitive-types = { version = "0.14", default-features = false }
 redb = "4.4"
 serde = { version = "1", features = ["derive"] }
