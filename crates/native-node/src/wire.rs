@@ -250,10 +250,10 @@ impl Block {
         self.validate_shape().map_err(invalid_stream)?;
         let mut error = None;
         self.emit_encoding(true, &mut |part| {
-            if error.is_none() {
-                if let Err(e) = output.write_all(part) {
-                    error = Some(e);
-                }
+            if error.is_none()
+                && let Err(e) = output.write_all(part)
+            {
+                error = Some(e);
             }
         });
         error.map_or(Ok(()), Err)
@@ -628,6 +628,10 @@ impl<'a> Reader<'a> {
         }
         self.take(length)
     }
+}
+
+fn invalid_stream(message: impl ToString) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message.to_string())
 }
 
 #[cfg(test)]
@@ -1101,8 +1105,4 @@ mod tests {
             assert!(invalid.encode().is_err());
         }
     }
-}
-
-fn invalid_stream(message: impl ToString) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidData, message.to_string())
 }

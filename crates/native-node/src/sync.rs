@@ -81,7 +81,9 @@ impl Locator {
             return Err("locator byte limit".into());
         }
         let entries = bytes[2..]
-            .chunks_exact(40)
+            .as_chunks::<40>()
+            .0
+            .iter()
             .map(|b| Snapshot {
                 height: u64::from_le_bytes(b[..8].try_into().expect("fixed height")),
                 block_id: b[8..].try_into().expect("fixed ID"),

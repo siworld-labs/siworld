@@ -587,7 +587,9 @@ fn decode_references(bytes: &[u8]) -> Result<Vec<Reference>, Error> {
         return Err(invalid());
     }
     let values: Vec<_> = bytes[2..]
-        .chunks_exact(64)
+        .as_chunks::<64>()
+        .0
+        .iter()
         .map(|r| Reference {
             statement: r[..32].try_into().expect("fixed statement"),
             proof: r[32..].try_into().expect("fixed proof"),

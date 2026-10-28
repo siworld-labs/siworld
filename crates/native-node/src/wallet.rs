@@ -99,20 +99,20 @@ impl WalletKeys {
         if !same_note(&payment, &notes[0]) {
             return Err("wallet payment plaintext mismatch".into());
         }
-        for index in 1..3 {
-            if notes[index].owner != self.address().owner() {
+        for (index, note) in notes.iter().enumerate().skip(1) {
+            if note.owner != self.address().owner() {
                 return Err("wallet change owner mismatch".into());
             }
             let change = decrypt_change_at(
                 &self.change,
-                notes[index].owner,
+                note.owner,
                 &public.cm[index],
                 &public.change[index - 1],
                 &ec,
                 index as u8,
             )
             .map_err(|_| "wallet change self-check failed")?;
-            if !same_note(&change, &notes[index]) {
+            if !same_note(&change, note) {
                 return Err("wallet change plaintext mismatch".into());
             }
         }
