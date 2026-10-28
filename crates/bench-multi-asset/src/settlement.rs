@@ -150,7 +150,7 @@ pub fn validate_settlement_public(capacity: usize, public: &[F]) -> Result<(), S
     if public[reward_mode_offset(capacity) + 1].as_canonical_u32() as usize != count {
         return Err("reward count differs from mode".into());
     }
-    let integer = |offset| {
+    let integer = |offset: usize| {
         (0..LIMBS).fold(0u64, |a, k| {
             a | ((public[offset + k].as_canonical_u32() as u64) << (k * LIMB_BITS))
         })
