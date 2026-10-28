@@ -720,7 +720,7 @@ pub fn validate_rewards(mode: RewardMode, rewards: &[RewardRecord]) -> Result<()
     }
     let mut commitments = std::collections::BTreeSet::new();
     for reward in rewards {
-        decode_digest(&reward.commitment).map_err(|_| "noncanonical reward commitment")?;
+        let _ = decode_digest(&reward.commitment).map_err(|_| "noncanonical reward commitment")?;
         if !commitments.insert(reward.commitment) {
             return Err("duplicate reward commitment".into());
         }

@@ -395,6 +395,7 @@ impl TransactionProver {
     }
     /// Verify against decoded public fields and an accepted anchor-tree root.
     /// This API does not trust a statement supplied alongside the proof.
+    #[allow(clippy::too_many_arguments)]
     pub fn verify_fields(
         &self,
         proof: &Proof<Cfg>,

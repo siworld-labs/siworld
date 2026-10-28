@@ -16,7 +16,7 @@ fn unhex<const N: usize>(value: &str) -> Result<[u8; N], String> {
         return Err("noncanonical mining preference hex".into());
     }
     let mut out = [0; N];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+    for (index, pair) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         let digit = |b| if b <= b'9' { b - b'0' } else { b - b'a' + 10 };
         out[index] = (digit(pair[0]) << 4) | digit(pair[1]);
     }
