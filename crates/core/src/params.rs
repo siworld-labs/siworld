@@ -1,4 +1,5 @@
-//! Protocol constants; see docs/protocol.md.
+//! Shared encoding widths and retained-network protocol constants.
+//! Native V1 monetary and vesting rules are defined in `v1_economics`.
 
 /// 1 SIP = 10^8 atom.
 pub const ATOMS_PER_SIP: u64 = 100_000_000;

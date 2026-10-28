@@ -154,15 +154,12 @@ impl TransactionAir {
             .map(|i| F::from_u32(((w.anchor_height >> i) & 1) as u32))
             .collect();
         let mut values = Vec::with_capacity(self.slot.height * self.width());
-        let snapshot_limbs = crate::multi_asset::limbs_u32(snapshot_height);
         for (row, direction) in directions.into_iter().enumerate() {
             values.extend_from_slice(leaf.row_slice(row).unwrap().as_ref());
             values.extend_from_slice(&private_statement);
             values.extend_from_slice(path.row_slice(row).unwrap().as_ref());
             values.push(direction);
             values.extend_from_slice(&bits);
-            let limb = snapshot_limbs.get(row).copied().unwrap_or(0);
-            values.extend((0..LIMB_BITS).map(|bit| F::from_u32((limb >> bit) & 1)));
         }
         (RowMajorMatrix::new(values, self.width()), public)
     }
@@ -170,7 +167,7 @@ impl TransactionAir {
 
 impl BaseAir<F> for TransactionAir {
     fn width(&self) -> usize {
-        self.height_bits() + HEIGHT_BITS + LIMB_BITS
+        self.height_bits() + HEIGHT_BITS
     }
 
     fn preprocessed_width(&self) -> usize {
@@ -307,20 +304,6 @@ impl<AB: AirBuilder<F = F>> Air<AB> for TransactionAir {
             height_low += x(local[col]) * F::from_u32(1 << bit);
         }
         builder.assert_eq(height_low, local[ACC_REG + ACC_HB]);
-        let mut snapshot_limb = AB::Expr::ZERO;
-        for bit in 0..LIMB_BITS {
-            let col = self.height_bits() + HEIGHT_BITS + bit;
-            builder.assert_bool(local[col]);
-            snapshot_limb += x(local[col]) * F::from_u32(1 << bit);
-        }
-        // The first four trusted path-row selectors schedule one public limb
-        // each. The shared lane varies by row; all four limbs remain checked.
-        for k in 0..crate::multi_asset::LIMBS {
-            builder.assert_zero(
-                (snapshot_limb.clone() - public[TRANSACTION_SNAPSHOT_HEIGHT + k].into())
-                    * x(selectors[self.selector() + k]),
-            );
-        }
         builder.assert_bool(local[self.bit()]);
         for level in 0..ANCHOR_DEPTH {
             let selector = selectors[self.selector() + level];
@@ -461,13 +444,24 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_height_uses_one_range_lane_without_changing_statement_or_selectors() {
+    fn snapshot_height_reuses_existing_range_lane_without_height_growth() {
         let air = TransactionAir::new();
-        assert_eq!(air.width(), 1440);
-        assert_eq!(air.preprocessed_width(), 243);
+        assert_eq!(air.width(), 1424);
+        assert_eq!(air.preprocessed_width(), 247);
         assert_eq!(air.num_public_values(), 101);
+        assert_eq!(air.slot.range.len(), 168);
+        assert_eq!(air.slot.height, 256);
+        assert!(air.slot.range.len() + m::LIMBS <= air.slot.height);
         let witness = m::sample_empty_witness(112);
-        for height in [0, 65535, 65536, 1u64 << 32, 1u64 << 48, u64::MAX] {
+        for height in [
+            0,
+            65535,
+            65536,
+            1u64 << 32,
+            1u64 << 48,
+            0xfedc_ba98_7654_3210,
+            u64::MAX,
+        ] {
             let (trace, public) = air.generate_at_snapshot(&witness, height);
             assert!(
                 check_all_constraints(&air, &trace, &public, None)
@@ -475,16 +469,108 @@ mod tests {
                     .is_empty()
             );
             let limbs = m::limbs_u32(height);
-            for (row_index, row) in trace.values.chunks_exact(trace.width).enumerate() {
+            for (row_index, row) in trace
+                .values
+                .chunks_exact(trace.width)
+                .enumerate()
+                .skip(air.slot.range.len())
+            {
                 let actual = (0..LIMB_BITS).fold(F::ZERO, |value, bit| {
-                    value + row[air.height_bits() + HEIGHT_BITS + bit] * F::from_u32(1 << bit)
+                    value + row[a::RBITS + bit] * F::from_u32(1 << bit)
                 });
+                assert_eq!(actual, row[a::RV]);
                 assert_eq!(
                     actual,
-                    F::from_u32(limbs.get(row_index).copied().unwrap_or(0))
+                    F::from_u32(
+                        limbs
+                            .get(row_index - air.slot.range.len())
+                            .copied()
+                            .unwrap_or(0)
+                    )
                 );
             }
         }
+    }
+
+    #[test]
+    fn snapshot_range_selectors_preserve_legacy_preprocessing() {
+        let legacy = a::SlotAir::new_acc_confidential();
+        let snapshot = a::SlotAir::new_acc_confidential_for_snapshot();
+        assert_eq!(snapshot.range, legacy.range);
+        assert_eq!(snapshot.main_width(), legacy.main_width());
+        assert_eq!(snapshot.height, legacy.height);
+        assert_eq!(
+            snapshot.preprocessed_width(),
+            legacy.preprocessed_width() + m::LIMBS
+        );
+        let witness = m::sample_witness(117);
+        let (legacy_trace, _) = trace::generate_acc_confidential(&legacy, &witness);
+        let (snapshot_trace, _) = trace::generate_acc_confidential_at_snapshot(
+            &snapshot,
+            &witness,
+            witness.anchor_height,
+        );
+        assert_eq!(legacy_trace.width, snapshot_trace.width);
+        assert_eq!(
+            &legacy_trace.values[..legacy.range.len() * legacy_trace.width],
+            &snapshot_trace.values[..snapshot.range.len() * snapshot_trace.width]
+        );
+        let before = legacy.preprocessed_trace().unwrap();
+        let after = snapshot.preprocessed_trace().unwrap();
+        for row in 0..snapshot.height {
+            assert_eq!(
+                &after.values[row * after.width..row * after.width + before.width],
+                &before.values[row * before.width..(row + 1) * before.width]
+            );
+            for limb in 0..m::LIMBS {
+                assert_eq!(
+                    after.values[row * after.width + before.width + limb],
+                    F::from_bool(row == snapshot.range.len() + limb)
+                );
+            }
+        }
+        let transaction = TransactionAir::new();
+        let preprocessed = transaction.preprocessed_trace().unwrap();
+        for row in 0..transaction.slot.height {
+            for level in 0..ANCHOR_DEPTH {
+                assert_eq!(
+                    preprocessed.values[row * preprocessed.width + transaction.selector() + level],
+                    F::from_bool(row == level)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn selected_snapshot_range_rows_cannot_be_substituted() {
+        let air = TransactionAir::new();
+        let witness = m::sample_empty_witness(118);
+        let (valid, public) = air.generate_at_snapshot(&witness, 0xfedc_ba98_7654_3210);
+        for limb in 0..m::LIMBS {
+            let mut trace = valid.clone();
+            let first = air.slot.range.len() + limb;
+            let second = air.slot.range.len() + (limb + 1) % m::LIMBS;
+            for column in a::RV..a::RBITS + LIMB_BITS {
+                trace
+                    .values
+                    .swap(first * trace.width + column, second * trace.width + column);
+            }
+            assert!(
+                !check_all_constraints(&air, &trace, &public, None)
+                    .failures
+                    .is_empty()
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "snapshot range schedule exceeds trace height")]
+    fn snapshot_range_schedule_cannot_exceed_trace_height() {
+        let mut snapshot = a::SlotAir::new_acc_confidential_for_snapshot();
+        snapshot
+            .range
+            .resize(snapshot.height - m::LIMBS + 1, a::REG);
+        let _ = snapshot.preprocessed_trace();
     }
 
     #[test]
@@ -501,9 +587,11 @@ mod tests {
                     for (row_index, row) in trace.values.chunks_exact_mut(trace.width).enumerate() {
                         row[air.statement() + TRANSACTION_SNAPSHOT_HEIGHT + limb_index] =
                             F::from_u32(invalid);
-                        if row_index == limb_index {
+                        if row_index == air.slot.range.len() + limb_index {
+                            row[a::RV] =
+                                F::from_u32(if nonboolean { invalid } else { invalid & 65535 });
                             for bit in 0..LIMB_BITS {
-                                row[air.height_bits() + HEIGHT_BITS + bit] = if nonboolean {
+                                row[a::RBITS + bit] = if nonboolean {
                                     if bit == 0 {
                                         F::from_u32(invalid)
                                     } else {
@@ -530,17 +618,25 @@ mod tests {
         let air = TransactionAir::new();
         let witness = m::sample_empty_witness(114);
         let (valid, public) = air.generate_at_snapshot(&witness, u64::MAX);
-        for row in 0..m::LIMBS {
+        for limb in 0..m::LIMBS {
             for bit in [0, LIMB_BITS - 1] {
                 let mut trace = valid.clone();
-                let column = air.height_bits() + HEIGHT_BITS + bit;
-                trace.values[row * trace.width + column] = F::ZERO;
+                let row = air.slot.range.len() + limb;
+                trace.values[row * trace.width + a::RBITS + bit] = F::ZERO;
                 assert!(
                     !check_all_constraints(&air, &trace, &public, None)
                         .failures
                         .is_empty()
                 );
             }
+            let mut trace = valid.clone();
+            let row = air.slot.range.len() + limb;
+            trace.values[row * trace.width + a::RV] -= F::ONE;
+            assert!(
+                !check_all_constraints(&air, &trace, &public, None)
+                    .failures
+                    .is_empty()
+            );
         }
     }
 

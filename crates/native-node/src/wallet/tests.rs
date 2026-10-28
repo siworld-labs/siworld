@@ -331,7 +331,7 @@ fn locked_input_spending_waits_for_private_delay_and_rebuilds_after_reorg() {
                 Some("wallet locked input privacy delay has not elapsed")
             );
         }
-        sender
+        let prepared = sender
             .prepare_transfer(
                 &state,
                 selected,
@@ -342,6 +342,9 @@ fn locked_input_spending_waits_for_private_delay_and_rebuilds_after_reorg() {
                 ready,
             )
             .unwrap_or_else(|error| panic!("ready locked-input transfer failed: {error}"));
+        let input = selected.iter().position(Option::is_some).unwrap();
+        assert_eq!(prepared.witness().slot.inputs[input].unlock_height, 61);
+        assert!(!prepared.witness().slot.inputs[input].dummy);
     }
 
     let mut restored = wallet(network, 56);
@@ -405,7 +408,7 @@ fn locked_input_spending_waits_for_private_delay_and_rebuilds_after_reorg() {
             .as_deref(),
         Some("wallet locked input privacy delay has not elapsed")
     );
-    restored
+    let prepared = restored
         .prepare_transfer(
             &replacement_state,
             [Some(commitment), None],
@@ -416,6 +419,8 @@ fn locked_input_spending_waits_for_private_delay_and_rebuilds_after_reorg() {
             replacement_ready,
         )
         .unwrap_or_else(|error| panic!("replayed ready transfer failed: {error}"));
+    assert_eq!(prepared.witness().slot.inputs[0].unlock_height, 61);
+    assert!(!prepared.witness().slot.inputs[0].dummy);
 
     blocks.pop();
     restored.reconcile(config, &blocks, &TestVerifier).unwrap();

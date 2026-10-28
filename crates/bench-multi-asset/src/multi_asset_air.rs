@@ -401,6 +401,10 @@ impl SlotAir {
     pub fn new_acc_confidential_for_snapshot() -> Self {
         let mut air = Self::new_acc_confidential();
         air.selected_snapshot_height = true;
+        assert!(
+            air.range.len() + LIMBS <= air.height,
+            "snapshot range schedule exceeds trace height"
+        );
         air
     }
 
@@ -516,8 +520,20 @@ impl SlotAir {
         self.pre_out() + self.outs.len()
     }
 
-    fn pre_width(&self) -> usize {
+    fn pre_snapshot_range(&self) -> usize {
         self.pre_range() + self.range.len()
+    }
+
+    fn pre_width(&self) -> usize {
+        if self.selected_snapshot_height {
+            assert!(
+                self.range.len() + LIMBS <= self.height,
+                "snapshot range schedule exceeds trace height"
+            );
+            self.pre_snapshot_range() + LIMBS
+        } else {
+            self.pre_snapshot_range()
+        }
     }
 }
 
@@ -559,6 +575,11 @@ impl BaseAir<F> for SlotAir {
             }
             if r < self.range.len() {
                 row[self.pre_range() + r] = F::ONE;
+            }
+            if self.selected_snapshot_height
+                && (self.range.len()..self.range.len() + LIMBS).contains(&r)
+            {
+                row[self.pre_snapshot_range() + r - self.range.len()] = F::ONE;
             }
         }
         Some(RowMajorMatrix::new(m, w))
@@ -689,6 +710,17 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
         let pre_range = self.pre_range();
         for (k, &col) in self.range.iter().enumerate() {
             b.assert_zero((x(l[RV]) - x(l[col])) * x(pl[pre_range + k]));
+        }
+        if self.selected_snapshot_height {
+            // The existing range lane checks one snapshot limb on each of four
+            // otherwise unused range rows. The statement remains independently
+            // range-constrained even when used without the outer transaction AIR.
+            let pre_snapshot = self.pre_snapshot_range();
+            for k in 0..LIMBS {
+                b.assert_zero(
+                    (x(l[RV]) - pis[NUM_ACC_CONF_PUBLIC + k].into()) * x(pl[pre_snapshot + k]),
+                );
+            }
         }
 
         // Dummy inputs: value is 0.

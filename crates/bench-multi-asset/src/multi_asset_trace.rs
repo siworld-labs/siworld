@@ -374,10 +374,13 @@ fn build(
     for r in 0..height {
         values.extend_from_slice(&p2.values[r * P2..(r + 1) * P2]);
         values.push(merkle_bits[r]);
-        let rv = air
-            .range
-            .get(r)
-            .map_or(0, |&col| regs[col - REG].as_canonical_u32());
+        let rv = if let Some(&col) = air.range.get(r) {
+            regs[col - REG].as_canonical_u32()
+        } else if air.selected_snapshot_height && r < air.range.len() + LIMBS {
+            stmt[NUM_ACC_CONF_PUBLIC + r - air.range.len()].as_canonical_u32()
+        } else {
+            0
+        };
         values.push(F::from_u32(rv));
         values.extend((0..LIMB_BITS).map(|k| F::from_u32((rv >> k) & 1)));
         values.extend_from_slice(&regs);
