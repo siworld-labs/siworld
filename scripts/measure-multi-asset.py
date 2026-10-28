@@ -272,6 +272,8 @@ def record(config):
         'memory_scope': 'whole fresh setup/prove/verify process tree plus recorder',
         'verification_only_process': False, 'cryptographic_approval': False,
         'network_activation': False, 'acceptance': False}
+    if config.get('scan_mode') == 'economics-candidate':
+        outcome['measurement_scope_sha256'] = hashlib.sha256(config['unit'].encode('ascii')).hexdigest()
     try:
         outcome['measurement'] = validate_report(json.loads(Path(config['private_output']).read_text()), config)
         outcome['proof_report_valid'] = True
@@ -479,6 +481,8 @@ def collect(args):
                 'private_output': str(private / (stem + '-raw.json')),
                 'private_log': str(private / (stem + '.log')),
                 'result': str(private / (stem + '-result.json')), **identity}
+            if scan_mode == 'economics-candidate':
+                config['scan_mode'] = scan_mode
             config_path = private / (stem + '-config.json')
             write_json(config_path, config)
             completed = subprocess.run(scope_command(unit, config_path),

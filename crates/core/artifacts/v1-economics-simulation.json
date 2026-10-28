@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "status": "executed-accounting-reference",
+  "source_commit": "9f7bf77943d35b60ff76943d0335bf7ff591777d",
+  "workflow_run": "https://github.com/siworld-labs/siworld/actions/runs/40732762783",
+  "test": "v1_economics::tests::seeded_twenty_year_modes_preserve_supply_and_curve",
+  "command": "cargo test --release --locked -p siworld-core v1_economics::tests::seeded_twenty_year_modes_preserve_supply_and_curve -- --ignored --exact --nocapture",
+  "sources_sha256": {
+    "crates/core/src/v1_economics.rs": "ca8dccd773bac6a58a16ec8f06b4b3d561a8ec972d46a50e1c2f0ec2b8abf6a8",
+    "crates/core/src/v1_economics_tests.rs": "e50927ca5c34d1379a7df548fe00a5f5624481b9487b93b820f754eefc0bfe46"
+  },
+  "simulation": {
+    "height": 2102400,
+    "issued": 2112093162237312,
+    "miner_subsidy_credited": 1854911801327964,
+    "holder_pool": 125271866610,
+    "burned": 45846774861618,
+    "locked_subsidy": 3396010253307,
+    "synthetic_equal_fixture_weights": [
+      1,
+      1
+    ],
+    "fund_entitlement": 211209314181120,
+    "fund_unlocked": 209476718268288,
+    "fund_spent": 206615069454994
+  },
+  "assertions": {
+    "supply_conserved_at_each_height": true,
+    "gross_issuance_matches_epoch_projection": true,
+    "scheduled_locked_total_matches_schedule": true
+  },
+  "allocation_scope": "synthetic equal test weights; no launch wallet count or share is selected",
+  "network_acceptance": false,
+  "cryptographic_approval": false
+}

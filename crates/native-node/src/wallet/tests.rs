@@ -335,11 +335,16 @@ fn automatic_consolidation_is_delayed_seed_recoverable_and_sip_only() {
             .is_err()
     );
     // Explicit transfers use consensus maturity and do not wait for local automation.
+    // Select the funded payment rather than relying on receipt discovery order.
+    let funded = owned
+        .iter()
+        .find(|receipt| receipt.note.value == 5_000_000)
+        .unwrap();
     assert!(
         sender
             .prepare_transfer(
                 &state,
-                [Some(owned[0].commitment), None],
+                [Some(funded.commitment), None],
                 &sender.address(),
                 SIP_ASSET_ID,
                 1_000,
@@ -477,8 +482,9 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
     let (record, _, _) = encrypted_record(&state, &sender, asset, 500_000, 1000);
     let mut block = candidate(&state, 100_000);
     insert_record(&mut block, record);
-    // A second owned SIP payment funds the private fee.
-    let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, 5_000_000, 2000);
+    // A second owned SIP payment funds either canonical-snapshot fee tier.
+    let sip_funding = base_fee(block.height) * 4 + 100_000;
+    let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, sip_funding, 2000);
     block.transactions[1].record = record;
     block
         .transactions
@@ -494,7 +500,7 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
     let sip = sender
         .receipts()
         .iter()
-        .find(|r| r.note.asset_id == SIP_ASSET_ID && r.note.value == 5_000_000)
+        .find(|r| r.note.asset_id == SIP_ASSET_ID && r.note.value == sip_funding)
         .unwrap()
         .commitment;
     for tier in [FeeTier::Standard, FeeTier::Priority] {
@@ -581,7 +587,7 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
                 [Some(sip), None],
                 &receiver.keys.address(),
                 SIP_ASSET_ID,
-                10_000_000,
+                sip_funding + 1,
                 FeeTier::Standard
             )
             .is_err()

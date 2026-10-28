@@ -40,6 +40,51 @@ fn snapshot_boundary_and_committed_unlock_height_are_enforced() {
 }
 
 #[test]
+fn lowering_either_input_unlock_height_without_recommitting_is_rejected() {
+    let h = Hasher::new();
+    let air = TransactionAir::new();
+    for index in 0..2 {
+        let mut w = m::sample_witness(23 + index as u64);
+        assert!(w.slot.inputs.iter().all(|input| !input.dummy));
+        let snapshot_height = w.anchor_height;
+        let mut unlocks = [0; 2];
+        unlocks[index] = snapshot_height + 1;
+        w.slot = m::with_unlock_heights(w.slot, unlocks);
+        let trusted_root = w.anchors_root(&h);
+        w.check_at_snapshot(&h, &trusted_root, snapshot_height + 1)
+            .unwrap();
+        let (trace, public) = air.generate_at_snapshot(&w, snapshot_height + 1);
+        assert!(
+            check_all_constraints(&air, &trace, &public, Some(1))
+                .failures
+                .is_empty()
+        );
+
+        let mut forged = w.clone();
+        forged.slot.inputs[index].unlock_height = snapshot_height;
+        assert_eq!(forged.slot.anchor, w.slot.anchor);
+        assert_eq!(forged.anchor_path, w.anchor_path);
+        assert_eq!(forged.anchors_root(&h), trusted_root);
+        for (original, changed) in w.slot.inputs.iter().zip(&forged.slot.inputs) {
+            assert_eq!(original.path, changed.path);
+        }
+        assert_eq!(
+            forged
+                .check_at_snapshot(&h, &trusted_root, snapshot_height)
+                .unwrap_err(),
+            "merkle root"
+        );
+        let (trace, public) = air.generate_at_snapshot(&forged, snapshot_height);
+        assert!(
+            !check_all_constraints(&air, &trace, &public, Some(1))
+                .failures
+                .is_empty(),
+            "input {index}"
+        );
+    }
+}
+
+#[test]
 fn ordinary_outputs_cannot_create_new_time_locks() {
     let mut w = m::sample_witness(22);
     w.slot.outputs[0].unlock_height = 1;

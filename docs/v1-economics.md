@@ -45,7 +45,12 @@ genesis configuration must explicitly pin immutable recipients and positive
 integer weights at testnet launch. Each wallet credit is floored independently;
 the miner receives every residual atom. Reserve this configuration
 interface now; unconfigured new-network production fails closed. There is no
-default recipient set or split. The protocol Holder pool receives 3%; the
+default recipient set or split. The arithmetic interface reserves up to 256
+positive wallet weights. The current native state/configuration codec and
+signature authentication implement two key slots only. Selecting a different
+wallet count requires a versioned configuration, ledger and authentication
+update before activation; the current runtime rejects such a configuration.
+The protocol Holder pool receives 3%; the
 miner receives the residual, nominally 87%. Explicitly assigning the integer residual prevents
 atom creation or loss. Fees are private transfers,
 not subsidy: their full sum goes to the producing miner and never enters this
@@ -173,6 +178,33 @@ from genesis. Gross issuance immediately before that block is
 about 0.493103% of the gross amount at tail entry; that ratio then decreases as
 gross issuance grows. Burn, pool holdings and mode-dependent lock schedules
 change the distribution, not the gross schedule.
+
+## Executed accounting simulation
+
+The release-mode deterministic test advanced 2,102,400 consecutive production
+heights with mixed Voyager and Holder modes. It checked supply conservation at
+every height, cross-checked gross issuance against the epoch projection, and
+checked the remaining reward-lock schedule. The
+[numeric evidence](../crates/core/artifacts/v1-economics-simulation.json)
+records the source identity and exact reproduction command.
+
+| State after 20 protocol years | Atoms |
+| --- | ---: |
+| Cumulative gross subsidy | 2,112,093,162,237,312 |
+| Cumulative miner subsidy credits | 1,854,911,801,327,964 |
+| Holder pool balance | 125,271,866,610 |
+| Cumulative burn | 45,846,774,861,618 |
+| Scheduled locked subsidy | 3,396,010,253,307 |
+| Cumulative fund entitlements | 211,209,314,181,120 |
+| Unlocked fund entitlements | 209,476,718,268,288 |
+| Spent fund entitlements | 206,615,069,454,994 |
+
+The test uses synthetic equal fund weights to exercise two independently
+tracked accounts. It selects no launch allocation. Scheduled locked subsidy is
+a subset of miner credits; unlocked and spent fund amounts are subsets of
+fund entitlements. These subsets must not be added again in the supply sum.
+This is an accounting simulation, not a long-running network or proof-resource
+qualification.
 
 ## Engineering timing and acceptance
 

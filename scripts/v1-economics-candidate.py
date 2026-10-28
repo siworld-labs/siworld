@@ -2,6 +2,7 @@
 """Prepare and record pending V1 economic-relation evidence without refreezing it."""
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import shutil
@@ -64,22 +65,42 @@ def extract_simulation(log, output):
                    'acceptance': False, 'cryptographic_approval': False, 'network_activation': False})
 
 
-def keys(executable, screen_path, output):
+def freeze_module():
+    spec = importlib.util.spec_from_file_location('candidate_freeze', ROOT / 'scripts/freeze-multi-asset.py')
+    result = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(result)
+    return result
+
+
+def keys(executable, screen_path, output, measurement_summary=None):
     output.mkdir(parents=True, exist_ok=False)
     screen = json.loads(screen_path.read_text())
     if screen.get('cryptographic_approval') is not False or screen.get('network_activation') is not False:
         raise ValueError('Unexpected screen approval claim')
+    measured = None
+    summary_bytes = None
+    if measurement_summary is not None:
+        summary_bytes = measurement_summary.read_bytes()
+        summary = json.loads(summary_bytes)
+        measured = freeze_module().economic_summary(summary, require_admission_margin=False)
+        if any(summary.get(name) != screen.get(name) for name in ('air_source_sha256', 'dependencies_sha256')):
+            raise ValueError('Selected measurement differs from the actual-AIR screen')
     relations = []
     for kind in KINDS:
-        coordinate = 7 if kind == 'transaction' else 8
+        selected = None if measured is None else (measured['selected']['parameters']
+            if kind == 'transaction' else measured['repeated_measurements'][kind]['parameters'])
+        coordinate = selected['log_blowup'] if selected else (7 if kind == 'transaction' else 8)
+        grinding = selected['query_pow_bits'] if selected else 20
         matches = [entry['minimum_passing_report'] for entry in screen['reports']
-                   if (entry['kind'], entry['log_blowup'], entry['grinding']) == (kind, coordinate, 20)]
+                   if (entry['kind'], entry['log_blowup'], entry['grinding']) == (kind, coordinate, grinding)]
         if len(matches) != 1 or matches[0] is None:
             raise ValueError('Required candidate coordinate failed the actual-AIR screen')
         report = matches[0]
         if report['shape']['status'] != 'actual-extracted' or report['screen']['passes_selected_model'] is not True:
             raise ValueError('Candidate requires an actual extracted passing security report')
         p = report['fri']
+        if selected is not None and p != selected:
+            raise ValueError('Actual selected queries differ from the actual-AIR screen')
         args = [str(executable), '--candidate', kind, str(p['log_blowup']), str(p['num_queries']), str(p['query_pow_bits'])]
         first, second = output / (kind + '.json'), output / (kind + '-reproduced.json')
         subprocess.run(args + [str(first)], check=True)
@@ -100,8 +121,13 @@ def keys(executable, screen_path, output):
                        'crates/native-node/Cargo.lock', 'crates/core/src/v1_economics.rs',
                        'crates/core/src/v1_economics_tests.rs', 'scripts/native-proof-artifacts.rs')})
     source = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    if measured is not None and summary['source_commit'] != commit:
+        raise ValueError('Selected measurement was produced from a different source commit')
+    evidence = {} if measured is None else {'measurement_summary_sha256': hashlib.sha256(summary_bytes).hexdigest(),
+        'measurement_mode': 'economics-candidate', 'selected_by_actual_measurement': True}
     write(output / 'candidate-manifest.json', {'schema': 1, 'status': 'candidate-pending-review',
-          'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+          'source_commit': commit, **evidence,
           'sources_sha256': source, 'relations': relations, 'measurement_qualification': 'separate-required',
           'acceptance': False, 'cryptographic_approval': False, 'network_activation': False})
 
@@ -118,13 +144,14 @@ def main():
     keys_parser.add_argument('executable', type=Path)
     keys_parser.add_argument('screen', type=Path)
     keys_parser.add_argument('output', type=Path)
+    keys_parser.add_argument('--measurement-summary', type=Path)
     args = parser.parse_args()
     if args.command == 'prepare':
         prepare(args.output)
     elif args.command == 'simulation':
         extract_simulation(args.log, args.output)
     else:
-        keys(args.executable.resolve(strict=True), args.screen, args.output)
+        keys(args.executable.resolve(strict=True), args.screen, args.output, args.measurement_summary)
 
 
 if __name__ == '__main__':

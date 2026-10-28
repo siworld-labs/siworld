@@ -1,5 +1,6 @@
 """Resource and selection rejections for pending economic-relation scans."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -89,7 +90,8 @@ class EconomicsMeasurementTests(unittest.TestCase):
             coordinate = (cfg['parameters']['log_blowup'], cfg['parameters']['query_pow_bits'])
             size = 600000 if coordinate == (6, 20) else 620000
             value = {**trial(size=size, workers=cfg['workers']), 'kind': cfg['kind'],
-                'trial': cfg['trial'], 'parameters': cfg['parameters']}
+                'trial': cfg['trial'], 'parameters': cfg['parameters'],
+                'measurement_scope_sha256': hashlib.sha256(cfg['unit'].encode()).hexdigest()}
             if cfg['kind'] == 'transaction' and cfg['workers'] == 4:
                 if coordinate == (5, 20):
                     value['measurement']['proof_bytes'] = 500000
@@ -117,6 +119,8 @@ class EconomicsMeasurementTests(unittest.TestCase):
             code, saved, configs = self.collect(Path(directory))
         self.assertEqual(code, 0)
         self.assertEqual(len(configs), 39)
+        self.assertTrue(all(row['scan_mode'] == 'economics-candidate' for row in configs))
+        self.assertEqual(len({row['unit'] for row in configs}), 39)
         tx_four = [row for row in configs if row['kind'] == 'transaction' and row['workers'] == 4]
         self.assertEqual(len(tx_four), 24)
         self.assertEqual({(row['parameters']['log_blowup'], row['parameters']['query_pow_bits'])
@@ -135,6 +139,8 @@ class EconomicsMeasurementTests(unittest.TestCase):
         self.assertEqual(saved_trial['memory_events_delta']['oom_kill'], 0)
         self.assertEqual(saved_trial['cpu_max'], 'max 100000')
         self.assertEqual(saved_trial['verification_workers'], 1)
+        self.assertEqual(len(saved_trial['measurement_scope_sha256']), 64)
+        self.assertNotIn('siworld-native-', json.dumps(saved))
         self.assertEqual(saved['proof_body_limit_bytes'], 655360)
         self.assertEqual(saved['status'], 'candidate-pending-review')
         self.assertTrue(saved['measurement_grid_complete'])

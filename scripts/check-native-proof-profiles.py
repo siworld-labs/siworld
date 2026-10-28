@@ -19,6 +19,14 @@ TOOLS = ('scripts/check-native-proof-profiles.py', 'scripts/native-proof-artifac
 KINDS = ('transaction', 'settlement', 'issuance')
 CAPACITIES = (0, 576, 3)
 SHAPES = ((256, 1420, 243), (1024, 516, 587), (128, 438, 10))
+ECONOMICS_REVISION = 'native-v1-economics-1'
+ECONOMICS_SHAPES = ((256, 1420, 243), (1024, 581, 609), (128, 438, 10))
+ECONOMICS_RESOURCES = 'fresh three-trial measurements at one and four workers; complete profile-bound kernel evidence'
+RELATION_KEYS = frozenset(('kind', 'capacity', 'parameters', 'security', 'public_verifier_key',
+    'cryptographic_approval', 'network_activation'))
+PERFORMANCE_KEYS = frozenset(('complete', 'trial_count', 'generation_median_ns', 'generation_min_ns',
+    'generation_max_ns', 'verification_median_ns', 'process_wall_median_ns',
+    'memory_peak_median_bytes', 'memory_peak_max_bytes', 'proof_bytes_min', 'proof_bytes_max', 'acceptance'))
 
 
 def freeze_module(root=ROOT):
@@ -88,9 +96,146 @@ def validate_relation(value, kind, transaction, freeze):
     return value
 
 
+def economic_performance(transaction, kind):
+    entry = transaction['repeated_measurements'][kind]
+    if entry.get('measured') is not True or set(entry.get('workers', {})) != {'1', '4'}:
+        raise ValueError('Fresh one-worker and four-worker measurements required')
+    result = {}
+    for workers, group in entry['workers'].items():
+        summary = group['summary']
+        if (set(summary) != PERFORMANCE_KEYS or summary['complete'] is not True
+                or type(summary['trial_count']) is not int or summary['trial_count'] != 3
+                or summary['acceptance'] is not False):
+            raise ValueError('Incomplete native three-trial performance summary')
+        numbers = {name: value for name, value in summary.items()
+                   if name not in ('complete', 'trial_count', 'acceptance')}
+        if any(type(value) is not int or value <= 0 for value in numbers.values()):
+            raise ValueError('Native performance fields must be positive integer measurements')
+        if (summary['generation_min_ns'] > summary['generation_median_ns']
+                or summary['generation_median_ns'] > summary['generation_max_ns']
+                or summary['memory_peak_median_bytes'] > summary['memory_peak_max_bytes']
+                or summary['proof_bytes_min'] > summary['proof_bytes_max']
+                or summary['memory_peak_max_bytes'] > 5368709120
+                or summary['proof_bytes_max'] > (655360 if kind == 'transaction' else 524288)
+                or (kind == 'transaction' and workers == '4' and summary['generation_max_ns'] > 2000000000)):
+            raise ValueError('Native performance limits or summary order changed')
+        result[workers] = {name: value for name, value in summary.items() if name != 'acceptance'}
+    return result
+
+
+def economic_relation(value, kind, transaction, freeze, reproduced=False):
+    """Check genuine key-tool output, then retain only the public relation fields."""
+    expected = RELATION_KEYS if reproduced else RELATION_KEYS | {'performance'}
+    if reproduced and set(value) == RELATION_KEYS | {'status', 'acceptance'}:
+        if value['status'] != 'candidate-pending-review' or value['acceptance'] is not False:
+            raise ValueError('Unexpected candidate key status or acceptance claim')
+    elif set(value) != expected:
+        raise ValueError('Unexpected revised native relation fields')
+    index = KINDS.index(kind)
+    measured = transaction['repeated_measurements'][kind]
+    p = measured['parameters']
+    if (value['kind'] != kind or type(value['capacity']) is not int
+            or value['capacity'] != CAPACITIES[index] or value['parameters'] != p
+            or not isinstance(p, dict) or any(type(number) is not int for number in p.values())
+            or value['cryptographic_approval'] is not False or value['network_activation'] is not False):
+        raise ValueError('Revised native identity or measured parameters changed')
+    if kind == 'transaction' and p != transaction['parameters']:
+        raise ValueError('Native transaction parameters differ from measured selection')
+    security = value['security']
+    summary = freeze.MEASUREMENT.security_summary(security)
+    shape = summary['shape']
+    rows, main, pre = ECONOMICS_SHAPES[index]
+    dimensions = (shape['base_trace_rows'], shape['main_width'], shape['preprocessed_width'])
+    if (not summary['screen']['passes_selected_model'] or security.get('fri') != p
+            or dimensions != (rows, main, pre) or any(type(number) is not int for number in dimensions)
+            or (kind == 'settlement' and (type(shape['public_values']) is not int or shape['public_values'] != 239))
+            or summary != measured['security']):
+        raise ValueError('Revised actual-AIR security, measured report or shape changed')
+    key = value['public_verifier_key']
+    if (not isinstance(key, dict) or set(key) != {'encoding', 'hex', 'sha256', 'width', 'degree_bits'}
+            or key['encoding'] != 'SWMP-v1' or not isinstance(key['hex'], str)
+            or type(key['width']) is not int or type(key['degree_bits']) is not int):
+        raise ValueError('Unexpected revised native public-key fields')
+    raw = bytes.fromhex(key['hex'])
+    if not 48 <= len(raw) <= 4143 or raw[:7] != b'SWMP\x01\x00' + bytes([index + 1]):
+        raise ValueError('Revised native public-key header or length changed')
+    if int.from_bytes(raw[7:11], 'little') != CAPACITIES[index]:
+        raise ValueError('Revised native public-key capacity changed')
+    words = [int.from_bytes(raw[i:i+4], 'little') for i in range(11, 47, 4)]
+    if (words[:6] != [p[name] for name in ('log_blowup', 'num_queries', 'query_pow_bits',
+                                        'commit_pow_bits', 'batch_pow_bits', 'max_log_arity')]
+            or words[6:] != [pre, rows.bit_length(), len(raw) - 47]
+            or key['width'] != pre or key['degree_bits'] != rows.bit_length()
+            or key['sha256'] != hashlib.sha256(raw).hexdigest()):
+        raise ValueError('Revised native key parameters, dimensions or hash changed')
+    if kind == 'transaction':
+        original = bytes.fromhex(transaction['public_verifier_key']['hex'])
+        if raw[47:] != original[43:] or summary != transaction['selected_security']:
+            raise ValueError('Revised transaction key differs from the selected public verifier')
+    clean_security = {**summary, 'shape': {'status': 'actual-extracted', **shape}, 'fri': p}
+    result = {name: value[name] for name in RELATION_KEYS}
+    result.update(security=clean_security, performance=economic_performance(transaction, kind))
+    if not reproduced and result != value:
+        raise ValueError('Revised native manifest includes unbound or nonpublic relation fields')
+    return result
+
+
+def create_economics(reproduced, transaction, freeze, root=ROOT):
+    if transaction.get('relation_revision') != ECONOMICS_REVISION:
+        raise ValueError('Unexpected transaction economic revision')
+    relations = [economic_relation(json.loads((reproduced / (kind + '.json')).read_text()),
+        kind, transaction, freeze, reproduced=True) for kind in KINDS]
+    return {'schema': 2, 'status': 'engineering-frozen-native-relations',
+        'relation_revision': ECONOMICS_REVISION, 'suite': freeze.SUITE,
+        'cryptographic_approval': False, 'network_activation': False,
+        'transaction_profile': TRANSACTION, 'transaction_profile_sha256': sha(root / TRANSACTION),
+        'tool_source_sha256': {name: sha(root / name) for name in TOOLS},
+        'scope': 'transaction; settlement at 576 positions; issuance at three initial notes',
+        'resource_qualification': ECONOMICS_RESOURCES,
+        'verification_measurement': transaction['verification_measurement'],
+        'verification_only_process': False, 'node_integration': False, 'relations': relations}
+
+
+def validate_economics(value, root=ROOT, reproduced=None):
+    expected = {'schema', 'status', 'relation_revision', 'suite', 'cryptographic_approval',
+        'network_activation', 'transaction_profile', 'transaction_profile_sha256', 'tool_source_sha256',
+        'scope', 'resource_qualification', 'verification_measurement', 'verification_only_process',
+        'node_integration', 'relations'}
+    if set(value) != expected or type(value['schema']) is not int or value['schema'] != 2:
+        raise ValueError('Unexpected revised native manifest schema')
+    freeze = freeze_module(root)
+    transaction = transaction_profile(root)
+    if transaction.get('schema') != 2 or transaction.get('relation_revision') != ECONOMICS_REVISION:
+        raise ValueError('Revised native manifest requires the revised transaction profile')
+    wanted = {'status': 'engineering-frozen-native-relations', 'relation_revision': ECONOMICS_REVISION,
+        'suite': freeze.SUITE, 'transaction_profile': TRANSACTION,
+        'transaction_profile_sha256': sha(root / TRANSACTION),
+        'tool_source_sha256': {name: sha(root / name) for name in TOOLS},
+        'scope': 'transaction; settlement at 576 positions; issuance at three initial notes',
+        'resource_qualification': ECONOMICS_RESOURCES,
+        'verification_measurement': transaction['verification_measurement']}
+    if any(value[name] != expected_value for name, expected_value in wanted.items()):
+        raise ValueError('Revised native source, measurement scope or revision changed')
+    if any(value[name] is not False for name in ('cryptographic_approval', 'network_activation',
+                                                'node_integration', 'verification_only_process')):
+        raise ValueError('Revised native freeze cannot claim approval, integration or activation')
+    if not isinstance(value['relations'], list) or len(value['relations']) != len(KINDS):
+        raise ValueError('Exactly three revised native relations required')
+    for kind, relation in zip(KINDS, value['relations']):
+        economic_relation(relation, kind, transaction, freeze)
+        if reproduced is not None:
+            actual = economic_relation(json.loads((reproduced / (kind + '.json')).read_text()),
+                kind, transaction, freeze, reproduced=True)
+            if actual != relation:
+                raise ValueError('Reproduced revised native key or security differs')
+    return value
+
+
 def create(reproduced, root=ROOT):
     freeze = freeze_module(root)
     transaction = transaction_profile(root)
+    if transaction.get('schema') == 2:
+        return create_economics(reproduced, transaction, freeze, root)
     relations = [validate_relation(json.loads((reproduced / (kind + '.json')).read_text()),
                                    kind, transaction, freeze) for kind in KINDS]
     return {'schema': 1, 'status': 'engineering-frozen-native-relations',
@@ -103,6 +248,8 @@ def create(reproduced, root=ROOT):
 
 
 def validate(value, root=ROOT, reproduced=None):
+    if value.get('schema') == 2:
+        return validate_economics(value, root, reproduced)
     expected = {'schema', 'status', 'suite', 'cryptographic_approval', 'network_activation',
                 'transaction_profile', 'transaction_profile_sha256', 'tool_source_sha256',
                 'scope', 'resource_qualification', 'node_integration', 'relations'}

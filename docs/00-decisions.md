@@ -50,6 +50,10 @@ unconfigured. Reserve an explicit allocation interface, bind the selected
 configuration to genesis and reject new-network block production without it.
 Do not infer equal shares or create replacement keys. Synthetic allocations
 used by tests are not a production allocation decision.
+The reserved arithmetic interface accepts variable wallet counts, but the
+current native state codec/authentication supports two key slots. A different
+launch count requires a versioned configuration and ledger update before
+activation; it is rejected by the current runtime.
 
 The public block mode is explicitly selected without a miner default:
 

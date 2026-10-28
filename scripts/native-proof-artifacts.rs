@@ -10,7 +10,7 @@ use siworld_multi_asset_experiment::{
     settlement::SettlementProver,
 };
 
-fn params(kind: &str) -> Result<FriParams, String> {
+fn legacy_params(kind: &str) -> Result<FriParams, String> {
     let (log_blowup, num_queries) = match kind {
         "transaction" => (7, 41),
         "settlement" | "issuance" => (8, 36),
@@ -24,6 +24,70 @@ fn params(kind: &str) -> Result<FriParams, String> {
         batch_pow_bits: 20,
         max_log_arity: 1,
     })
+}
+
+/// A historical profile retains its original reproduction parameters. Revised
+/// profiles select every relation from the independently validated measurements.
+fn parameters_from_profile(kind: &str, profile: &Value) -> Result<FriParams, String> {
+    if !["transaction", "settlement", "issuance"].contains(&kind) {
+        return Err("unknown native relation".into());
+    }
+    if profile["schema"].as_u64() == Some(1) {
+        return legacy_params(kind);
+    }
+    if profile["schema"].as_u64() != Some(2)
+        || profile["status"] != "engineering-frozen"
+        || profile["relation_revision"] != "native-v1-economics-1"
+        || profile["cryptographic_approval"] != false
+        || profile["network_activation"] != false
+        || profile["acceptance"] != false
+    {
+        return Err("unsupported frozen native profile identity".into());
+    }
+    let value = if kind == "transaction" {
+        &profile["parameters"]
+    } else {
+        &profile["repeated_measurements"][kind]["parameters"]
+    };
+    let object = value
+        .as_object()
+        .ok_or("missing frozen native parameters")?;
+    if object.len() != 7 {
+        return Err("incomplete frozen native parameters".into());
+    }
+    let field = |name: &str| -> Result<u32, String> {
+        value[name]
+            .as_u64()
+            .and_then(|number| u32::try_from(number).ok())
+            .ok_or_else(|| format!("invalid frozen native parameter: {name}"))
+    };
+    let p = FriParams {
+        log_blowup: field("log_blowup")?,
+        num_queries: field("num_queries")?,
+        query_pow_bits: field("query_pow_bits")?,
+        commit_pow_bits: field("commit_pow_bits")?,
+        batch_pow_bits: field("batch_pow_bits")?,
+        max_log_arity: field("max_log_arity")?,
+    };
+    if !(5..=8).contains(&p.log_blowup)
+        || !(1..=128).contains(&p.num_queries)
+        || ![20, 24].contains(&p.query_pow_bits)
+        || p.batch_pow_bits != p.query_pow_bits
+        || p.commit_pow_bits != 0
+        || p.max_log_arity != 1
+        || field("log_final_poly_len")? != 0
+    {
+        return Err("unsupported frozen native parameter coordinate".into());
+    }
+    Ok(p)
+}
+
+fn params(kind: &str) -> Result<FriParams, String> {
+    let profile: Value = serde_json::from_str(include_str!(
+        "../crates/bench-multi-asset/artifacts/v1-transaction-profile.json"
+    ))
+    .map_err(|_| "invalid frozen transaction profile".to_owned())?;
+    parameters_from_profile(kind, &profile)
 }
 
 // These offline artifact bytes identify a fixed native relation. They are not
@@ -170,6 +234,75 @@ mod tests {
             bundle("peer-defined", params("transaction").unwrap()).unwrap_err(),
             "unknown native relation"
         );
+    }
+
+    fn revised_profile() -> Value {
+        let parameters = json!({"log_blowup":6,"num_queries":53,"query_pow_bits":24,
+            "commit_pow_bits":0,"batch_pow_bits":24,"max_log_arity":1,"log_final_poly_len":0});
+        let related = params_json(legacy_params("settlement").unwrap());
+        json!({"schema":2,"status":"engineering-frozen","relation_revision":"native-v1-economics-1",
+            "cryptographic_approval":false,"network_activation":false,"acceptance":false,
+            "parameters":parameters,"repeated_measurements":{
+                "settlement":{"parameters":related},"issuance":{"parameters":related}}})
+    }
+
+    #[test]
+    fn revised_reproduction_uses_the_measured_selected_profile() {
+        let profile = revised_profile();
+        let transaction = parameters_from_profile("transaction", &profile).unwrap();
+        assert_eq!(transaction.log_blowup, 6);
+        assert_eq!(transaction.num_queries, 53);
+        assert_eq!(transaction.query_pow_bits, 24);
+        for kind in ["settlement", "issuance"] {
+            assert_eq!(
+                parameters_from_profile(kind, &profile).unwrap().log_blowup,
+                8
+            );
+        }
+        assert_eq!(
+            parameters_from_profile("transaction", &json!({"schema":1}))
+                .unwrap()
+                .log_blowup,
+            7
+        );
+    }
+
+    #[test]
+    fn revised_reproduction_rejects_unreviewed_identity_and_invalid_fri_fields() {
+        for field in [
+            "schema",
+            "status",
+            "relation_revision",
+            "cryptographic_approval",
+            "acceptance",
+        ] {
+            let mut invalid = revised_profile();
+            invalid[field] = json!(true);
+            assert!(
+                parameters_from_profile("transaction", &invalid).is_err(),
+                "{field}"
+            );
+        }
+        for field in [
+            "log_blowup",
+            "num_queries",
+            "query_pow_bits",
+            "commit_pow_bits",
+            "batch_pow_bits",
+            "max_log_arity",
+            "log_final_poly_len",
+        ] {
+            let mut invalid = revised_profile();
+            invalid["parameters"][field] = json!(true);
+            assert!(
+                parameters_from_profile("transaction", &invalid).is_err(),
+                "{field}"
+            );
+        }
+        let mut invalid = revised_profile();
+        invalid["parameters"]["batch_pow_bits"] = json!(20);
+        assert!(parameters_from_profile("transaction", &invalid).is_err());
+        assert!(parameters_from_profile("peer-defined", &revised_profile()).is_err());
     }
 
     #[test]

@@ -242,6 +242,7 @@ mod tests {
     use p3_field::PrimeCharacteristicRing;
     fn fixture() -> (PublicTransaction, AccWitness, ProofContext) {
         let w = sample_witness(61);
+        let snapshot_height = w.anchor_height + 1;
         let fields = w.slot.public_inputs(&Hasher::new());
         (
             PublicTransaction {
@@ -261,7 +262,7 @@ mod tests {
                 }),
             },
             w,
-            ProofContext::for_snapshot([9; 32], 1000, [10; 32]),
+            ProofContext::for_snapshot([9; 32], snapshot_height, [10; 32]),
         )
     }
     #[test]
@@ -324,7 +325,7 @@ mod tests {
         }
         assert_ne!(
             tx.ciphertext_digest(&ctx),
-            tx.ciphertext_digest(&ctx.bind_snapshot(1001, [10; 32]))
+            tx.ciphertext_digest(&ctx.bind_snapshot(ctx.snapshot().unwrap().0 + 1, [10; 32]))
         );
         assert!(ProofContext::from_version([9; 32], 1).is_err());
     }
@@ -333,12 +334,23 @@ mod tests {
         let (tx, w, ctx) = fixture();
         let bound = tx.bind_witness(&w, &ctx).unwrap();
         let p = TransactionProver::new(crate::FriParams::fast());
-        let (proof, public) = p.prove(&bound);
+        let (snapshot_height, snapshot_id) = ctx.snapshot().unwrap();
+        assert_ne!(snapshot_height, bound.anchor_height);
+        let (proof, public) = p.prove_at_snapshot(&bound, snapshot_height);
         let fields = bound.slot.public_inputs(&Hasher::new());
         let root = bound.anchors_root(&Hasher::new());
         assert_eq!(public, tx.statement(&ctx, &fields.fee_commit, &root));
         tx.verify(&p, &proof, &ctx, &fields.fee_commit, &root)
             .unwrap();
+        for changed in [
+            ctx.bind_snapshot(snapshot_height + 1, snapshot_id),
+            ctx.bind_snapshot(snapshot_height, [11; 32]),
+        ] {
+            assert!(
+                tx.verify(&p, &proof, &changed, &fields.fee_commit, &root)
+                    .is_err()
+            );
+        }
         let mut bad = tx.clone();
         bad.cm[2][0] += F::ONE;
         assert!(

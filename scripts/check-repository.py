@@ -27,6 +27,7 @@ DOCUMENTS = {
     "native-proof-profiles.md", "v1-native-runtime.md", "v1-economics.md", "v1-wallet-protection.md",
 }
 PUBLIC_ARTIFACTS = {
+    "crates/core/artifacts/v1-economics-simulation.json",
     "crates/bench-d8/artifacts/v1-native-freeze.json",
     "crates/bench-multi-asset/artifacts/v1-transaction-profile.json",
     "crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json",
