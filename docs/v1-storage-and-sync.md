@@ -1,16 +1,13 @@
 # V1 Storage, Retention and Bootstrap
 
-The [monetary revision](v1-economics.md) requires new source-bound proof
-measurements and final encoding of one/five reward notes, pool/burn/fund
-records and lock fields. The numerical tables below retain the pre-revision
-baseline and conditional allowances; they are not revised-network acceptance.
-Reconcile the final formats, issuance limits and actual database overhead
-before claiming bandwidth margin or SSD lifetime.
-
-Status: selected retention policy and component capacity model for the
-multi-asset V1 format. Final persistent record sizes and long-run whole-node
-resource qualification remain incomplete. Transaction proof caps are selected
-independently of settlement and issuance caps.
+Status: selected retention policy and conditional component model for the
+[V1 economic revision](v1-economics.md). The tables use the explicit
+`--economic-rewards` planning mode: five reward notes and two current native
+fund-payout slots are covered by a provisional 32-KiB permanent block-record
+allowance. This is not measured database overhead or renewed qualification of
+the changed AIR. Final issuance limits, persistent records and long-run
+whole-node resource qualification remain incomplete. Transaction, settlement
+and issuance proof limits are independent.
 
 ## Retention classes
 
@@ -82,20 +79,21 @@ restoration; no finite offline duration may silently omit a receipt.
 
 The isolated multi-asset codec implements one recipient ML-KEM output and
 two symmetric sender-change outputs. Each 208-byte encrypted plaintext contains
-144 meaningful bytes, including the 32-byte asset ID, and 64 padding bytes.
+144 meaningful bytes, including the 32-byte asset ID and committed unlock
+height, and 64 padding bytes.
 The encoded public transaction body is exactly 2,027 bytes. Adding the 48-byte
-fee commitment and proposed 40-byte canonical snapshot selector gives a
-2,115-byte permanent-position planning ledger. The body codec and AIR are
-implemented; final relay/block serialization, persistent record layout and
+fee commitment and 40-byte canonical snapshot selector gives a
+2,115-byte permanent-position planning ledger. Native body/envelope and block
+codecs implement these wire encodings; final persistent record layout and
 measured database overhead remain integration work.
 
 Use decimal GB, 365-day years, 288 target blocks/day and 576 positions/block.
-Use the selected **655,360-byte (640-KiB) transaction proof cap** independently
+Use the retained provisional **655,360-byte (640-KiB) transaction proof cap** independently
 of the 524,288-byte settlement and issuance caps, plus 78-byte sidecars. The nominal rolling window
 is 888 blocks; it does not accumulate again each year. A larger proof cap adds
 rolling storage while the permanent 2,115-byte position ledger is unchanged.
 
-At the selected transaction cap, the nominal full-load rolling store is:
+At that planning transaction cap, the nominal full-load rolling store is:
 
 | Rolling component (888 blocks) | Bytes |
 | --- | ---: |
@@ -109,21 +107,28 @@ At the selected transaction cap, the nominal full-load rolling store is:
 The finite issuance scenario reserves one additional capped native issuance
 proof/block beyond ordinary positions. The total rolling allowance is
 **336.180 GB**. This overcounts if issuance occupies an ordinary transaction
-position. The selected cap increases rolling storage, while permanent public
-records and their annual growth are unchanged.
+position. The retained cap sizes rolling storage; new lock fields fit the
+fixed note/body padding, so permanent per-position bytes are unchanged.
+Fresh revised proof measurements must confirm all proof caps independently.
 
 Permanent position records add 128.061 GB/year at maximum load. To include
 the other categories explicitly, the revised planning scenario uses:
 
 | Category | Finite planning allowance | Qualification requirement |
 | --- | ---: | --- |
-| Permanent block records | 8 KiB/block | Extract headers/PoW, settlement declaration, reward notes, fund records/signatures, snapshot metadata and container overhead from the final codec |
+| Permanent block records | 32 KiB/block | Cover up to five reward notes and two current native signed fund payouts; extract headers/PoW, settlement declaration, public economic records, snapshot metadata and container overhead from final persistent encoding |
 | Permanent issuance records | 16 KiB/block | Bound metadata, issuer key/signature, initial commitments and record count; this is an average budget ceiling to adopt, not an enacted consensus rule |
 | Issuance proof bodies | One additional 512-KiB proof/block in the rolling window | Freeze actual native issuance proof size and byte/work admission limits |
 | Indexes and accepted state | 25% of all permanent position, block and issuance bytes | Measure real commitment/nullifier/asset trees, redb pages, allocator/file and index overhead |
 | Database working space | 16 GB above steady records/state | Measure WAL, crash recovery and worst atomic-write/compaction peaks; use in-place/segmented compaction or increase this allowance if a full copy is required |
 | System and service recovery | 20 GB | Measure OS, package, bounded logs and service artifacts; independent backups are additional |
 | Device free reserve | 20% | Preserve free space after all modeled used bytes |
+
+The two payout slots are the current native codec's capacity, not an adopted
+launch wallet count or equal-share policy. Fund wallet count and individual
+shares remain pending; production fails closed without explicit genesis-bound
+weights. Other counts require a versioned codec/configuration change and new
+record allowances.
 
 The block/issuance allowances are sizing assumptions requiring final byte
 ceilings and tests. ML-DSA-65's 1,952-byte public key and 3,309-byte signature
@@ -135,9 +140,9 @@ allowances as actual database overhead or finalized consensus limits.
 
 | Maximum load | Permanent positions | Block allowance | Issuance allowance | Index/state allowance | Used capacity | Device with 20% free |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Year 1 | 128.061 GB | 0.861 GB | 1.722 GB | 32.661 GB | 535.486 GB | 669.357 GB |
-| Year 3 | 384.184 GB | 2.583 GB | 5.167 GB | 97.984 GB | 862.098 GB | 1,077.622 GB |
-| Year 5 | 640.307 GB | 4.306 GB | 8.611 GB | 163.306 GB | 1,188.710 GB | 1,485.887 GB |
+| Year 1 | 128.061 GB | 3.445 GB | 1.722 GB | 33.307 GB | 538.715 GB | 673.394 GB |
+| Year 3 | 384.184 GB | 10.334 GB | 5.167 GB | 99.921 GB | 871.786 GB | 1,089.732 GB |
+| Year 5 | 640.307 GB | 17.223 GB | 8.611 GB | 166.535 GB | 1,204.856 GB | 1,506.070 GB |
 
 Used capacity includes the rolling allowance, 16-GB database working space
 and 20-GB system allowance. Required device capacity divides used bytes by
@@ -150,24 +155,27 @@ issuance/block allowances even at low demand:
 
 | Workload | Rolling store | Used year 1 | Used year 3 | Used year 5 |
 | --- | ---: | ---: | ---: | ---: |
-| Maximum 576 positions/block | 336.180 GB | 535.486 GB | 862.098 GB | 1,188.710 GB |
-| 10,000/day, minimum 64-position blocks | 38.181 GB | 95.197 GB | 137.228 GB | 179.259 GB |
-| 50,000/day, adaptive grouping | 101.984 GB | 189.462 GB | 292.417 GB | 395.373 GB |
-| 50,000/day, uniform 176 positions | 103.368 GB | 191.510 GB | 295.793 GB | 400.076 GB |
+| Maximum 576 positions/block | 336.180 GB | 538.715 GB | 871.786 GB | 1,204.856 GB |
+| 10,000/day, minimum 64-position blocks | 38.181 GB | 98.426 GB | 146.916 GB | 195.405 GB |
+| 50,000/day, adaptive grouping | 101.984 GB | 192.691 GB | 302.105 GB | 411.519 GB |
+| 50,000/day, uniform 176 positions | 103.368 GB | 194.739 GB | 305.481 GB | 416.223 GB |
 
 | Workload | Device year 1 | Device year 3 | Device year 5 |
 | --- | ---: | ---: | ---: |
-| Maximum 576 positions/block | 669.357 GB | 1,077.622 GB | 1,485.887 GB |
-| 10,000/day, minimum 64-position blocks | 118.996 GB | 171.535 GB | 224.074 GB |
-| 50,000/day, adaptive grouping | 236.827 GB | 365.521 GB | 494.216 GB |
-| 50,000/day, uniform 176 positions | 239.387 GB | 369.741 GB | 500.095 GB |
+| Maximum 576 positions/block | 673.394 GB | 1,089.732 GB | 1,506.070 GB |
+| 10,000/day, minimum 64-position blocks | 123.032 GB | 183.645 GB | 244.257 GB |
+| 50,000/day, adaptive grouping | 240.864 GB | 377.631 GB | 514.399 GB |
+| 50,000/day, uniform 176 positions | 243.424 GB | 381.851 GB | 520.278 GB |
 
-Reproduce with `python3 scripts/v1-storage-budget.py`, using
+Reproduce these tables with
+`python3 scripts/v1-storage-budget.py --economic-rewards`, using
 `--transaction-proof-cap-bytes` to specify a different transaction body limit.
 Settlement and issuance limits have separate arguments; do not raise them
-implicitly when changing the transaction limit. `--legacy-baseline` restores
-the earlier 524,288-byte caps. Rolling positions round
-up to complete groups of sixteen. Low-demand cases assume steady traffic and
+implicitly when changing the transaction limit. The unflagged command preserves
+the pre-revision 8-KiB block-record model, and `--legacy-baseline` additionally
+restores the earlier 524,288-byte caps. These historical modes do not size the
+economic reward format; `--legacy-baseline` cannot be combined with
+`--economic-rewards`. Rolling positions round up to complete groups of sixteen. Low-demand cases assume steady traffic and
 the stated packing; arbitrary bursts or faster block production can need the
 full rolling reserve. A dedicated `extra_permanent_bytes` term permits adding
 measured costs beyond these allowances without hiding them.
@@ -175,18 +183,18 @@ measured costs beyond these allowances without hiding them.
 Both miners and validators retain **500 GB usable SSD as the installation
 minimum**, with **1 TB recommended**. The installation minimum does not qualify
 continuous maximum load: year-one used bytes already exceed 500 GB and require
-669.357 GB with the free reserve. At full load a 1-TB device reaches the modeled
-20% free threshold after approximately 2.62 years. Year three requires
-1,077.622 GB, so a 1-TB device does not meet the modeled three-year full-load
+673.394 GB with the free reserve. At full load a 1-TB device reaches the modeled
+20% free threshold after approximately **2.57 years**. Year three requires
+1,089.732 GB, so a 1-TB device does not meet the modeled three-year full-load
 requirement.
 
-At 10,000/day, 500 GB has substantial modeled headroom beyond five years.
-At 50,000/day it is workload-sensitive: adaptive packing needs 494.216 GB at
-year five, leaving only 5.784 GB beyond the free reserve, while uniform
-176-position blocks need 500.095 GB and already exceed that device size.
-A workload-independent five-year capacity guarantee does not follow for
-50,000/day; packing, bursts and measured database overhead affect that horizon. Expansion planning must preserve all
-576 positions and the complete three-day-after-finality retention window.
+At 10,000/day, 500 GB has substantial modeled headroom beyond five years:
+the year-five device estimate is 244.257 GB. At 50,000/day, year five needs
+514.399 GB with adaptive packing or 520.278 GB with uniform 176-position
+blocks. Both exceed 500 GB when the required free reserve is included.
+A blanket five-year claim for a 500-GB device is therefore unsupported;
+packing, bursts and measured database overhead affect that horizon.
+Expansion planning must preserve all 576 positions and the complete three-day-after-finality retention window.
 
 These are conditional planning horizons, not promises independent of actual
 record sizes, workload or database layout. Replace every allowance with final

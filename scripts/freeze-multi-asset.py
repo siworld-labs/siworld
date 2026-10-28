@@ -403,6 +403,9 @@ ECONOMICS_VERIFICATION = ('single-worker verifier timing inside a one-worker set
     'memory includes all three phases; not an independent verifier memory measurement')
 ECONOMICS_HARDWARE_KEYS = ('cpu_model', 'os', 'architecture', 'avx2', 'logical_cpus',
     'online_logical_cpus', 'exposed_physical_cores', 'affinity_cpus', 'virtualization_detection')
+ECONOMICS_REQUIRED_MEMORY_EVENTS = frozenset(('low', 'high', 'max', 'oom',
+    'oom_kill', 'oom_group_kill'))
+ECONOMICS_OPTIONAL_MEMORY_EVENTS = frozenset(('sock_throttled',))
 
 
 def economic_trial(row, kind, workers, parameters):
@@ -423,8 +426,9 @@ def economic_trial(row, kind, workers, parameters):
         raise ValueError('Invalid distinct trial index')
     events = row.get('memory_events_delta')
     if (not isinstance(events, dict)
-            or not {'max', 'oom', 'oom_kill', 'oom_group_kill'}.issubset(events)
-            or not set(events).issubset({'low', 'high', 'max', 'oom', 'oom_kill', 'oom_group_kill'})
+            or not ECONOMICS_REQUIRED_MEMORY_EVENTS.issubset(events)
+            or not set(events).issubset(
+                ECONOMICS_REQUIRED_MEMORY_EVENTS | ECONOMICS_OPTIONAL_MEMORY_EVENTS)
             or any(type(number) is not int or number != 0 for number in events.values())):
         raise ValueError('Kernel memory events must remain zero')
     for field in ('memory_events_before', 'memory_events_after'):

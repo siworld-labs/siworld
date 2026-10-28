@@ -401,10 +401,10 @@ impl Wallet {
             next_unlock_height,
         })
     }
-    /// Private default automation eligibility, independent of manual consensus
-    /// spendability. Reconstruct the same per-note schedule after seed recovery.
-    /// Unreached unlocks and spent/zero notes return None. Wall-clock inputs to
-    /// automation never change whether a transaction is valid in consensus.
+    /// Private wallet scheduling time, reconstructed after seed recovery.
+    /// Locked inputs use this boundary for transfer preparation; automatic
+    /// consolidation also applies it to ordinary notes. Unreached unlocks and
+    /// spent/zero notes return None. Local time never changes consensus validity.
     pub fn automatic_ready_timestamp(
         &self,
         commitment: &DigestBytes,
@@ -501,12 +501,15 @@ impl Wallet {
             SIP_ASSET_ID,
             amount,
             tier,
+            now,
         )
         .map(Some)
     }
     /// Construct a private transfer witness with one recipient and up to two
     /// asset-specific change outputs. `None` supplies a fresh zero-value input.
     /// SIP alone pays the selected canonical-snapshot standard/priority fee.
+    /// Every nonzero-unlock input waits for its private post-maturity delay.
+    /// `now` is local wallet policy and must never enter consensus validation.
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_transfer(
         &self,
@@ -516,6 +519,7 @@ impl Wallet {
         asset: AssetId,
         amount: u64,
         tier: FeeTier,
+        now: u64,
     ) -> Result<PreparedTransfer, String> {
         self.require_state(state)?;
         if amount == 0 || selected == [None, None] {
@@ -550,6 +554,14 @@ impl Wallet {
                 || state.spent.contains(&receipt.nullifier)
             {
                 return Err("wallet input is spent, zero-valued, or immature".into());
+            }
+            if receipt.note.unlock_height != 0 {
+                let ready = self
+                    .ready_timestamp(receipt)?
+                    .ok_or("wallet locked input has no canonical eligibility timestamp")?;
+                if now < ready {
+                    return Err("wallet locked input privacy delay has not elapsed".into());
+                }
             }
             let index = state
                 .leaves

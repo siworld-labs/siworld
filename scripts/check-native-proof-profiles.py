@@ -20,7 +20,8 @@ KINDS = ('transaction', 'settlement', 'issuance')
 CAPACITIES = (0, 576, 3)
 SHAPES = ((256, 1420, 243), (1024, 516, 587), (128, 438, 10))
 ECONOMICS_REVISION = 'native-v1-economics-1'
-ECONOMICS_SHAPES = ((256, 1420, 243), (1024, 581, 609), (128, 438, 10))
+ECONOMICS_SHAPES = ((256, 1440, 243), (1024, 581, 609), (128, 438, 10))
+ECONOMICS_PUBLIC_VALUES = (101, 7050, 72)
 ECONOMICS_RESOURCES = 'fresh three-trial measurements at one and four workers; complete profile-bound kernel evidence'
 RELATION_KEYS = frozenset(('kind', 'capacity', 'parameters', 'security', 'public_verifier_key',
     'cryptographic_approval', 'network_activation'))
@@ -148,7 +149,8 @@ def economic_relation(value, kind, transaction, freeze, reproduced=False):
     dimensions = (shape['base_trace_rows'], shape['main_width'], shape['preprocessed_width'])
     if (not summary['screen']['passes_selected_model'] or security.get('fri') != p
             or dimensions != (rows, main, pre) or any(type(number) is not int for number in dimensions)
-            or (kind == 'settlement' and (type(shape['public_values']) is not int or shape['public_values'] != 239))
+            or type(shape['public_values']) is not int
+            or shape['public_values'] != ECONOMICS_PUBLIC_VALUES[index]
             or summary != measured['security']):
         raise ValueError('Revised actual-AIR security, measured report or shape changed')
     key = value['public_verifier_key']

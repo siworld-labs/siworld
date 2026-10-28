@@ -131,31 +131,42 @@ commitment grinding zero, binary folding and `log_final_poly_len=0`.
 The [actual-AIR report and measurements](v1-multi-asset-evaluation.md) record
 three generation times of 1.332143, 1.315662 and 1.316440 seconds, maximum
 whole-process charged memory 531,668,992 bytes and quantum-halved Johnson
-challenge union 81.692219 bits. These are three-sample qualification results,
-not worst-case latency or independent cryptographic approval.
+challenge union 81.692219 bits. These qualify only the earlier relation's
+three-sample engineering experiment, not the changed AIR, a worst-case latency
+or independent cryptographic approval.
 
-The revised-relation admission target remains `MAX_LEAF_PROOF_LEN = 655,360` bytes (640 KiB). This is the
-smallest 64-KiB multiple at least 10% above the largest observed selected proof
-of 584,848 bytes, giving 12.056% sample headroom. It is an enforced admission
-requirement for the new integration, not a mathematical encoded-size bound.
+The revised-relation provisional admission target remains
+`MAX_LEAF_PROOF_LEN = 655,360` bytes (640 KiB). This cap gave 12.056% headroom
+over the earlier relation's largest 584,848-byte sample; it does not establish
+margin for the new unlock/reward relation. Fresh revised selected-profile
+measurements and sample margin remain pending before refreezing. An enforced
+admission cap is not a mathematical encoded-size bound.
 Settlement and issuance proof caps remain independently 524,288 bytes.
 The old 512-KiB decoder and retained network are unchanged. The native
-integration's prepared multi-asset decoder and envelope enforce this profile. Worker isolation and deployed-network resource qualification
-remain required before activation.
+integration's prepared multi-asset decoder and envelope enforce the byte cap;
+revised source/key/profile qualification, worker isolation and deployed-network
+resource qualification remain required before activation.
 
 The implemented public body is 2,027 bytes; its fee commitment and snapshot
 selector bring permanent bytes to 2,115 per position. The native codec's
 2,184-byte relay prefix and 78-byte sidecar bring the capped combined payload to
 657,622 bytes. Full three-copy traffic for 576 positions, settlement, bounded
 issuance, inventories, requests, AEAD/multiplexing, IPv6/TCP/link framing,
-reciprocal ACKs, handshakes, retransmission and recovery is modeled at
-36.501639 Mbps. Require at least 43 Mbps sustained uplink, computed as
-`ceil(wire_mbps / 0.85)`; 15.112% remains unused at that floor. Deployment
-recommends 100 Mbps. The [full wire budget](v1-network-budget.md) is conditional
-planning; measure the actual transport before network acceptance.
+reciprocal ACKs, handshakes, retransmission and recovery must use the explicit
+economic-record model:
+`python3 scripts/v1-network-budget.py --native-protocol --economic-rewards`.
+Its maximum compact fixed record is 20,537 bytes for five reward notes and
+two current native signed fund payouts; settlement appears once inside the
+compact body. The model charges 1,369,222,560 bytes per target interval, or
+36.51260160 Mbps. Require at least 43 Mbps sustained uplink, computed as
+`ceil(wire_mbps / 0.85)`; 15.086973% remains unused at that floor. Deployment
+recommends 100 Mbps. The [full wire budget](v1-network-budget.md) remains
+conditional planning, not measured throughput. Earlier unflagged/native-only
+reports remain historical evidence. Recompute if the revised scan changes
+proof caps, and measure the actual transport before network acceptance.
 
 The [independent layout prototype](multi-asset-air-optimization.md) targets
-fewer columns and smaller openings. It does not change the frozen relation or
+fewer columns and smaller openings. It does not change the adopted relation or
 block capacity. Re-screen and measure any adopted optimization before
 refreezing its key and reducing proof/bandwidth limits.
 
@@ -244,20 +255,28 @@ At the target block rate, proofs and sidecars including the nominal depth-24
 finality tail require 336,179,807,232 rolling bytes at the separate caps.
 The 2,115-byte position codec adds 128,061,388,800 permanent bytes/year at
 full load. The [finite storage model](v1-storage-and-sync.md) also reserves
-8 KiB/block for permanent block records, 16 KiB/block for issuance records,
+32 KiB/block for economic permanent block records, 16 KiB/block for issuance records,
 25% of permanent records for indexes/state, 16 GB database working space,
 20 GB system files and 20% device free. These remain proposed allowances
 pending actual database and encoded-record measurements.
 
-With that free-space reserve, full-load device needs at years 1/3/5 are
-669.357/1,077.622/1,485.887 GB. One TB therefore does not cover three full-load
-years with the reserve intact. At 10,000 submitted transactions/day, the
-minimum-block case needs 118.996/171.535/224.074 GB. At 50,000/day, adaptive
-packing needs 236.827/365.521/494.216 GB; uniform 176-position blocks require
-239.387/369.741/500.095 GB. A 500-GB device is an early-load profile, not a
-full-load year-one guarantee. Retain the 500-GB minimum and 1-TB recommendation
-as workload-qualified profiles and plan expansion from measured growth.
-Never shorten retention or prune permanent public data to meet a disk target.
+Reproduce the economic-format model with
+`python3 scripts/v1-storage-budget.py --economic-rewards`; the unflagged
+8-KiB-block-record scenario is retained only as earlier planning evidence.
+With the free-space reserve, full-load device needs at years 1/3/5 are
+673.394/1,089.732/1,506.070 GB. A 1-TB device reaches the modeled reserve after
+approximately 2.57 full-load years and does not cover year three. At 10,000
+submitted transactions/day, the minimum-block case needs
+123.032/183.645/244.257 GB. At 50,000/day, adaptive packing needs
+240.864/377.631/514.399 GB; uniform 176-position blocks require
+243.424/381.851/520.278 GB. A 500-GB device is an early-load profile, not a
+full-load year-one or workload-independent five-year guarantee. Retain the
+500-GB minimum and 1-TB recommendation as workload-qualified profiles and
+plan expansion from measured growth. The five-note/two-payout reserve reflects
+the current codec limit, not adopted launch wallet count or shares. Other
+counts require versioned rules and a new resource model; production remains
+fail-closed without explicit genesis-bound weights. Never shorten retention or
+prune permanent public data to meet a disk target.
 
 Every validator independently enforces consensus. Miners add production;
 bootstrap nodes add discovery; project-operated object storage backs up public

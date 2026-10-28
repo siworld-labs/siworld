@@ -1,6 +1,9 @@
 """Exercise wire overhead, independent proof caps and capacity headroom."""
 
 import importlib.util
+import json
+import subprocess
+import sys
 from pathlib import Path
 import unittest
 
@@ -124,6 +127,56 @@ class NetworkBudgetTests(unittest.TestCase):
                           {'transaction_proof_cap': 0}, {'capacity_headroom_percent': 100}):
             with self.assertRaises(ValueError):
                 budget.native_protocol_report(**arguments)
+
+    def test_economic_rewards_cover_maximum_compact_records_without_other_cost_changes(self):
+        historical = budget.native_protocol_report()
+        result = budget.native_protocol_report(economic_rewards=True)
+        parameters = result['parameters']
+        self.assertEqual(parameters['compact_fixed_bytes'], 20_537)
+        self.assertEqual(parameters['compact_payload_bytes'], 581_689)
+        self.assertEqual(parameters['extra_block_record_allowance_bytes'], 8192)
+        self.assertEqual(parameters['maximum_reward_notes'], 5)
+        self.assertEqual(parameters['maximum_signed_fund_payouts'], 2)
+        self.assertTrue(parameters['economic_rewards'])
+        self.assertEqual(result['wire_bytes_per_interval'], 1_369_222_560)
+        self.assertEqual(result['minimum_link_mbps'], 43)
+        self.assertTrue(result['meets_capacity_headroom'])
+        self.assertFalse(budget.native_protocol_report(
+            link_mbps=42, economic_rewards=True)['meets_capacity_headroom'])
+        for component, value in historical['components_bytes_per_interval'].items():
+            if component not in ('compact_block_and_block_record_wire',
+                                 'retransmission_reserve', 'recovery_reserve'):
+                self.assertEqual(result['components_bytes_per_interval'][component], value)
+        self.assertEqual(result['parameters']['transaction_proof_cap_bytes'], 655_360)
+        self.assertEqual(result['parameters']['settlement_proof_cap_bytes'], 524_288)
+        self.assertEqual(result['parameters']['issuance_proof_cap_bytes'], 524_288)
+
+    def test_economic_rewards_still_reserve_fifteen_percent_for_each_proof_cap(self):
+        for cap in (524_288, 655_360, 768 * 1024):
+            result = budget.native_protocol_report(transaction_proof_cap=cap,
+                                                   economic_rewards=True)
+            minimum = result['minimum_link_mbps']
+            self.assertGreaterEqual(result['remaining_percent'], 15)
+            self.assertTrue(result['meets_capacity_headroom'])
+            self.assertFalse(budget.native_protocol_report(
+                transaction_proof_cap=cap, link_mbps=minimum - 1,
+                economic_rewards=True)['meets_capacity_headroom'])
+        duplicated = budget.native_protocol_report(economic_rewards=True,
+                                                   duplicate_settlement=True)
+        self.assertEqual(duplicated['minimum_link_mbps'], 44)
+
+    def test_economic_reward_cli_requires_native_protocol_and_preserves_legacy(self):
+        for flags in (['--economic-rewards'], ['--economic-rewards', '--legacy-baseline'],
+                      ['--economic-rewards', '--native-protocol', '--legacy-baseline']):
+            result = subprocess.run([sys.executable, str(SCRIPT), *flags],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+        result = json.loads(subprocess.check_output(
+            [sys.executable, str(SCRIPT), '--native-protocol', '--economic-rewards'], text=True))
+        self.assertEqual(result, budget.native_protocol_report(economic_rewards=True))
+        legacy = json.loads(subprocess.check_output(
+            [sys.executable, str(SCRIPT), '--legacy-baseline'], text=True))
+        self.assertEqual(legacy, budget.report(576, 30, 524_288, 524_288, 524_288, 0))
 
     def test_only_fixed_capacity_groups_are_accepted(self):
         self.assertGreater(budget.report(64)['remaining_bytes_per_interval'], 0)

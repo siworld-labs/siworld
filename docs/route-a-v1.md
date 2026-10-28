@@ -35,7 +35,9 @@ No network launch is authorized by this specification. Historical verifier
 activation is deferred until before mainnet.
 
 The engineering block target is 300 seconds, with 64 through 576 transaction
-positions in groups of 16. The minimum node uplink is 43 Mbps; 100 Mbps is recommended. Node integration,
+positions in groups of 16. The conditional network model requires 43 Mbps;
+100 Mbps is recommended. Revised proof and transport qualification remain
+activation gates. Node integration,
 block validity changes, pruning and checkpoint synchronization follow the
 [node and network integration plan](v1-node-network-plan.md). Proof parameters
 may be frozen before those implementations are complete; activation requires
@@ -299,11 +301,11 @@ the native proof and proof/relay-envelope context. Its fields are:
 | **Total** | | | **2,027** |
 
 A fee commitment adds 48 bytes and the canonical snapshot selector adds 40,
-for 2,115 permanent bytes per position. The transaction proof cap is 655,360
-bytes. With the proposed 2,184-byte envelope prefix and 78-byte sidecar, the
-maximum combined transaction payload is 657,622 bytes. The body and permanent-record
-lengths are implemented and tested; the 2,184-byte production envelope prefix
-remains proposed. A 32-byte private asset ID consumes
+for 2,115 permanent bytes per position. The provisional transaction proof-cap
+target is 655,360 bytes. With the native 2,184-byte envelope prefix and 78-byte
+sidecar, the maximum combined transaction payload is 657,622 bytes, before
+the four-byte gossip length prefix. The body and envelope encodings are
+implemented and tested; persistent-record overhead remains to be measured. A 32-byte private asset ID consumes
 existing note padding, leaving 144 meaningful bytes and 64 zero-padding bytes
 inside each 208-byte plaintext. See [the multi-asset design](v1-multi-asset.md).
 
@@ -366,10 +368,12 @@ and descendants. The actual security ledger has quantum-halved Johnson
 challenge union 81.692219 bits; full errors and geometry are recorded in the
 [profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json).
 
-Set the multi-asset `MAX_LEAF_PROOF_LEN` to **655,360 bytes (640 KiB)**, the
-smallest 64-KiB multiple at least 10% above the largest selected sample
-(584,848 bytes). The resulting sample margin is 12.056%. This is an admission
-cap, not a deterministic proof-length theorem. Reject an oversized encoding;
+Retain **655,360 bytes (640 KiB)** as the provisional multi-asset
+`MAX_LEAF_PROOF_LEN` target. The earlier relation's largest sample was
+584,848 bytes, with 12.056% margin at that cap; this does not establish margin
+for the revised lock/reward relation. Fresh selected-profile measurements must
+confirm the cap and sample headroom before refreezing. An admission cap is not
+a deterministic proof-length theorem. Reject an oversized encoding;
 never reduce security or accept truncated data to meet the cap. Settlement
 and issuance keep separate 524,288-byte caps. The old two-output decoder and
 its frozen 512-KiB limit remain unchanged; prepare and qualify the new
@@ -377,16 +381,41 @@ multi-asset shape/decoder before node activation.
 
 The canonical public body remains 2,027 bytes, with 48 fee-commitment bytes
 and a 40-byte snapshot selector: 2,115 permanent bytes per position. The
-proposed 2,184-byte prefix gives a 657,544-byte maximum transaction envelope;
+native 2,184-byte prefix gives a 657,544-byte maximum transaction envelope;
 with its 78-byte private sidecar the relay payload is 657,622 bytes.
 
-Keep the block maximum at 576 positions. The [complete wire model](v1-network-budget.md)
-includes three copies, settlement, bounded issuance, inventory and requests,
-AEAD/multiplexing, IPv6/TCP/link framing and reciprocal ACKs, handshake churn,
-retransmission and recovery reserves. It requires 36.501639 Mbps before the
-additional capacity reserve. `ceil(36.501639 / 0.85)` gives a **43-Mbps** minimum
-sustained uplink, leaving 15.112% unused capacity; recommend 100 Mbps.
-Qualify the actual transport and offered load before launch.
+Keep the block maximum at 576 positions. Reproduce the economic-format
+[wire model](v1-network-budget.md) with
+`python3 scripts/v1-network-budget.py --native-protocol --economic-rewards`.
+It includes three copies, a 20,537-byte compact fixed record for five reward
+notes and two current native signed fund payouts, the settlement proof once
+inside the compact body, bounded issuance, inventory/requests, AEAD/multiplexing,
+IPv6/TCP/link framing, reciprocal ACKs, handshakes, retransmission and recovery.
+The conditional load is **1,369,222,560 bytes / 300 seconds**, or
+**36.51260160 Mbps**. `ceil(36.51260160 / 0.85)` gives a **43-Mbps** uplink floor,
+leaving **15.086973%** unused; recommend 100 Mbps. This is a planning result,
+not measured transport acceptance. The unflagged and native-only script modes
+preserve earlier format evidence. Qualify the actual provider and offered
+load before launch, and rerun both resource models if revised proof caps change.
+
+Use `python3 scripts/v1-storage-budget.py --economic-rewards` for the matching
+[storage model](v1-storage-and-sync.md). It keeps the nominal 336.180-GB rolling
+proof allowance and 2,115 permanent bytes/position, and raises the provisional
+permanent block reserve to 32 KiB for economic reward/fund records. Including
+indexes/state, system/working space and 20% device free, maximum-load device
+needs at years 1/3/5 are **673.394 / 1,089.732 / 1,506.070 GB**. A 1-TB device
+reaches that reserve after approximately **2.57 full-load years**. Keep the
+500-GB installation minimum and 1-TB recommendation as workload-qualified
+profiles: 10,000/day needs 244.257 GB at year five, while 50,000/day needs
+514.399 GB with adaptive packing or 520.278 GB at uniform 176 positions.
+A general five-year claim for 500 GB is unsupported. Actual persistent
+overhead and growth still require measurement; never prune permanent data or
+unexpired proofs to fit a device target.
+
+The two native payout slots do not fix launch fund wallet count or shares.
+Those remain pending; production fails closed without explicit genesis-bound
+weights. Other counts need a versioned codec/configuration change and fresh
+wire/storage allowances.
 
 Source, dependencies, actual AIR dimensions, key, parameters and the measured
 binary identity are bound by the engineering profile. Node/wallet integration

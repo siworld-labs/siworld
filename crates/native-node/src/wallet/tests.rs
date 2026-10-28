@@ -227,7 +227,8 @@ fn reward_scanning_recovers_five_holder_batches_and_unique_nullifiers_from_seed(
                 &restored.address(),
                 SIP_ASSET_ID,
                 100_000,
-                FeeTier::Standard
+                FeeTier::Standard,
+                state.timestamp(),
             )
             .is_err()
     );
@@ -245,6 +246,198 @@ fn voyager_reward_recovers_as_one_maturing_note() {
     assert_eq!(target.receipts()[0].note.unlock_height, 25);
     assert!(target.balances(24).unwrap().is_empty());
     assert!(target.balances(25).unwrap()[&SIP_ASSET_ID] > 0);
+}
+
+#[test]
+fn locked_input_spending_waits_for_private_delay_and_rebuilds_after_reorg() {
+    use siworld_core::v1_economics::EconomicsParams;
+    let network = [55; 32];
+    let config = Config::development(network, 0)
+        .unwrap()
+        .with_economics(EconomicsParams::engineering([60, 120, 180, 240], 4).unwrap())
+        .unwrap();
+    let mut state = State::new(config.clone()).unwrap();
+    let mut sender = wallet(network, 56);
+    let receiver = wallet(network, 57);
+    let mut blocks = Vec::new();
+    for height in 1..=60u32 {
+        let block = if height == 1 {
+            reward_block(&state, &sender, crate::state::RewardMode::Holder, 100_000)
+        } else {
+            candidate(&state, 100_000 + height * 20_000)
+        };
+        state.apply(&block, &TestVerifier).unwrap();
+        blocks.push(block);
+    }
+    sender
+        .reconcile(config.clone(), &blocks, &TestVerifier)
+        .unwrap();
+    let commitment = sender
+        .receipts()
+        .iter()
+        .find(|receipt| receipt.note.unlock_height == 61)
+        .unwrap()
+        .commitment;
+    assert_eq!(sender.automatic_ready_timestamp(&commitment).unwrap(), None);
+    for selected in [[Some(commitment), None], [None, Some(commitment)]] {
+        assert_eq!(
+            sender
+                .prepare_transfer(
+                    &state,
+                    selected,
+                    &receiver.address(),
+                    SIP_ASSET_ID,
+                    100_000,
+                    FeeTier::Standard,
+                    u64::MAX,
+                )
+                .err()
+                .as_deref(),
+            Some("wallet input is spent, zero-valued, or immature")
+        );
+    }
+
+    let parent = state.clone();
+    let mature = candidate(&state, 2_000_000);
+    let maturity_timestamp = mature.timestamp;
+    state.apply(&mature, &TestVerifier).unwrap();
+    blocks.push(mature);
+    sender
+        .reconcile(config.clone(), &blocks, &TestVerifier)
+        .unwrap();
+    let ready = sender
+        .automatic_ready_timestamp(&commitment)
+        .unwrap()
+        .unwrap();
+    assert!(
+        (maturity_timestamp + AUTO_DELAY_MIN_SECONDS..=maturity_timestamp + AUTO_DELAY_MAX_SECONDS)
+            .contains(&ready)
+    );
+    for selected in [[Some(commitment), None], [None, Some(commitment)]] {
+        for now in [maturity_timestamp, ready - 1] {
+            assert_eq!(
+                sender
+                    .prepare_transfer(
+                        &state,
+                        selected,
+                        &receiver.address(),
+                        SIP_ASSET_ID,
+                        100_000,
+                        FeeTier::Standard,
+                        now,
+                    )
+                    .err()
+                    .as_deref(),
+                Some("wallet locked input privacy delay has not elapsed")
+            );
+        }
+        sender
+            .prepare_transfer(
+                &state,
+                selected,
+                &receiver.address(),
+                SIP_ASSET_ID,
+                100_000,
+                FeeTier::Standard,
+                ready,
+            )
+            .unwrap_or_else(|error| panic!("ready locked-input transfer failed: {error}"));
+    }
+
+    let mut restored = wallet(network, 56);
+    restored
+        .reconcile(config.clone(), &blocks, &TestVerifier)
+        .unwrap();
+    assert_eq!(
+        restored.automatic_ready_timestamp(&commitment).unwrap(),
+        Some(ready)
+    );
+    restored
+        .receipts
+        .iter_mut()
+        .find(|r| r.commitment == commitment)
+        .unwrap()
+        .eligible_timestamp = None;
+    assert_eq!(
+        restored
+            .prepare_transfer(
+                &state,
+                [Some(commitment), None],
+                &receiver.address(),
+                SIP_ASSET_ID,
+                100_000,
+                FeeTier::Standard,
+                u64::MAX,
+            )
+            .err()
+            .as_deref(),
+        Some("wallet locked input has no canonical eligibility timestamp")
+    );
+
+    let mut replacement = candidate(&parent, 2_100_000);
+    replacement.timestamp += 60;
+    let mut replacement_state = parent.clone();
+    replacement_state
+        .apply(&replacement, &TestVerifier)
+        .unwrap();
+    blocks.pop();
+    blocks.push(replacement);
+    restored
+        .reconcile(config.clone(), &blocks, &TestVerifier)
+        .unwrap();
+    let replacement_ready = restored
+        .automatic_ready_timestamp(&commitment)
+        .unwrap()
+        .unwrap();
+    assert_eq!(replacement_ready, ready + 60);
+    assert_eq!(
+        restored
+            .prepare_transfer(
+                &replacement_state,
+                [Some(commitment), None],
+                &receiver.address(),
+                SIP_ASSET_ID,
+                100_000,
+                FeeTier::Standard,
+                replacement_ready - 1,
+            )
+            .err()
+            .as_deref(),
+        Some("wallet locked input privacy delay has not elapsed")
+    );
+    restored
+        .prepare_transfer(
+            &replacement_state,
+            [Some(commitment), None],
+            &receiver.address(),
+            SIP_ASSET_ID,
+            100_000,
+            FeeTier::Standard,
+            replacement_ready,
+        )
+        .unwrap_or_else(|error| panic!("replayed ready transfer failed: {error}"));
+
+    blocks.pop();
+    restored.reconcile(config, &blocks, &TestVerifier).unwrap();
+    assert_eq!(
+        restored.automatic_ready_timestamp(&commitment).unwrap(),
+        None
+    );
+    assert_eq!(
+        restored
+            .prepare_transfer(
+                &parent,
+                [Some(commitment), None],
+                &receiver.address(),
+                SIP_ASSET_ID,
+                100_000,
+                FeeTier::Standard,
+                u64::MAX,
+            )
+            .err()
+            .as_deref(),
+        Some("wallet input is spent, zero-valued, or immature")
+    );
 }
 
 #[test]
@@ -334,24 +527,38 @@ fn automatic_consolidation_is_delayed_seed_recoverable_and_sip_only() {
             .prepare_small_sip_consolidation(&stale, 5_000_000, FeeTier::Standard, all_ready)
             .is_err()
     );
-    // Explicit transfers use consensus maturity and do not wait for local automation.
+    // Ordinary notes have no unlock cohort and can be spent immediately.
     // Select the funded payment rather than relying on receipt discovery order.
     let funded = owned
         .iter()
         .find(|receipt| receipt.note.value == 5_000_000)
         .unwrap();
-    assert!(
-        sender
-            .prepare_transfer(
-                &state,
-                [Some(funded.commitment), None],
-                &sender.address(),
-                SIP_ASSET_ID,
-                1_000,
-                FeeTier::Standard
-            )
-            .is_ok()
+    let minimum = native::multi_asset::MIN_PACKAGE_DEPOSIT;
+    let below_minimum = sender.prepare_transfer(
+        &state,
+        [Some(funded.commitment), None],
+        &sender.address(),
+        SIP_ASSET_ID,
+        minimum - 1,
+        FeeTier::Standard,
+        state.timestamp(),
     );
+    assert_eq!(
+        below_minimum.err().as_deref(),
+        Some("below minimum deposit")
+    );
+    let manual = sender
+        .prepare_transfer(
+            &state,
+            [Some(funded.commitment), None],
+            &sender.address(),
+            SIP_ASSET_ID,
+            minimum,
+            FeeTier::Standard,
+            state.timestamp(),
+        )
+        .unwrap_or_else(|error| panic!("mature manual transfer preparation failed: {error}"));
+    assert_eq!(manual.witness().slot.outputs[0].value, minimum);
 }
 
 #[test]
@@ -512,6 +719,7 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
                 asset,
                 100_000,
                 tier,
+                state.timestamp(),
             )
             .unwrap();
         let witness = prepared.witness();
@@ -541,6 +749,7 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
             SIP_ASSET_ID,
             100_000,
             FeeTier::Standard,
+            state.timestamp(),
         )
         .unwrap();
     assert!(one_input.witness().slot.inputs[1].dummy);
@@ -552,7 +761,8 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
                 &receiver.keys.address(),
                 asset,
                 100_000,
-                FeeTier::Standard
+                FeeTier::Standard,
+                state.timestamp(),
             )
             .is_err()
     );
@@ -564,7 +774,8 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
                 &receiver.keys.address(),
                 SIP_ASSET_ID,
                 100_000,
-                FeeTier::Standard
+                FeeTier::Standard,
+                state.timestamp(),
             )
             .is_err()
     );
@@ -576,7 +787,8 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
                 &receiver.keys.address(),
                 SIP_ASSET_ID,
                 100_000,
-                FeeTier::Standard
+                FeeTier::Standard,
+                state.timestamp(),
             )
             .is_err()
     );
@@ -588,7 +800,8 @@ fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() 
                 &receiver.keys.address(),
                 SIP_ASSET_ID,
                 sip_funding + 1,
-                FeeTier::Standard
+                FeeTier::Standard,
+                state.timestamp(),
             )
             .is_err()
     );
@@ -607,15 +820,16 @@ fn actual_native_wallet_proof_passes_admission_and_recipient_authentication() {
     let mut state = State::new(config.clone()).unwrap();
     let mut sender = wallet(network, 20);
     let receiver = wallet(network, 21);
-    let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, 5_000_000, 3000);
     let mut funding = candidate(&state, 100_000);
+    let sip_funding = base_fee(funding.height) * 4 + 100_000;
+    let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, sip_funding, 3000);
     insert_record(&mut funding, record);
     state.apply(&funding, &TestVerifier).unwrap();
     sender.reconcile(config, &[funding], &TestVerifier).unwrap();
     let commitment = sender
         .receipts()
         .iter()
-        .find(|receipt| receipt.note.value == 5_000_000)
+        .find(|receipt| receipt.note.value == sip_funding)
         .unwrap()
         .commitment;
     let prover = NativeProver::new().unwrap();
@@ -629,6 +843,7 @@ fn actual_native_wallet_proof_passes_admission_and_recipient_authentication() {
                 SIP_ASSET_ID,
                 100_000,
                 tier,
+                state.timestamp(),
             )
             .unwrap();
         let expected =

@@ -1,161 +1,149 @@
 # Native V1 Network Capacity Budget
 
-The [monetary revision](v1-economics.md) requires new source-bound proof
-measurements and final encoding of one/five reward notes, pool/burn/fund
-records and lock fields. The numerical tables below retain the pre-revision
-baseline and conditional allowances; they are not revised-network acceptance.
-Reconcile the final formats, issuance limits and actual database overhead
-before claiming bandwidth margin or SSD lifetime.
+Status: conditional planning model for the [V1 economic revision](v1-economics.md).
+The current codec permits one Voyager or five Holder reward notes and up to
+two signed fund payouts per block. The model includes those maximum records;
+it does not establish measured network throughput or qualify the changed AIR.
+Source-bound proof measurements, the final admission policy and actual hybrid
+transport overhead must pass their separate gates before activation.
 
-Status: reproducible engineering budget for the multi-asset codec. The
-transaction proof-length limit is **655,360 bytes (640 KiB)** and the
-minimum uplink is **43 Mbps**, selected from the actual-AIR performance scan;
-**100 Mbps sustained uplink** remains the deployment recommendation. The
-maximum remains **576 positions per 300-second target block**. This document
-does not claim measured full-network acceptance or alter the retained network.
+The planning transaction proof cap is **655,360 bytes (640 KiB)**, independent
+of the **524,288-byte** settlement and issuance caps. Keep **576 positions per
+300-second target block**. Under the assumptions below, **43 Mbps** is the
+smallest integer uplink leaving 15% capacity unused; **100 Mbps sustained
+uplink** remains the deployment recommendation. These are conditional resource
+figures, not a renewed parameter freeze or a change to the retained network.
 
-## Payload and transport assumptions
+## Reproduction and evidence status
 
-Transaction body, settlement body and issuance body limits are independent.
-The transaction envelope/sidecar allowance is 657,622 bytes: the 655,360-byte
-transaction proof cap plus 2,184 envelope bytes and 78 sidecar bytes. Settlement and issuance
-proof caps remain 524,288 bytes; the settlement envelope adds 159 bytes.
-Three copies of all 576 transaction positions plus three capped settlement
-envelopes use 1,137,944,157 payload bytes per interval, or 30.34517752 Mbps.
-Envelope sizes require final encoded fixtures before network qualification.
+Use the explicit economic-record mode for current planning:
 
-Selection requires all three four-worker generation trials on the EPYC 7763
-reference host to complete within two seconds and the actual-AIR security
-report to meet the selected 80-bit quantum target. Round the transaction
-proof cap up to a complete 64-KiB unit while retaining at least 10% above the
-largest selected-profile proof body in the evidence. The pre-economic-revision profile was
-log_blowup 7, 41 queries, query/batch grinding 20, commit grinding 0, binary
-folding and final polynomial log length 0. Its three reference-host generation
-times were 1.332143, 1.315662 and 1.316440 seconds; proof bodies were
-583,552–584,848 bytes. The cap is 12.056% above the largest observed body.
-The [measurement record](v1-multi-asset-evaluation.md) contains the pinned
-security report and process-tree memory evidence. Sample headroom is not a
-mathematical maximum-size proof; the decoder must still enforce the cap and
-wallets must handle an oversized proof without broadcasting an invalid body.
+```sh
+python3 scripts/v1-network-budget.py --native-protocol --economic-rewards
+python3 scripts/v1-network-budget.py --native-protocol --economic-rewards --link-mbps 100
+```
 
-The complete conditional budget adds all of the following categories. These
-are conservative accounting assumptions to qualify, not frozen wire formats:
+`--transaction-proof-cap-bytes`, `--settlement-proof-cap-bytes` and
+`--issuance-proof-cap-bytes` set independent limits. Any revised scan result
+requiring different limits needs the complete model rerun. The economic mode
+requires `--native-protocol`; it is incompatible with `--legacy-baseline`.
+
+The unflagged script retains its earlier generic framing report unchanged.
+`--native-protocol` without `--economic-rewards` reproduces the pre-revision
+single-reward codec model. `--legacy-baseline` reproduces the earlier
+524,288-byte transaction cap and 30-Mbps link without the later reserve.
+These modes preserve historical evidence; they do not describe the revised
+reward format or set its activation requirements.
+
+The earlier b7/q41/g20 actual-AIR measurements selected the retained
+640-KiB transaction cap. Their 583,552–584,848-byte proof bodies and
+1.315662–1.332143-second generation samples are diagnostic baselines for the
+changed unlock/reward relations. The [measurement record](v1-multi-asset-evaluation.md)
+does not qualify a different source or key. Revised qualification requires
+fresh actual-AIR security, three four-worker trials within two seconds on the
+reference class, independent verification and peak-memory evidence. A sample
+size margin is not a mathematical maximum proof length; wallets and decoders
+must reject an oversized body without weakening security or truncating data.
+
+## Payload and codec accounting
+
+A capped transaction uses 655,360 proof bytes, 2,184 envelope bytes, a 78-byte
+private sidecar and a four-byte gossip length prefix: **657,626 bytes** before
+native application framing. Native messages have a 51-byte header. Compact
+references contain both a statement digest and proof digest, **64 bytes** each.
+
+The maximum economic compact fixed fields occupy **20,537 bytes**, including
+five 1,361-byte reward records, two 6,783-byte signed fund payout records and
+the mode/count fields. At 576 positions and the separate settlement cap, the
+compact payload is:
+
+```text
+20,537 + 576 * 64 + 524,288 = 581,689 bytes
+```
+
+Settlement is already carried in this compact body. Do not charge or send an
+additional standalone copy in the selected relay schedule. Three transaction
+copies and three compact bodies total **1,138,122,795 payload bytes** per
+interval, before the remaining wire costs. An independent 8-KiB future block
+record allowance is also charged per compact copy. It is additional planning
+space, not an extracted database measurement.
+
+The two payout slots are a current native codec limit, not a decision that the
+launch fund must use two equally weighted wallets. Launch wallet count and
+individual shares remain pending. The service fails closed without an
+explicit genesis-bound allocation; a different count requires a versioned
+configuration/codec change and new bandwidth/storage accounting.
+
+## Transport and load assumptions
 
 | Category | Assumption |
 | --- | --- |
-| Relay | Three total application copies; the stem/fluff topology must enforce or independently budget fanout above this |
-| Application framing | 16 bytes per message |
+| Relay | Three total application copies; the actual topology must enforce or separately budget greater fanout |
+| Application framing | 51-byte native message header; four-byte transaction gossip prefix |
 | Hybrid-channel records and multiplexing | 16-KiB plaintext records, 18-byte AEAD tag/length and 12-byte stream framing per record |
 | Network packets | MTU 1,500; IPv6 40 bytes, TCP 32 bytes including options, effective payload 1,428 bytes |
 | Link serialization | VLAN Ethernet, FCS, preamble and inter-frame gap add 42 bytes/packet; network plus link overhead is 114 bytes/packet |
 | ACK traffic | Equal reciprocal incoming load; one outgoing ACK per two incoming segments, charged at 114 bytes |
-| Compact blocks | Three full 32-byte-ID inventories, three compact-block inventories and three requests listing every position; 8 KiB/block for permanent block records |
+| Inventories | Three complete 64-byte-reference inventories, even if compact propagation normally suppresses most requests |
+| Missing references | Three sets of 36 request batches of 16 references, with count and end-marker messages; body recovery uses the separate reserve |
 | Issuance | One additional capped proof plus at most 16 KiB declaration/record bytes per interval, each relayed three times |
-| Hybrid handshake | Eight new connections/interval at the 32-KiB aggregate handshake budget, plus framing/packet overhead |
+| Hybrid handshake | Eight new connections/interval at a 32-KiB aggregate handshake budget, plus framing and packet overhead |
+| Session hello | Eight 103-byte hellos, conservatively charged an additional application frame |
 | Keepalive | Sixteen connections, one 64-byte keepalive every 30 seconds |
-| Other control | 64 KiB/interval before framing, for discovery/checkpoint-manifest and unclassified bounded control |
+| Other control | 64 KiB/interval before framing for discovery, checkpoint manifests and bounded control |
 | Retransmission | Extra 2% of the entire framed/packetized base |
 | Missing-body recovery | Extra 5% of that base, including recovered bodies and their transport costs |
 
-Inventory and request messages include every ID, even when compact propagation
-would normally avoid most requests. Missing bodies themselves use the 5%
-recovery reserve; do not count unlimited recovery as an inventory-only cost.
-The symmetric ACK assumption also bounds the modeled receive load. Different
-receive fanout, packet loss, MTU, VPN/PPPoE encapsulation, relay fanout, bursts,
-issuance limits or protocol formats require a new budget. No finite fixed
-bandwidth guarantees progress under arbitrary loss, partitions or adversarial
-traffic. Global/per-peer admission, rate limits and fair scheduling remain
-necessary.
+The production hybrid provider remains unqualified. The 16-KiB record,
+30-byte record/multiplexing overhead and 32-KiB handshake allowances are
+conditional assumptions, not measured provider bounds. The in-memory
+256-KiB handshake reservation is not a transmitted-byte limit.
 
-Issuance rate/byte limits are not yet consensus rules. The one-proof/16-KiB
-entry is a finite planning envelope requiring a separately adopted limit;
-unbounded permissionless issuance has no finite worst-case wire or disk budget.
-At most one issuance proof is reserved in addition to the 576 ordinary proof
-positions, which conservatively overcounts if issuance shares those positions.
-If the selected issuance AIR needs a larger proof, or metadata/notes need more
-record bytes, rerun this model and the disk model before freezing admission.
+Issuance byte/rate limits remain a separate protocol decision. The one-proof /
+16-KiB entry is a finite planning envelope requiring an adopted admission
+limit. It conservatively overcounts when issuance occupies an ordinary
+position. Unbounded permissionless issuance has no finite worst-case wire or
+disk budget. Reconcile actual metadata, proof and initial-note limits before
+qualification.
+
+Different fanout, receive load, packet loss, MTU, tunnel overhead, bursts,
+issuance limits or formats require a new model. A finite bandwidth number
+cannot guarantee progress under arbitrary loss, partitions or adversarial
+traffic. Global/per-peer limits, fair scheduling and bounded recovery remain
+necessary. Full-block synchronization and bulk checkpoint/backup transfers
+need their own rate-limited schedule; the control allowance covers manifests,
+not checkpoint bodies.
 
 ## Result and remaining margin
 
-Reproduce with `python3 scripts/v1-network-budget.py`; use
-`--transaction-proof-cap-bytes` to make a different body limit explicit and
-`--link-mbps 100` for the recommended link. The script reports independent
-transaction, settlement and issuance caps and every wire component.
-`--legacy-baseline` reproduces the earlier 524,288-byte transaction cap and
-30-Mbps link; that historical scenario does not set the current requirement.
-
-After charging all framed payload, ACK, control, retransmission and recovery
-costs, reserve at least 15% of the minimum uplink's capacity:
+After all wire costs, reserve at least 15% of total uplink capacity:
 
 ```text
 minimum_link_mbps = ceil(wire_mbps / 0.85)
 ```
 
-This reserves 15% of total capacity; multiplying the load by 1.15 would leave
-less than 15% unused. The script uses integer byte/rate arithmetic when
-rounding the minimum link and checks that one lower integer-Mbps link fails
-the headroom condition.
+Multiplying load by 1.15 would leave less than 15% unused. The script uses
+integer byte/rate arithmetic to select the link and checks that one lower
+integer-Mbps link fails the reserve requirement.
 
-The full conditional wire budget is **1,368,811,477 bytes per interval**, or
-**36.50163939 Mbps**. The smallest integer-Mbps link satisfying the capacity
-reserve is **43 Mbps**; a 42-Mbps link does not leave 15% unused.
+The economic model uses **1,369,222,560 wire bytes per 300 seconds**, or
+**36.51260160 Mbps**. Its minimum is **43 Mbps**; 42 Mbps fails the reserve.
 
 | Link | Serialization at modeled load | Remaining rate | Remaining fraction |
 | --- | ---: | ---: | ---: |
-| 43 Mbps minimum | 254.66 seconds | 6.498 Mbps | 15.11% |
-| 100 Mbps recommended | 109.50 seconds | 63.498 Mbps | 63.50% |
+| 43 Mbps conditional minimum | 254.74 seconds | 6.487 Mbps | 15.086973% |
+| 100 Mbps recommended | 109.54 seconds | 63.487 Mbps | 63.487398% |
 
-A 100-Mbps link provides additional concurrent catch-up and burst capacity.
-The budget is interval-average serialization, not a propagation-latency bound.
-Measure application and packet counters, actual handshakes, loss,
-reconstruction traffic and queue growth with the real hybrid listener and
-compact-block implementation at both link classes. Report any exceedance;
-do not silently lower the 576-position consensus limit or weaken security to
-force a fit. Future circuit optimization can reduce proof size and allow a
-separately reviewed reduction in the proof cap and minimum link. It must not
-change the currently selected profile or budget without regenerated evidence.
-Object-storage backup uploads and bulk checkpoint downloads need a separate
-rate-limited maintenance window or extra bandwidth; the 64-KiB control
-allowance covers manifests, not checkpoint bodies.
+For sensitivity, `--native-protocol --economic-rewards --duplicate-settlement`
+adds a standalone settlement copy: **1,371,111,374 bytes**, **36.56296997 Mbps**
+and a **44-Mbps** minimum. It is not the selected relay schedule. The historical
+native single-reward calculation was 1,369,154,385 bytes / 36.51078360 Mbps;
+the additional economic records therefore add 68,175 modeled wire bytes per
+interval under the selected schedule.
 
-## Native protocol framing check
-
-Run `python3 scripts/v1-network-budget.py --native-protocol` to apply the
-current native library codec while preserving the original default and legacy
-reports. This mode uses the 51-byte application header, the four-byte gossip
-envelope-length prefix and 64-byte compact references containing both statement
-and proof digests. The compact fixed fields occupy 1,525 bytes, including the
-reward commitment/ciphertext and settlement-length field. At 576 positions and
-the independent 524,288-byte settlement cap, its payload is
-`1,525 + 576 * 64 + 524,288 = 562,677` bytes.
-
-Settlement is already carried in the compact body; this mode charges no
-separate settlement message. It retains the conservative three-copy
-full-reference inventory allowance and an additional 8 KiB/block record
-allowance. Missing-reference requests are split into 36 batches of 16 per
-copy, with a two-byte count, 64-byte references and an end marker per batch.
-All capped transaction envelopes include the private sidecar and four-byte
-gossip prefix. The existing issuance, packet/ACK, control, retransmission and
-5% body-recovery allowances remain. Requesting every reference is a metadata
-allowance; it does not authorize unbounded body recovery beyond that reserve.
-
-| Native relay schedule | Wire bytes/300 seconds | Wire rate | Minimum link for 15% unused |
-| --- | ---: | ---: | ---: |
-| Settlement carried once in compact | 1,369,154,385 | 36.51078360 Mbps | 43 Mbps |
-| Additional standalone settlement copy | 1,371,043,201 | 36.56115203 Mbps | 44 Mbps |
-
-The first case leaves 15.0912% unused on a 43-Mbps link; 42 Mbps fails the
-15% reserve. Reproduce the second case with `--native-protocol
---duplicate-settlement`. It leaves only 14.9741% unused at 43 Mbps and is a
-sensitivity case, not a requirement to send a second settlement proof. Full
-block synchronization or duplicate relay still needs an explicit schedule and
-budget; the compact calculation does not include unlimited full-block copies.
-
-The production hybrid provider remains unavailable. Its 16-KiB record/30-byte
-crypto-multiplexing overhead and 32-KiB per-handshake payload allowance are
-conditional assumptions, not validated provider wire limits. Eight 103-byte
-session hellos are conservatively charged with an extra application frame.
-The in-memory 256-KiB handshake reservation is not a transmitted-byte limit.
-A larger actual handshake, record overhead or relay fanout can require a new
-floor; measure and rerun the budget before activation. This calculation does
-not change frozen proof parameters or establish network acceptance.
+These are interval-average serialization figures, not propagation-latency
+bounds. Measure actual application/packet counters, handshakes, reconstruction,
+loss and queue growth with the real provider at the minimum and recommended
+link classes. Report exceedances without lowering 576 positions or weakening
+security. A smaller future proof requires a new security screen, measurements,
+key/profile freeze and complete budget before reducing the uplink requirement.

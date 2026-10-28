@@ -31,7 +31,7 @@ pub const UNUSED_FEE_CARRIES: Range<usize> = 621..630;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AssetRef {
     Note(usize),
-    Si,
+    Sip,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,7 +46,7 @@ pub fn equality_binding(group: usize, note: usize) -> EqualityBinding {
     let a = if group < 2 {
         AssetRef::Note(group)
     } else {
-        AssetRef::Si
+        AssetRef::Sip
     };
     let b = AssetRef::Note(note);
     if a == b {
@@ -232,7 +232,7 @@ mod tests {
                         EqualityBinding::Cell(a, b) => {
                             let value = |r| match r {
                                 AssetRef::Note(i) => ids[i],
-                                AssetRef::Si => [0; 16],
+                                AssetRef::Sip => [0; 16],
                             };
                             value(a) == value(b)
                         }

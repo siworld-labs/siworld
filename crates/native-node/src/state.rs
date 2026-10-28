@@ -218,11 +218,14 @@ impl Config {
         Ok(config)
     }
     pub fn genesis_id(&self) -> Hash {
+        self.genesis_id_for_profile(&crate::proofs::protocol_profile_fingerprint())
+    }
+    pub(crate) fn genesis_id_for_profile(&self, profile: &Hash) -> Hash {
         let mut h = blake3::Hasher::new_derive_key("siworld native engineering genesis v2");
         h.update(&self.encode_rules());
         h.update(b"asert:14400;mtp:11;sequential-blake3");
         h.update(native::codec::SUITE_ID);
-        h.update(b"transaction:b7:q41:g20;settlement:576:b8:q36:g20");
+        h.update(profile);
         *h.finalize().as_bytes()
     }
 }
@@ -723,3 +726,20 @@ pub fn tail_slots(network: Hash, height: u64, count: usize) -> Result<Vec<Settle
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod proof_profile_tests {
+    use super::*;
+
+    #[test]
+    fn genesis_authenticates_the_selected_proof_profile() {
+        let config = Config::development([94; 32], 0).unwrap();
+        let profile = crate::proofs::protocol_profile_fingerprint();
+        let genesis = config.genesis_id();
+        assert_eq!(genesis, config.genesis_id_for_profile(&profile));
+        assert_eq!(genesis, config.genesis_id());
+        let mut changed = profile;
+        changed[0] ^= 1;
+        assert_ne!(genesis, config.genesis_id_for_profile(&changed));
+    }
+}

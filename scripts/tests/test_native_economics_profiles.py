@@ -16,7 +16,8 @@ SPEC.loader.exec_module(P)
 SPEC = importlib.util.spec_from_file_location('native_measurement_fixtures', ROOT / 'scripts/tests/test_multi_asset_measurement.py')
 FIXTURE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(FIXTURE)
-SHAPES = ((256, 1420, 243), (1024, 581, 609), (128, 438, 10))
+SHAPES = ((256, 1440, 243), (1024, 581, 609), (128, 438, 10))
+PUBLIC_VALUES = (101, 7050, 72)
 
 
 def key(kind, parameters, payload=b'\x07' * 32, shape=None):
@@ -49,7 +50,7 @@ def synthetic_profile():
         report = FIXTURE.security()
         rows, main, pre = SHAPES[index]
         report['shape'].update(base_trace_rows=rows, main_width=main, preprocessed_width=pre,
-            public_values=239 if kind == 'settlement' else 1)
+            public_values=PUBLIC_VALUES[index])
         report['fri'] = parameters
         reports[kind] = report
         profile['repeated_measurements'][kind] = {'measured': True, 'parameters': parameters,
@@ -103,7 +104,11 @@ class EconomicNativeProfileTests(unittest.TestCase):
         self.assertEqual(value['relation_revision'], 'native-v1-economics-1')
         self.assertEqual(value['relations'][0]['parameters']['log_blowup'], 6)
         self.assertEqual(value['relations'][0]['parameters']['query_pow_bits'], 24)
-        self.assertEqual(value['relations'][1]['security']['shape']['public_values'], 239)
+        for index, relation in enumerate(value['relations']):
+            shape = relation['security']['shape']
+            self.assertEqual((shape['base_trace_rows'], shape['main_width'],
+                shape['preprocessed_width']), SHAPES[index])
+            self.assertEqual(shape['public_values'], PUBLIC_VALUES[index])
         self.assertEqual(value['relations'][0]['performance']['1']['trial_count'], 3)
         for relation in value['relations']:
             self.assertNotIn('status', relation)
@@ -122,8 +127,12 @@ class EconomicNativeProfileTests(unittest.TestCase):
             lambda p: p['tool_source_sha256'].update({P.TOOLS[0]: '0' * 64}),
             lambda p: p['relations'][1].update(capacity=575),
             lambda p: p['relations'][0]['parameters'].update(log_blowup=7),
+            lambda p: p['relations'][0]['security']['shape'].update(main_width=1420),
+            lambda p: p['relations'][0]['security']['shape'].update(main_width=1488),
             lambda p: p['relations'][1]['security']['shape'].update(main_width=580),
-            lambda p: p['relations'][1]['security']['shape'].update(public_values=238),
+            lambda p: p['relations'][0]['security']['shape'].update(public_values=100),
+            lambda p: p['relations'][1]['security']['shape'].update(public_values=7049),
+            lambda p: p['relations'][2]['security']['shape'].update(public_values=71),
             lambda p: p['relations'][2]['public_verifier_key'].update(sha256='0' * 64),
             lambda p: p['relations'][0]['public_verifier_key'].update(width=True),
             lambda p: p['relations'][2]['performance']['1'].update(trial_count=2),

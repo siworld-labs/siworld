@@ -10,11 +10,15 @@ use native::settlement::{
     FixedSettlementWitness, RewardPlan, SettlementAir, SettlementProver, validate_settlement_public,
 };
 use native::{Cfg, FriParams};
-use p3_air::BaseAir;
+use p3_air::{
+    Air, BaseAir,
+    symbolic::{AirLayout, SymbolicAirBuilder, get_max_constraint_degree},
+};
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
 use p3_symmetric::MerkleCap;
 use p3_uni_stark::{PreprocessedVerifierKey, verify_with_preprocessed};
 use sha2::{Digest as _, Sha256};
+use std::sync::OnceLock;
 
 const MANIFEST: &[u8] =
     include_bytes!("../../bench-multi-asset/artifacts/v1-native-proof-profiles.json");
@@ -22,6 +26,9 @@ const MANIFEST_SHA256: &str = "8191bf5779f135acc1c6431d2d3c3218e63695b353da082a6
 const KEY_HEADER: usize = 47;
 const KEY_COMMITMENT: usize = 1 + 2 * 12 * 4;
 const SETTLEMENT_CAPACITY: usize = 576;
+// Bump when relation semantics change without changing the trusted dimensions.
+// This identifier is independent of reports, source hashes and measurements.
+const RELATION_REVISION: &[u8] = b"native-v1-economics-1";
 
 #[derive(Clone, Copy)]
 enum Relation {
@@ -79,6 +86,106 @@ impl Relation {
             max_log_arity: 1,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TrustedAirShape {
+    main_width: u64,
+    preprocessed_width: u64,
+    public_values: u64,
+    base_height: u64,
+    constraint_degree: u64,
+}
+
+impl TrustedAirShape {
+    fn from_air<A: Air<SymbolicAirBuilder<F>>>(air: &A, base_height: usize) -> Self {
+        Self {
+            main_width: air.width() as u64,
+            preprocessed_width: air.preprocessed_width() as u64,
+            public_values: air.num_public_values() as u64,
+            base_height: base_height as u64,
+            constraint_degree: get_max_constraint_degree::<F, A>(
+                air,
+                AirLayout::from_air(air),
+                base_height,
+            ) as u64,
+        }
+    }
+}
+
+// Construct only deterministic AIR schedules and metadata. Neither this path
+// nor symbolic degree extraction constructs a trace, key, prover or proof.
+fn trusted_airs() -> (TransactionAir, SettlementAir) {
+    (
+        TransactionAir::new().with_min_height(Relation::Transaction.params().hiding_min_height()),
+        SettlementAir::new(SETTLEMENT_CAPACITY)
+            .with_min_height(Relation::Settlement.params().hiding_min_height()),
+    )
+}
+
+fn trusted_air_shapes() -> [TrustedAirShape; 2] {
+    let (transaction, settlement) = trusted_airs();
+    [
+        TrustedAirShape::from_air(&transaction, transaction.slot.height),
+        TrustedAirShape::from_air(&settlement, settlement.height),
+    ]
+}
+
+/// Consensus identity of the exact fixed proof relations. SWMP encodings bind
+/// kind, capacity, FRI parameters, preprocessing dimensions and roots; the
+/// semantic revision and actual AIR shapes also bind the admission decoder.
+/// Measurement reports and their source hashes are deliberately excluded.
+/// Only trusted local constructors and fixed constants enter this identity.
+pub(crate) fn protocol_profile_fingerprint() -> [u8; 32] {
+    static FINGERPRINT: OnceLock<[u8; 32]> = OnceLock::new();
+    *FINGERPRINT.get_or_init(|| {
+        let transaction = decode_hex(Relation::Transaction.key_hex())
+            .expect("fixed transaction key has canonical hex encoding");
+        let settlement = decode_hex(Relation::Settlement.key_hex())
+            .expect("fixed settlement key has canonical hex encoding");
+        profile_fingerprint_from_keys(
+            native::codec::SUITE_ID,
+            FORMAT_VERSION,
+            RELATION_REVISION,
+            &transaction,
+            &settlement,
+            &trusted_air_shapes(),
+        )
+    })
+}
+
+fn profile_fingerprint_from_keys(
+    suite: &[u8],
+    version: u16,
+    revision: &[u8],
+    transaction: &[u8],
+    settlement: &[u8],
+    shapes: &[TrustedAirShape; 2],
+) -> [u8; 32] {
+    let mut hash = blake3::Hasher::new_derive_key("siworld native protocol proof profile v1");
+    hash.update(&version.to_le_bytes());
+    hash.update(&(suite.len() as u64).to_le_bytes());
+    hash.update(suite);
+    hash.update(&(revision.len() as u64).to_le_bytes());
+    hash.update(revision);
+    for ((relation, key), shape) in [(1u8, transaction), (2u8, settlement)]
+        .into_iter()
+        .zip(shapes)
+    {
+        hash.update(&[relation]);
+        hash.update(&(key.len() as u64).to_le_bytes());
+        hash.update(key);
+        for dimension in [
+            shape.main_width,
+            shape.preprocessed_width,
+            shape.public_values,
+            shape.base_height,
+            shape.constraint_degree,
+        ] {
+            hash.update(&dimension.to_le_bytes());
+        }
+    }
+    *hash.finalize().as_bytes()
 }
 
 fn decode_hex(text: &str) -> Result<Vec<u8>, String> {
@@ -205,9 +312,7 @@ impl NativeVerifier {
         let sp = Relation::Settlement.params();
         let transaction_cfg = tp.config();
         let settlement_cfg = sp.config();
-        let transaction_air = TransactionAir::new().with_min_height(tp.hiding_min_height());
-        let settlement_air =
-            SettlementAir::new(SETTLEMENT_CAPACITY).with_min_height(sp.hiding_min_height());
+        let (transaction_air, settlement_air) = trusted_airs();
         let transaction_vk = load_key(
             Relation::Transaction,
             &frozen_key_bytes(Relation::Transaction)?,
@@ -388,6 +493,168 @@ impl NativeProver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protocol_profile_binds_suite_version_and_both_exact_keys() {
+        let transaction = decode_hex(Relation::Transaction.key_hex()).unwrap();
+        let settlement = decode_hex(Relation::Settlement.key_hex()).unwrap();
+        let shapes = trusted_air_shapes();
+        let fingerprint_for_keys =
+            |suite: &[u8], version, transaction: &[u8], settlement: &[u8]| {
+                profile_fingerprint_from_keys(
+                    suite,
+                    version,
+                    RELATION_REVISION,
+                    transaction,
+                    settlement,
+                    &shapes,
+                )
+            };
+        let fingerprint = fingerprint_for_keys(
+            native::codec::SUITE_ID,
+            FORMAT_VERSION,
+            &transaction,
+            &settlement,
+        );
+        assert_eq!(fingerprint, protocol_profile_fingerprint());
+        assert_eq!(fingerprint, protocol_profile_fingerprint());
+        assert_ne!(
+            fingerprint,
+            fingerprint_for_keys(
+                b"different-proof-suite",
+                FORMAT_VERSION,
+                &transaction,
+                &settlement,
+            )
+        );
+        assert_ne!(
+            fingerprint,
+            fingerprint_for_keys(
+                native::codec::SUITE_ID,
+                FORMAT_VERSION + 1,
+                &transaction,
+                &settlement,
+            )
+        );
+        // Include relation type/capacity, each FRI word, dimensions and every
+        // preprocessing-commitment byte, not only the decoded AIR dimensions.
+        for (kind, original) in [&transaction, &settlement].into_iter().enumerate() {
+            for offset in 0..original.len() {
+                let mut changed = original.to_vec();
+                changed[offset] ^= 1;
+                let candidate = if kind == 0 {
+                    fingerprint_for_keys(
+                        native::codec::SUITE_ID,
+                        FORMAT_VERSION,
+                        &changed,
+                        &settlement,
+                    )
+                } else {
+                    fingerprint_for_keys(
+                        native::codec::SUITE_ID,
+                        FORMAT_VERSION,
+                        &transaction,
+                        &changed,
+                    )
+                };
+                assert_ne!(fingerprint, candidate, "relation {kind}, offset {offset}");
+            }
+        }
+        assert_ne!(
+            fingerprint,
+            fingerprint_for_keys(
+                native::codec::SUITE_ID,
+                FORMAT_VERSION,
+                &settlement,
+                &transaction,
+            )
+        );
+    }
+
+    #[test]
+    fn protocol_profile_uses_the_actual_trusted_air_shapes() {
+        let (transaction, settlement) = trusted_airs();
+        let shapes = trusted_air_shapes();
+        for (shape, width, preprocessed, public, height, degree) in [
+            (
+                shapes[0],
+                transaction.width(),
+                transaction.preprocessed_width(),
+                transaction.num_public_values(),
+                transaction.slot.height,
+                get_max_constraint_degree::<F, _>(
+                    &transaction,
+                    AirLayout::from_air(&transaction),
+                    transaction.slot.height,
+                ),
+            ),
+            (
+                shapes[1],
+                settlement.width(),
+                settlement.preprocessed_width(),
+                settlement.num_public_values(),
+                settlement.height,
+                get_max_constraint_degree::<F, _>(
+                    &settlement,
+                    AirLayout::from_air(&settlement),
+                    settlement.height,
+                ),
+            ),
+        ] {
+            assert_eq!(shape.main_width, width as u64);
+            assert_eq!(shape.preprocessed_width, preprocessed as u64);
+            assert_eq!(shape.public_values, public as u64);
+            assert_eq!(shape.base_height, height as u64);
+            assert_eq!(shape.constraint_degree, degree as u64);
+        }
+    }
+
+    #[test]
+    fn unchanged_keys_cannot_reuse_genesis_with_a_different_relation_or_shape() {
+        let transaction = decode_hex(Relation::Transaction.key_hex()).unwrap();
+        let settlement = decode_hex(Relation::Settlement.key_hex()).unwrap();
+        let shapes = trusted_air_shapes();
+        let profile = |revision: &[u8], shapes: &[TrustedAirShape; 2]| {
+            profile_fingerprint_from_keys(
+                native::codec::SUITE_ID,
+                FORMAT_VERSION,
+                revision,
+                &transaction,
+                &settlement,
+                shapes,
+            )
+        };
+        let original = profile(RELATION_REVISION, &shapes);
+        let config = crate::state::Config::development([95; 32], 0).unwrap();
+        let genesis = config.genesis_id();
+        assert_eq!(original, protocol_profile_fingerprint());
+        assert_eq!(genesis, config.genesis_id_for_profile(&original));
+        let changed_revision = profile(b"different-relation-revision", &shapes);
+        assert_ne!(original, changed_revision);
+        assert_ne!(genesis, config.genesis_id_for_profile(&changed_revision));
+        // Main-trace optimizations can retain exactly the same SWMP bytes.
+        // Every trusted shape component must still change network identity.
+        for relation in 0..shapes.len() {
+            for dimension in 0..5 {
+                let mut changed = shapes;
+                let shape = &mut changed[relation];
+                match dimension {
+                    0 => shape.main_width += 1,
+                    1 => shape.preprocessed_width += 1,
+                    2 => shape.public_values += 1,
+                    3 => shape.base_height *= 2,
+                    4 => shape.constraint_degree += 1,
+                    _ => unreachable!(),
+                }
+                let candidate = profile(RELATION_REVISION, &changed);
+                assert_ne!(
+                    original, candidate,
+                    "relation {relation}, dimension {dimension}"
+                );
+                assert_ne!(genesis, config.genesis_id_for_profile(&candidate));
+            }
+        }
+    }
 
     #[test]
     fn frozen_public_keys_load_without_prover_setup() {

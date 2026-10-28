@@ -105,6 +105,14 @@ NATIVE_FRAME_BYTES = 51
 NATIVE_GOSSIP_LENGTH_BYTES = 4
 NATIVE_REFERENCE_BYTES = 64
 NATIVE_COMPACT_FIXED_BYTES = 1525
+NATIVE_MAXIMUM_REWARD_NOTES = 5
+NATIVE_REWARD_RECORD_BYTES = 1361
+NATIVE_MAXIMUM_FUND_PAYOUTS = 2
+NATIVE_SIGNED_FUND_PAYOUT_BYTES = 6783
+NATIVE_ECONOMIC_COMPACT_FIXED_BYTES = (
+    NATIVE_COMPACT_FIXED_BYTES + 2
+    + (NATIVE_MAXIMUM_REWARD_NOTES - 1) * NATIVE_REWARD_RECORD_BYTES
+    + NATIVE_MAXIMUM_FUND_PAYOUTS * NATIVE_SIGNED_FUND_PAYOUT_BYTES)
 NATIVE_MISSING_BATCH = 16
 NATIVE_HELLO_BYTES = 103
 NATIVE_EXTRA_BLOCK_RECORD_BYTES = 8192
@@ -115,7 +123,7 @@ def native_protocol_report(positions=576, link_mbps=None,
                            settlement_proof_cap=SETTLEMENT_PROOF_CAP,
                            issuance_proof_cap=ISSUANCE_PROOF_CAP,
                            capacity_headroom_percent=CAPACITY_HEADROOM_PERCENT,
-                           duplicate_settlement=False):
+                           duplicate_settlement=False, economic_rewards=False):
     """Budget current native framing with explicitly unqualified channel costs.
 
     The compact body already contains settlement. A separate settlement copy
@@ -125,6 +133,9 @@ def native_protocol_report(positions=576, link_mbps=None,
     charged an additional application frame even though session setup writes
     its fixed bytes directly. Hybrid record and handshake sizes are assumptions,
     not measurements or bounds established by the unavailable provider.
+    Economic rewards opt in to the maximum compact record: five reward notes,
+    two signed fund payouts and two explicit mode/count bytes. The independent
+    8-KiB future-record allowance is retained in addition to that encoded size.
     """
     # Preserve default-report validation and metadata without changing its model.
     result = report(positions, link_mbps, transaction_proof_cap,
@@ -138,8 +149,9 @@ def native_protocol_report(positions=576, link_mbps=None,
 
     transaction = (transaction_proof_cap + TRANSACTION_ENVELOPE_BYTES
                    + SIDECAR_BYTES + NATIVE_GOSSIP_LENGTH_BYTES)
-    compact = (NATIVE_COMPACT_FIXED_BYTES + positions * NATIVE_REFERENCE_BYTES
-               + settlement_proof_cap)
+    compact_fixed = (NATIVE_ECONOMIC_COMPACT_FIXED_BYTES if economic_rewards
+                     else NATIVE_COMPACT_FIXED_BYTES)
+    compact = compact_fixed + positions * NATIVE_REFERENCE_BYTES + settlement_proof_cap
     request_batches = positions // NATIVE_MISSING_BATCH
     request_payload = 2 + NATIVE_MISSING_BATCH * NATIVE_REFERENCE_BYTES
     components = {
@@ -173,7 +185,7 @@ def native_protocol_report(positions=576, link_mbps=None,
         'application_frame_bytes': NATIVE_FRAME_BYTES,
         'gossip_length_prefix_bytes': NATIVE_GOSSIP_LENGTH_BYTES,
         'compact_reference_bytes': NATIVE_REFERENCE_BYTES,
-        'compact_fixed_bytes': NATIVE_COMPACT_FIXED_BYTES,
+        'compact_fixed_bytes': compact_fixed,
         'compact_payload_bytes': compact,
         'extra_block_record_allowance_bytes': NATIVE_EXTRA_BLOCK_RECORD_BYTES,
         'missing_reference_batch_size': NATIVE_MISSING_BATCH,
@@ -183,6 +195,13 @@ def native_protocol_report(positions=576, link_mbps=None,
         'handshake_payload_allowance_bytes': 32_768,
         'hybrid_provider_qualified': False,
     })
+    if economic_rewards:
+        parameters.update({
+            'economic_rewards': True,
+            'maximum_reward_notes': NATIVE_MAXIMUM_REWARD_NOTES,
+            'maximum_signed_fund_payouts': NATIVE_MAXIMUM_FUND_PAYOUTS,
+            'signed_fund_payout_bytes': NATIVE_SIGNED_FUND_PAYOUT_BYTES,
+        })
     result.update({
         'model': 'native-protocol-framing-with-conditional-channel-allowances',
         'minimum_link_mbps': minimum_link,
@@ -217,6 +236,8 @@ if __name__ == '__main__':
                         help='use native 51-byte framing and exact-proof compact references')
     parser.add_argument('--duplicate-settlement', action='store_true',
                         help='with --native-protocol, also charge a separate settlement copy')
+    parser.add_argument('--economic-rewards', action='store_true',
+                        help='with --native-protocol, include five reward notes and two signed fund payouts')
     parser.add_argument('--legacy-baseline', action='store_true',
                         help='reproduce the prior 524288-byte proof caps and 30-Mbps link without extra headroom')
     args = parser.parse_args()
@@ -224,11 +245,13 @@ if __name__ == '__main__':
         parser.error('--native-protocol and --legacy-baseline are mutually exclusive')
     if args.duplicate_settlement and not args.native_protocol:
         parser.error('--duplicate-settlement requires --native-protocol')
+    if args.economic_rewards and not args.native_protocol:
+        parser.error('--economic-rewards requires --native-protocol')
     if args.native_protocol:
         print(json.dumps(native_protocol_report(
             args.positions, args.link_mbps, args.transaction_proof_cap_bytes,
             args.settlement_proof_cap_bytes, args.issuance_proof_cap_bytes,
-            args.capacity_headroom_percent, args.duplicate_settlement),
+            args.capacity_headroom_percent, args.duplicate_settlement, args.economic_rewards),
             indent=2, sort_keys=True))
     elif args.legacy_baseline:
         print(json.dumps(report(args.positions, 30, 524_288, 524_288, 524_288, 0),

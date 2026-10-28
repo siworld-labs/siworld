@@ -163,6 +163,58 @@ class EconomicsFreezeTests(unittest.TestCase):
             with self.subTest(index=index), self.assertRaises(ValueError):
                 self.freeze(source)
 
+    def test_known_optional_socket_counter_is_preserved_when_zero_and_consistent(self):
+        source = completed_summary()
+        rows = [row for entry in source['profile_results'] for row in entry['trials']]
+        rows += [row for entry in source['repeated_measurements'].values()
+                 for group in entry['workers'].values() for row in group['trials']]
+        for row in rows:
+            for field in ('memory_events_before', 'memory_events_after', 'memory_events_delta'):
+                row[field]['sock_throttled'] = 0
+        value = self.freeze(source)
+        for entry in value['profiles']:
+            for row in entry['kernel_trials']:
+                self.assertEqual(row['memory_events_delta']['sock_throttled'], 0)
+                self.assertEqual(row['memory_events_before'], row['memory_events_delta'])
+                self.assertEqual(row['memory_events_after'], row['memory_events_delta'])
+        self.assertEqual(F.validate(value), value)
+
+    def test_socket_counter_must_be_zero_and_match_all_three_snapshots(self):
+        source = completed_summary()
+        original = source['repeated_measurements']['transaction']['workers']['1']['trials'][0]
+        fields = ('memory_events_before', 'memory_events_after', 'memory_events_delta')
+        for field in fields:
+            original[field]['sock_throttled'] = 0
+        self.assertEqual(
+            F.economic_trial(original, 'transaction', 1, original['parameters'])
+                ['memory_events_delta']['sock_throttled'], 0)
+        for field in fields:
+            for value in (1, -1, False):
+                row = copy.deepcopy(original)
+                row[field]['sock_throttled'] = value
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    F.economic_trial(row, 'transaction', 1, row['parameters'])
+            row = copy.deepcopy(original)
+            row[field].pop('sock_throttled')
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                F.economic_trial(row, 'transaction', 1, row['parameters'])
+        row = copy.deepcopy(original)
+        for field in fields:
+            row[field]['unknown_kernel_counter'] = 0
+        with self.assertRaises(ValueError):
+            F.economic_trial(row, 'transaction', 1, row['parameters'])
+
+    def test_all_six_standard_memory_counters_remain_mandatory(self):
+        source = completed_summary()
+        original = source['repeated_measurements']['transaction']['workers']['1']['trials'][0]
+        for key in ('low', 'high', 'max', 'oom', 'oom_kill', 'oom_group_kill'):
+            row = copy.deepcopy(original)
+            for field in ('memory_events_before', 'memory_events_after', 'memory_events_delta'):
+                row[field].pop(key)
+                row[field]['sock_throttled'] = 0
+            with self.subTest(missing=key), self.assertRaises(ValueError):
+                F.economic_trial(row, 'transaction', 1, row['parameters'])
+
     def test_margin_is_based_on_all_selected_worker_counts_and_cannot_exceed_limit(self):
         source = completed_summary()
         row = source['repeated_measurements']['transaction']['workers']['1']['trials'][0]

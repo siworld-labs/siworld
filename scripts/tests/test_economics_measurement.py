@@ -73,7 +73,8 @@ class EconomicsMeasurementTests(unittest.TestCase):
             with self.subTest(change=change):
                 self.assertIsNone(M.choose_economics_candidate([value]))
 
-    def collect(self, base, grids=None, alter=None, hardware=True):
+    def collect(self, base, grids=None, alter=None, hardware=True,
+                hardware_profile='epyc7763-baseline'):
         screen_path = base / 'screen.json'
         screen_path.write_text(json.dumps({'air_source_sha256': 'a' * 64,
             'dependencies_sha256': 'b' * 64}))
@@ -82,7 +83,7 @@ class EconomicsMeasurementTests(unittest.TestCase):
         args = SimpleNamespace(output=base / 'output', screen=screen_path,
             executable=executable, worker=worker, private_parent=base,
             grid_mode='full', scan_mode='economics-candidate',
-            hardware_profile='epyc7763-baseline', timeout=5)
+            hardware_profile=hardware_profile, timeout=5)
         configs = []
         def run_scope(command, **_):
             cfg = json.loads(Path(command[command.index('--worker-config') + 1]).read_text())
@@ -91,6 +92,7 @@ class EconomicsMeasurementTests(unittest.TestCase):
             size = 600000 if coordinate == (6, 20) else 620000
             value = {**trial(size=size, workers=cfg['workers']), 'kind': cfg['kind'],
                 'trial': cfg['trial'], 'parameters': cfg['parameters'],
+                'hardware_profile': cfg['hardware_profile'],
                 'measurement_scope_sha256': hashlib.sha256(cfg['unit'].encode()).hexdigest()}
             if cfg['kind'] == 'transaction' and cfg['workers'] == 4:
                 if coordinate == (5, 20):
@@ -110,7 +112,7 @@ class EconomicsMeasurementTests(unittest.TestCase):
              mock.patch.object(M.subprocess, 'check_output', return_value='a' * 40), \
              mock.patch.object(M.subprocess, 'run', side_effect=run_scope):
             code = M.collect(args)
-        qualify.assert_called_once_with(args.output, 'epyc7763-baseline')
+        qualify.assert_called_once_with(args.output, hardware_profile)
         saved = json.loads((args.output / 'summary.json').read_text()) if hardware else None
         return code, saved, configs
 
@@ -167,6 +169,40 @@ class EconomicsMeasurementTests(unittest.TestCase):
         self.assertEqual(rows[1]['memory_events_delta']['oom_kill'], 1)
         self.assertFalse(rows[1]['resource_control_pass'])
         self.assertFalse(saved['acceptance'])
+
+    def test_explicit_control_runs_the_same_grid_and_repeats_without_baseline_eligibility(self):
+        with tempfile.TemporaryDirectory() as baseline_dir, tempfile.TemporaryDirectory() as control_dir:
+            baseline_code, baseline, baseline_configs = self.collect(Path(baseline_dir))
+            code, saved, configs = self.collect(Path(control_dir), hardware_profile='epyc9v45-control')
+        self.assertEqual((baseline_code, code), (0, 0))
+        self.assertEqual(len(configs), 39)
+        projection = lambda rows: [(r['kind'], r['workers'], r['trial'], r['parameters']) for r in rows]
+        self.assertEqual(projection(configs), projection(baseline_configs))
+        self.assertEqual(saved['candidate_parameters'], baseline['candidate_parameters'])
+        self.assertEqual(saved['status'], 'control-diagnostic-only')
+        self.assertEqual(saved['hardware_profile'], 'epyc9v45-control')
+        self.assertFalse(saved['baseline_eligible'])
+        self.assertTrue(baseline['baseline_eligible'])
+        self.assertEqual({row['hardware_profile'] for row in configs}, {'epyc9v45-control'})
+        rows = [row for result in saved['profile_results'] for row in result['trials']]
+        rows += [row for kind, relation in saved['repeated_measurements'].items()
+                 for workers, group in relation['workers'].items()
+                 if (kind, workers) != ('transaction', '4') for row in group['trials']]
+        self.assertEqual(len(rows), 39)
+        self.assertEqual(len({row['measurement_scope_sha256'] for row in rows}), 39)
+        self.assertEqual({row['hardware_profile'] for row in rows}, {'epyc9v45-control'})
+        self.assertTrue(saved['all_measurements_complete'])
+        self.assertFalse(saved['acceptance'])
+        self.assertFalse(saved['cryptographic_approval'])
+        self.assertFalse(saved['network_activation'])
+
+    def test_control_qualification_failure_prevents_all_proof_processes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            code, saved, configs = self.collect(Path(directory), hardware=False,
+                hardware_profile='epyc9v45-control')
+        self.assertEqual(code, 1)
+        self.assertIsNone(saved)
+        self.assertEqual(configs, [])
 
     def test_missing_security_passing_related_profile_is_not_silently_skipped(self):
         available = grid(); available['settlement'][(8, 20)] = None

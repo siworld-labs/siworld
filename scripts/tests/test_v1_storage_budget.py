@@ -1,6 +1,9 @@
 """Check retention and minimum-position boundaries in the V1 capacity model."""
 
 import importlib.util
+import json
+import subprocess
+import sys
 from pathlib import Path
 import unittest
 
@@ -94,6 +97,43 @@ class StorageBudgetTests(unittest.TestCase):
                 'transaction_proof_rolling_bytes', 'sidecar_rolling_bytes',
                 'settlement_proof_rolling_bytes', 'issuance_proof_rolling_allowance_bytes')),
                 rows[0]['rolling_bytes'])
+
+    def test_economic_reward_block_records_add_permanent_growth_once(self):
+        historical = budget.report()
+        result = budget.report(economic_rewards=True)
+        self.assertEqual(result['block_record_allowance_bytes_per_block'], 32_768)
+        self.assertEqual(result['permanent_bytes_per_position'], 2115)
+        self.assertTrue(result['planning_only'])
+        self.assertFalse(result['measured_database_bound'])
+        self.assertTrue(result['parameters']['economic_rewards'])
+        self.assertEqual(result['parameters']['transaction_proof_cap_bytes'], 655_360)
+        for name, rows in result['cases'].items():
+            for before, after in zip(historical['cases'][name], rows):
+                years = after['years']
+                added_records = 288 * 365 * years * (32_768 - 8192)
+                self.assertEqual(after['permanent_block_record_allowance_bytes'],
+                                 288 * 365 * years * 32_768)
+                self.assertEqual(after['index_state_allowance_bytes'] -
+                                 before['index_state_allowance_bytes'], added_records // 4)
+                self.assertEqual(after['used_bytes'] - before['used_bytes'],
+                                 added_records * 5 // 4)
+                for component in ('rolling_bytes', 'permanent_public_bytes',
+                                  'permanent_issuance_allowance_bytes',
+                                  'database_working_allowance_bytes', 'system_bytes'):
+                    self.assertEqual(after[component], before[component])
+        self.assertEqual(result['cases']['maximum'][0]['used_bytes'], 538_715_116_032)
+
+    def test_economic_reward_storage_cli_is_explicit_and_legacy_output_is_unchanged(self):
+        result = json.loads(subprocess.check_output(
+            [sys.executable, str(SCRIPT), '--economic-rewards'], text=True))
+        self.assertEqual(result, budget.report(economic_rewards=True))
+        legacy = json.loads(subprocess.check_output(
+            [sys.executable, str(SCRIPT), '--legacy-baseline'], text=True))
+        self.assertEqual(legacy, budget.report(2115, 524_288, 524_288, 524_288))
+        invalid = subprocess.run(
+            [sys.executable, str(SCRIPT), '--economic-rewards', '--legacy-baseline'],
+            capture_output=True, text=True)
+        self.assertNotEqual(invalid.returncode, 0)
 
     def test_nonpositive_proof_caps_are_rejected(self):
         for argument in ('transaction_proof_cap', 'settlement_proof_cap', 'issuance_proof_cap'):

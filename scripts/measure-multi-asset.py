@@ -33,7 +33,7 @@ SUITE = 'KoalaBear-D8-Poseidon2-W24-digest12'
 GRID = tuple((b, g) for b in range(4, 9) for g in (16, 20, 24))
 FALLBACK_GRID = tuple((9, g) for g in (16, 20, 24))
 WALLET_FAST_GRID = tuple((b, g) for b in range(5, 9) for g in (20, 24))
-HARDWARE_PROFILES = ('diagnostic', 'epyc7763-baseline')
+HARDWARE_PROFILES = ('diagnostic', 'epyc7763-baseline', 'epyc9v45-control')
 PARAMETER_KEYS = ('log_blowup', 'num_queries', 'query_pow_bits', 'commit_pow_bits',
                   'batch_pow_bits', 'max_log_arity', 'log_final_poly_len')
 SHAPE_KEYS = ('base_trace_rows', 'main_width', 'preprocessed_width', 'public_values',
@@ -453,8 +453,9 @@ def collect(args):
     hardware_profile = getattr(args, 'hardware_profile', 'diagnostic')
     if scan_mode == 'wallet-fast' and hardware_profile != 'epyc7763-baseline':
         raise ValueError('Wallet-fast scan requires the EPYC 7763 baseline profile')
-    if scan_mode == 'economics-candidate' and hardware_profile != 'epyc7763-baseline':
-        raise ValueError('Economic-relation scan requires the EPYC 7763 baseline profile')
+    if scan_mode == 'economics-candidate' and hardware_profile not in (
+            'epyc7763-baseline', 'epyc9v45-control'):
+        raise ValueError('Economic-relation scan requires the EPYC 7763 baseline or explicit EPYC 9V45 control profile')
     hardware_record = qualify_and_record(args.output, hardware_profile)
     if hardware_record is None:
         return 1
@@ -549,7 +550,10 @@ def collect(args):
             complete = (scopes_valid and measured['measurement_grid_complete']
                 and measured['selected_transaction_single_worker_complete']
                 and measured['related_relation_measurements_complete'])
-            summary = {'schema': 3, 'status': 'candidate-pending-review',
+            baseline_eligible = hardware_profile == 'epyc7763-baseline'
+            summary = {'schema': 3,
+                'status': 'candidate-pending-review' if baseline_eligible else 'control-diagnostic-only',
+                'baseline_eligible': baseline_eligible,
                 'suite': SUITE, 'source_commit': commit,
                 'diagnostic_binary': 'native-scan', 'local_guard_alias': 'v1-transaction-scan',
                 'launcher_sha256': sha(executable), **identity,

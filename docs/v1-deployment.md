@@ -1,11 +1,10 @@
 # Native V1 Deployment and Observability
 
-The [monetary revision](v1-economics.md) requires new source-bound proof
-measurements and final encoding of one/five reward notes, pool/burn/fund
-records and lock fields. The numerical tables below retain the pre-revision
-baseline and conditional allowances; they are not revised-network acceptance.
-Reconcile the final formats, issuance limits and actual database overhead
-before claiming bandwidth margin or SSD lifetime.
+The [monetary revision](v1-economics.md) requires fresh source-bound proof
+qualification. The resource tables below include the current maximum of five
+reward notes and two native fund-payout slots through explicit economic-record
+planning modes. Wire allowances and database overhead remain conditional;
+they do not establish measured revised-network acceptance or SSD lifetime.
 
 Status: qualification design for the independent native V1 engineering network.
 The earlier native transaction profile has actual-AIR security
@@ -71,23 +70,30 @@ Freeze supported hardware only after real maximum-load sustained acceptance.
 SSD capacity means usable capacity after filesystem/array overhead, before
 allocating separate backups. Disk redundancy does not replace backups. Measure
 power-loss behavior, synchronous commits, write amplification and compaction.
-The minimum uplink is **43 Mbps**, with **100 Mbps sustained uplink**
-recommended. Keep all 576 positions. The selected transaction proof cap is
-655,360 bytes (640 KiB); settlement and issuance caps remain 524,288 bytes.
+The conditional planning minimum uplink is **43 Mbps**, with **100 Mbps sustained uplink**
+recommended. Keep all 576 positions. The retained transaction proof-cap target is
+655,360 bytes (640 KiB); revised selection and size margin require fresh
+measurements. Settlement and issuance caps remain 524,288 bytes.
 The [complete conditional wire budget](v1-network-budget.md) charges three
 application copies, settlement and bounded issuance, control, authenticated
 framing, IPv6/TCP/link serialization, reciprocal ACKs, handshakes, 2%
 retransmission and 5% missing-body recovery. After these costs, reserve at
 least 15% of the selected minimum link's capacity:
 `minimum_link_mbps = ceil(wire_mbps / 0.85)`. Transaction, settlement and
-issuance proof caps are independent. The full wire model uses 36.50163939 Mbps;
-43 Mbps leaves 6.498 Mbps (15.11%) spare, while 100 Mbps leaves 63.498 Mbps.
+issuance proof caps are independent. Reproduce the economic format with
+`python3 scripts/v1-network-budget.py --native-protocol --economic-rewards`.
+It includes a 20,537-byte compact fixed record (five reward notes and two
+signed fund payouts), the settlement proof once in the compact body and all
+remaining allowances. Its full wire model uses 36.51260160 Mbps;
+43 Mbps leaves 6.487 Mbps (15.086973%) spare, while 100 Mbps leaves 63.487 Mbps.
+The unflagged and native-only script modes preserve earlier evidence; their
+single-reward or generic framing totals do not size the revised format.
 Measure packet counters and queue growth
 before accepting maximum-load operation, and schedule bulk backup/checkpoint
 transfers separately.
 
 Account for all simultaneous consumers. Current planned payload/worker ceilings
-must be reconciled with the selected 640-KiB transaction proof cap in the
+must be reconciled with the retained 640-KiB transaction proof-cap target in the
 [native admission policy](route-a-v1.md). Count the verified pool, unverified
 queue, verifier workers, compact reconstruction, padding payload and caches
 under their independent byte ceilings. These are
@@ -101,42 +107,53 @@ restart on candidate hosts. Measure the node with its largest legitimate pools,
 cold database opening, replay, pruning and compaction. Measure prover setup,
 key loading, steady generation and teardown separately and together with node
 work. Miner tests must include concurrent settlement and permitted padding
-refill. Isolated proof measurements do not bound that aggregate. Use the selected
-multi-asset profile's charged process-tree peak, including preparation and
-verification, from the [reference measurements](v1-multi-asset-evaluation.md).
+refill. Isolated proof measurements do not bound that aggregate. Require the
+fresh revised profile's charged process-tree peak, including preparation and
+verification; the earlier [reference measurements](v1-multi-asset-evaluation.md)
+remain baseline evidence until that profile is replaced and validated.
 Neither a clean single-process run nor spare page cache establishes long-term
 memory safety.
 
 ## Storage ledger and capacity gate
 
 Use [V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md) and reproduce
-the explicit planning model with `python3 scripts/v1-storage-budget.py`.
+the explicit planning model with
+`python3 scripts/v1-storage-budget.py --economic-rewards`.
 The three-output codec has 2,115 permanent bytes/position. At the 640-KiB
 transaction cap, ordinary transaction proofs, settlement proofs and sidecars
 require 335.714 GB at the nominal 888-block window; an additional capped
-issuance proof/block brings the rolling budget to 336.180 GB. Include 8 KiB permanent block records and 16 KiB permanent issuance
-records/block, 25% of all permanent bytes for indexes/state, 16 GB database
+issuance proof/block brings the rolling budget to 336.180 GB. Include 32 KiB
+permanent block records and 16 KiB permanent issuance records/block, 25% of all permanent bytes for indexes/state, 16 GB database
 working space, 20 GB system/recovery files, and 20% device free:
 
 | Workload | Device year 1 | Device year 3 | Device year 5 |
 | --- | ---: | ---: | ---: |
-| Maximum 576 positions/block | 669.357 GB | 1,077.622 GB | 1,485.887 GB |
-| 10,000/day, minimum 64-position blocks | 118.996 GB | 171.535 GB | 224.074 GB |
-| 50,000/day, adaptive grouping | 236.827 GB | 365.521 GB | 494.216 GB |
-| 50,000/day, uniform 176 positions | 239.387 GB | 369.741 GB | 500.095 GB |
+| Maximum 576 positions/block | 673.394 GB | 1,089.732 GB | 1,506.070 GB |
+| 10,000/day, minimum 64-position blocks | 123.032 GB | 183.645 GB | 244.257 GB |
+| 50,000/day, adaptive grouping | 240.864 GB | 377.631 GB | 514.399 GB |
+| 50,000/day, uniform 176 positions | 243.424 GB | 381.851 GB | 520.278 GB |
 
 **500 GB usable SSD is the installation minimum; 1 TB is recommended** for
 both miners and validators. That minimum does not qualify continuous maximum
-load: year-one used bytes are 535.486 GB before the 20% free reserve. A 1-TB
-device reaches the modeled free-space threshold after approximately 2.62 full
-load years; year three needs 1,077.622 GB, rather than fitting 1 TB.
+load: year-one used bytes are 538.715 GB before the 20% free reserve. A 1-TB
+device reaches the modeled free-space threshold after approximately **2.57 full
+load years**; year three needs 1,089.732 GB, rather than fitting 1 TB.
 
-At 10,000/day, 500 GB has modeled headroom beyond five years. At 50,000/day,
-adaptive packing needs 494.216 GB in year five, leaving only 5.784 GB beyond
-the reserve; uniform 176-position blocks need 500.095 GB and exceed 500 GB.
-These conditional horizons depend on the final measured overheads, packing
-and workload. Publish actual growth and expand storage before reserves are
+At 10,000/day, 500 GB has modeled headroom beyond five years: the year-five
+device requirement is 244.257 GB. At 50,000/day, adaptive packing needs
+514.399 GB in year five and uniform 176-position blocks need 520.278 GB;
+both exceed 500 GB including the free reserve. Do not promise five years on
+500 GB for every early workload. These conditional horizons depend on the
+final measured overheads, packing and workload. Publish actual growth and expand storage before reserves are
 consumed; retain 576 positions and the complete three-day proof window.
+
+The 32-KiB block reserve covers the maximum five-note/two-payout economic
+format plus provisional persistent-record overhead. The two payout slots are
+the current codec limit; launch fund wallet count and shares remain pending.
+Block production fails closed without explicit genesis-bound allocation weights.
+Other wallet counts require a versioned configuration/codec change and a new
+resource model. The unflagged storage script preserves the earlier 8-KiB
+block-record scenario rather than silently replacing historical evidence.
 
 The block/issuance ceilings and database allowance remain proposed engineering
 budgets: final encoding must bound headers/PoW, settlement declarations,

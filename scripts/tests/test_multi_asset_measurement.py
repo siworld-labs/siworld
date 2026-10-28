@@ -119,7 +119,7 @@ class MultiAssetMeasurementTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             M.validate_report(value, config())
 
-    def test_settlement_capacity_and_si_reward_cannot_be_substituted(self):
+    def test_settlement_capacity_and_sip_reward_cannot_be_substituted(self):
         cfg = config(); cfg['kind'] = 'settlement'
         value = report(); value['kind'] = 'settlement'
         value['measurement'].update({'capacity': 576, 'reward_asset_constrained_si': True})

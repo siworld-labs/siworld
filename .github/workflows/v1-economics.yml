@@ -18,6 +18,13 @@ on:
         description: Run the three-trial EPYC 7763 economic proof grid
         type: boolean
         default: true
+      hardware_profile:
+        description: Require the baseline CPU or collect explicitly separate control diagnostics
+        type: choice
+        default: epyc7763-baseline
+        options:
+          - epyc7763-baseline
+          - epyc9v45-control
 
 permissions:
   contents: read
@@ -87,10 +94,17 @@ jobs:
     timeout-minutes: 180
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.local/economics-proof-target
+      HARDWARE_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.hardware_profile || 'epyc7763-baseline' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Qualify the requested CPU profile before building proof tools
+        if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid) }}
+        run: |
+          python3 scripts/measure-multi-asset.py --qualify-only \
+            --hardware-profile "$HARDWARE_PROFILE" \
+            --output .local/economics-candidate/public/preflight
       - name: Install the pinned toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
@@ -159,9 +173,9 @@ jobs:
             --worker .local/economics-candidate/package/libexec/v1-transaction-scan \
             --screen .local/economics-candidate/public/screen.json \
             --output .local/economics-candidate/public/measurements \
-            --grid-mode full --scan-mode economics-candidate --hardware-profile epyc7763-baseline
+            --grid-mode full --scan-mode economics-candidate --hardware-profile "$HARDWARE_PROFILE"
       - name: Reproduce the actually selected transaction key as pending evidence
-        if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid) }}
+        if: ${{ env.HARDWARE_PROFILE == 'epyc7763-baseline' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid)) }}
         run: |
           python3 - <<'PY_SELECTED_KEY'
           import hashlib
@@ -216,8 +230,15 @@ jobs:
           from pathlib import Path
           output = Path('.local/economics-candidate/public')
           output.mkdir(parents=True, exist_ok=True)
+          hardware_profile = os.environ['HARDWARE_PROFILE']
+          preflight = output / 'preflight/hardware-qualification.json'
+          qualification = json.loads(preflight.read_text()) if preflight.is_file() else {}
           (output / 'workflow-status.json').write_text(json.dumps({'schema': 1,
-              'status': 'candidate-pending-review', 'job_status_before_upload': os.environ['RESULT'],
+              'status': 'control-diagnostic-only' if hardware_profile == 'epyc9v45-control' else 'candidate-pending-review',
+              'job_status_before_upload': os.environ['RESULT'],
+              'required_hardware_profile': hardware_profile,
+              'baseline_eligible': hardware_profile == 'epyc7763-baseline'
+                  and qualification.get('profile_qualified') is True,
               'source_commit': os.environ['GITHUB_SHA'], 'acceptance': False,
               'prior_freeze_unchanged': True, 'cryptographic_approval': False,
               'network_activation': False}, indent=2) + '\n')

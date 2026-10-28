@@ -14,12 +14,22 @@ Recover unlock heights by decrypting authenticated permanent ciphertexts,
 rebuilding note commitments and reconciling permanent nullifiers. A seed-only
 restore must find old unspent locked notes even after proofs are deleted.
 
-After a note becomes eligible, the default selector delays consolidation or
-spending by a cryptographically random local interval of hours to days. Sample
-independent delays and persist them privately; do not publish unlock queues,
-asset balances or note-to-time associations. The local policy cannot create
-early unlocks or change consensus. Exact scheduling bounds and recovery of
-private scheduling metadata need wallet review and acceptance tests.
+After a locked note reaches its prescribed unlock height, every wallet transfer
+preparation waits for a private delay of six hours through three days. This
+applies to either selected input and includes reward maturity as well as Holder
+tranches; explicit note selection cannot bypass the delay. Ordinary notes with
+unlock height zero remain immediately available for manual transfers. Opt-in
+automatic consolidation applies the same delay to ordinary notes as well.
+
+Derive each independent delay from the seed-derived scheduling key and note
+commitment. Start it at the canonical block timestamp where the note first
+becomes spendable. Canonical replay reconstructs the same schedule after seed
+recovery; reorganization recomputes eligibility and removes orphan receipts.
+Missing canonical eligibility fails closed. The caller supplies local time only
+to wallet preparation; it never affects consensus validity or permits early
+unlocking. Do not publish unlock queues, asset balances or note-to-time
+associations. Clock behavior and durable wallet integration still require
+wallet review and acceptance tests.
 
 Small-note consolidation is opt-in local policy, uses the common two-input /
 three-output format, preserves per-asset balances and SIP-only fees, and never

@@ -20,6 +20,7 @@ SIDECAR_BYTES = 78
 RETENTION_BLOCKS = 3 * BLOCKS_PER_DAY + 24
 SYSTEM_BYTES = 20_000_000_000
 BLOCK_RECORD_ALLOWANCE = 8192
+ECONOMIC_BLOCK_RECORD_ALLOWANCE = 32_768
 ISSUANCE_RECORD_ALLOWANCE = 16_384
 DATABASE_WORKING_ALLOWANCE = 16_000_000_000
 
@@ -80,8 +81,11 @@ def estimate(positions, years, permanent_bytes=2115, extra_permanent_bytes=0,
 
 
 def report(permanent_bytes=2115, transaction_proof_cap=TRANSACTION_PROOF_CAP,
-           settlement_proof_cap=SETTLEMENT_PROOF_CAP, issuance_proof_cap=ISSUANCE_PROOF_CAP):
-    return {'status': 'proposed-codec-component-planning-model',
+           settlement_proof_cap=SETTLEMENT_PROOF_CAP, issuance_proof_cap=ISSUANCE_PROOF_CAP,
+           economic_rewards=False):
+    block_record_bytes = (ECONOMIC_BLOCK_RECORD_ALLOWANCE if economic_rewards
+                          else BLOCK_RECORD_ALLOWANCE)
+    result = {'status': 'proposed-codec-component-planning-model',
             'permanent_bytes_per_position': permanent_bytes,
             'parameters': {
                 'transaction_proof_cap_bytes': transaction_proof_cap,
@@ -92,10 +96,11 @@ def report(permanent_bytes=2115, transaction_proof_cap=TRANSACTION_PROOF_CAP,
                 'index_state_percent_of_permanent_records': 25,
                 'device_free_percent': 20,
             },
-            'block_record_allowance_bytes_per_block': BLOCK_RECORD_ALLOWANCE,
+            'block_record_allowance_bytes_per_block': block_record_bytes,
             'issuance_record_allowance_bytes_per_block': ISSUANCE_RECORD_ALLOWANCE,
             'database_working_allowance_bytes': DATABASE_WORKING_ALLOWANCE, 'retention_blocks_at_target_rate': RETENTION_BLOCKS,
             'cases': {name: [estimate(positions, year, permanent_bytes,
+                                     block_record_bytes=block_record_bytes,
                                      transaction_proof_cap=transaction_proof_cap,
                                      settlement_proof_cap=settlement_proof_cap,
                                      issuance_proof_cap=issuance_proof_cap) for year in (1, 3, 5)]
@@ -104,6 +109,15 @@ def report(permanent_bytes=2115, transaction_proof_cap=TRANSACTION_PROOF_CAP,
                           ('transactions_10000_per_day', positions_per_day(10_000)),
                           ('transactions_50000_per_day_adaptive_packing', positions_per_day(50_000)),
                           ('transactions_50000_per_day_uniform_176', BLOCKS_PER_DAY * 176))}}
+    if economic_rewards:
+        result['parameters']['economic_rewards'] = True
+        result.update({
+            'planning_only': True,
+            'measured_database_bound': False,
+            'block_record_allowance_basis': (
+                'five reward notes and two signed fund payouts with provisional record overhead'),
+        })
+    return result
 
 
 if __name__ == '__main__':
@@ -112,9 +126,14 @@ if __name__ == '__main__':
     parser.add_argument('--transaction-proof-cap-bytes', type=int, default=TRANSACTION_PROOF_CAP)
     parser.add_argument('--settlement-proof-cap-bytes', type=int, default=SETTLEMENT_PROOF_CAP)
     parser.add_argument('--issuance-proof-cap-bytes', type=int, default=ISSUANCE_PROOF_CAP)
+    parser.add_argument('--economic-rewards', action='store_true',
+                        help='allow 32 KiB per block for five reward notes and two signed fund payouts')
     parser.add_argument('--legacy-baseline', action='store_true',
                         help='reproduce the prior model with all proof caps set to 524288 bytes')
     args = parser.parse_args()
+    if args.economic_rewards and args.legacy_baseline:
+        parser.error('--economic-rewards and --legacy-baseline are mutually exclusive')
     caps = (524_288, 524_288, 524_288) if args.legacy_baseline else (
         args.transaction_proof_cap_bytes, args.settlement_proof_cap_bytes, args.issuance_proof_cap_bytes)
-    print(json.dumps(report(args.permanent_bytes, *caps), indent=2, sort_keys=True))
+    print(json.dumps(report(args.permanent_bytes, *caps, economic_rewards=args.economic_rewards),
+                     indent=2, sort_keys=True))
