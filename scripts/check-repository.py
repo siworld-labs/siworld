@@ -24,7 +24,7 @@ DOCUMENTS = {
     "route-a-v1.md", "fee-settlement.md", "fee-settlement-evaluation.md",
     "v1-multi-asset.md", "v1-multi-asset-evaluation.md", "v1-storage-and-sync.md", "v1-network-budget.md",
     "multi-asset-air-optimization.md", "v1-overview.md", "dependency-advisories.md",
-    "native-proof-profiles.md",
+    "native-proof-profiles.md", "v1-native-runtime.md",
 }
 PUBLIC_ARTIFACTS = {
     "crates/bench-d8/artifacts/v1-native-freeze.json",
@@ -36,7 +36,7 @@ PUBLIC_ARTIFACTS = {
 }
 CRATES = {
     "core", "crypto", "poseidon2", "state", "circuits", "consensus",
-    "storage", "prover", "node", "bench-stark", "bench-d8", "bench-multi-asset",
+    "storage", "prover", "node", "native-node", "bench-stark", "bench-d8", "bench-multi-asset",
 }
 NON_ENGLISH = re.compile(
     "[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]"
@@ -62,7 +62,7 @@ def allowed(path):
         }
         return len(path.parts) == 3 and path.name in scoped.get(path.parts[1], set())
     if name in {".cargo/config.toml", "scripts/prover-launcher.rs",
-                "scripts/native-proof-artifacts.rs",
+                "scripts/native-proof-artifacts.rs", "scripts/native-runtime-launcher.rs",
                 "crates/bench-stark/patches/recursion-d8-w24.patch"}:
         return True
     if path.parts[0] == "scripts":

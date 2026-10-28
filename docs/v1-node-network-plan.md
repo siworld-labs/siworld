@@ -66,7 +66,9 @@ statement: network, suite, snapshot identity, public body and fee commitment.
 It excludes the proof length, proof randomness and sidecar. A new proof for the
 same statement therefore preserves the identity. The native block codec must
 order these identities strictly ascending and reject equal IDs. This is an
-M1 (N1) requirement; no native block/list ordering validator is implemented.
+M1 (N1) requirement, implemented and rejection-tested in the isolated
+[single-node engineering runtime](v1-native-runtime.md). P2P admission and
+public-network activation remain separate gates.
 A verification cache also keys on the proof digest and locally trusted verifier identity; statement
 identity alone cannot authenticate a replacement proof.
 
@@ -74,7 +76,8 @@ The proposed maximum envelope plus sidecar is **657,622 bytes** before stream
 framing. The proposed permanent record is **2,115 bytes**: 2,027 public bytes,
 48 fee-commitment bytes and a 40-byte snapshot selector. Recheck both values
 against the integrated envelope and state transition. The 2,115-byte permanent
-record is tested in the isolated codec; complete envelope framing is not yet integrated.
+record and complete envelope framing are implemented in the isolated M1 codec;
+network admission/resource qualification remains pending.
 Version, suite and
 network context may be amortized in the authenticated block header. A full
 32-byte compact reference is additional transmission data when sent, rather

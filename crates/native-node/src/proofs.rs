@@ -1,0 +1,658 @@
+//! Fixed-profile native proof adapters for the separate engineering network.
+
+use crate::proof_codec::{
+    MAX_SETTLEMENT_PROOF_BODY_LEN, MAX_TRANSACTION_PROOF_BODY_LEN, ProofShape,
+};
+use native::codec::{FORMAT_VERSION, ProofContext, PublicTransaction};
+use native::multi_asset::{AccWitness, Digest, F, Hasher};
+use native::multi_asset_transaction::{TransactionAir, TransactionProver};
+use native::settlement::{
+    FixedSettlementWitness, SettlementAir, SettlementProver, validate_settlement_public,
+};
+use native::{Cfg, FriParams};
+use p3_air::BaseAir;
+use p3_field::{PrimeCharacteristicRing, PrimeField32};
+use p3_symmetric::MerkleCap;
+use p3_uni_stark::{PreprocessedVerifierKey, verify_with_preprocessed};
+use sha2::{Digest as _, Sha256};
+
+const MANIFEST: &[u8] =
+    include_bytes!("../../bench-multi-asset/artifacts/v1-native-proof-profiles.json");
+const MANIFEST_SHA256: &str = "8191bf5779f135acc1c6431d2d3c3218e63695b353da082a6c0ecdcaa65ef919";
+const KEY_HEADER: usize = 47;
+const KEY_COMMITMENT: usize = 1 + 2 * 12 * 4;
+const SETTLEMENT_CAPACITY: usize = 576;
+
+#[derive(Clone, Copy)]
+enum Relation {
+    Transaction,
+    Settlement,
+}
+
+impl Relation {
+    #[cfg(test)]
+    fn name(self) -> &'static str {
+        match self {
+            Self::Transaction => "transaction",
+            Self::Settlement => "settlement",
+        }
+    }
+    fn id(self) -> u8 {
+        match self {
+            Self::Transaction => 1,
+            Self::Settlement => 2,
+        }
+    }
+    fn capacity(self) -> u32 {
+        match self {
+            Self::Transaction => 0,
+            Self::Settlement => SETTLEMENT_CAPACITY as u32,
+        }
+    }
+    fn hash(self) -> &'static str {
+        match self {
+            Self::Transaction => "c8e8357da2c8e494cd42ed0ce0c01c9d341494011e6a6b5816584a0a59b1c145",
+            Self::Settlement => "e4e95948d453fcdda1cf697bc12892ec997a23023700b0a4a2f43dbb7f600f1e",
+        }
+    }
+    fn key_hex(self) -> &'static str {
+        match self {
+            Self::Transaction => {
+                "53574d5001000100000000070000002900000014000000000000001400000001000000f30000000900000061000000028105dd4d72cefd42fcd94118ed958268e5beef18c110012751088605ad507a5c70831b0e57d24c6ddf942a20173d591b3842cf3e18c5700ede5dde55c59492226678655bf3f4321aa6a83356d9fdaf27e9c57a0a2501c11494a7596316730b05"
+            }
+            Self::Settlement => {
+                "53574d50010002400200000800000024000000140000000000000014000000010000004b0200000b00000061000000023947133aa8bd3722644738443a317170448c5f20c8c0be26b84bf1313a51c90c779bf01ef1221b2b8aa9b86d9dcc2f24e29a597100de3e069e814e5f65f28b74be2d5035d7a6bf6f3633ed34535f445d4e9411744b597f310d24ad5aa272dd08"
+            }
+        }
+    }
+    fn params(self) -> FriParams {
+        let (log_blowup, num_queries) = match self {
+            Self::Transaction => (7, 41),
+            Self::Settlement => (8, 36),
+        };
+        FriParams {
+            log_blowup,
+            num_queries,
+            query_pow_bits: 20,
+            commit_pow_bits: 0,
+            batch_pow_bits: 20,
+            max_log_arity: 1,
+        }
+    }
+}
+
+fn decode_hex(text: &str) -> Result<Vec<u8>, String> {
+    if !text.len().is_multiple_of(2)
+        || text
+            .bytes()
+            .any(|b| !b.is_ascii_digit() && !(b'a'..=b'f').contains(&b))
+    {
+        return Err("noncanonical frozen artifact hex".into());
+    }
+    text.as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| {
+            let digit = |b| if b <= b'9' { b - b'0' } else { b - b'a' + 10 };
+            Ok((digit(pair[0]) << 4) | digit(pair[1]))
+        })
+        .collect()
+}
+
+fn has_hash(bytes: &[u8], hash: &str) -> Result<bool, String> {
+    Ok(Sha256::digest(bytes).as_slice() == decode_hex(hash)?)
+}
+
+fn frozen_key_bytes(relation: Relation) -> Result<Vec<u8>, String> {
+    if !has_hash(MANIFEST, MANIFEST_SHA256)? {
+        return Err("frozen native relation manifest authentication failed".into());
+    }
+    decode_hex(relation.key_hex())
+}
+
+/// Load authenticated public commitments directly, without constructing any
+/// preprocessing trace, prover data or proof. No input from a peer reaches
+/// this function. The fixed two-root cap is decoded without dynamic lengths.
+fn load_key(relation: Relation, bytes: &[u8]) -> Result<PreprocessedVerifierKey<Cfg>, String> {
+    if bytes.len() != KEY_HEADER + KEY_COMMITMENT || !has_hash(bytes, relation.hash())? {
+        return Err("frozen native public key authentication failed".into());
+    }
+    let word = |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+    if &bytes[..6] != b"SWMP\x01\x00" || bytes[6] != relation.id() || word(7) != relation.capacity()
+    {
+        return Err("frozen native public key relation mismatch".into());
+    }
+    let p = relation.params();
+    let parameters = [
+        p.log_blowup,
+        p.num_queries,
+        p.query_pow_bits,
+        p.commit_pow_bits,
+        p.batch_pow_bits,
+        p.max_log_arity,
+    ];
+    if parameters
+        .iter()
+        .enumerate()
+        .any(|(i, v)| word(11 + 4 * i) != *v)
+        || word(43) as usize != KEY_COMMITMENT
+        || bytes[KEY_HEADER] != 2
+    {
+        return Err("frozen native public key profile mismatch".into());
+    }
+    let mut roots = vec![[F::ZERO; 12]; 2];
+    for (value, encoded) in roots
+        .iter_mut()
+        .flatten()
+        .zip(bytes[KEY_HEADER + 1..].as_chunks::<4>().0.iter())
+    {
+        let raw = u32::from_le_bytes(*encoded);
+        if raw >= F::ORDER_U32 {
+            return Err("noncanonical frozen preprocessing commitment".into());
+        }
+        // Public-key artifacts use P3's fixed-width Montgomery-word serde,
+        // unlike the canonical integers used in transaction public codecs.
+        // Decode only this authenticated four-byte scalar, with no vectors.
+        *value = postcard::from_bytes(encoded)
+            .map_err(|_| "invalid frozen preprocessing field encoding")?;
+    }
+    Ok(PreprocessedVerifierKey {
+        width: word(35) as usize,
+        degree_bits: word(39) as usize,
+        commitment: MerkleCap::new(roots),
+    })
+}
+
+fn check_context(context: &ProofContext) -> Result<(), String> {
+    if context.version() != FORMAT_VERSION || context.snapshot().is_none() {
+        return Err("native transaction requires a locally selected canonical snapshot".into());
+    }
+    Ok(())
+}
+
+fn settlement_statement(
+    fees: &[Digest],
+    subsidy: u64,
+    height: u64,
+    network: [u8; 32],
+    list_hash: [u8; 32],
+    reward: &Digest,
+) -> Result<Vec<F>, String> {
+    if fees.len() != SETTLEMENT_CAPACITY {
+        return Err(
+            "native settlement requires exactly 576 locally derived fee commitments".into(),
+        );
+    }
+    let mut public = Vec::with_capacity(native::settlement::public_len(SETTLEMENT_CAPACITY));
+    for fee in fees {
+        public.extend_from_slice(fee);
+    }
+    public.extend_from_slice(&native::multi_asset::limbs(subsidy));
+    public.extend_from_slice(&native::multi_asset::limbs(height));
+    for bytes in [&network, &list_hash] {
+        for pair in bytes.as_chunks::<2>().0 {
+            public.push(F::from_u32(u16::from_le_bytes([pair[0], pair[1]]) as u32));
+        }
+    }
+    public.extend_from_slice(reward);
+    validate_settlement_public(SETTLEMENT_CAPACITY, &public)?;
+    Ok(public)
+}
+
+/// Verification-only resident data, authenticated against local fixed keys.
+/// This constructor never invokes preprocessing setup or a prover.
+pub struct NativeVerifier {
+    transaction_cfg: Cfg,
+    transaction_air: TransactionAir,
+    transaction_vk: PreprocessedVerifierKey<Cfg>,
+    transaction_shape: ProofShape,
+    settlement_cfg: Cfg,
+    settlement_air: SettlementAir,
+    settlement_vk: PreprocessedVerifierKey<Cfg>,
+    settlement_shape: ProofShape,
+}
+
+impl NativeVerifier {
+    pub fn new() -> Result<Self, String> {
+        let tp = Relation::Transaction.params();
+        let sp = Relation::Settlement.params();
+        let transaction_cfg = tp.config();
+        let settlement_cfg = sp.config();
+        let transaction_air = TransactionAir::new().with_min_height(tp.hiding_min_height());
+        let settlement_air =
+            SettlementAir::new(SETTLEMENT_CAPACITY).with_min_height(sp.hiding_min_height());
+        let transaction_vk = load_key(
+            Relation::Transaction,
+            &frozen_key_bytes(Relation::Transaction)?,
+        )?;
+        let settlement_vk = load_key(
+            Relation::Settlement,
+            &frozen_key_bytes(Relation::Settlement)?,
+        )?;
+        if transaction_vk.width != transaction_air.preprocessed_width()
+            || transaction_vk.degree_bits != transaction_air.degree_bits() + 1
+            || settlement_vk.width != settlement_air.preprocessed_width()
+            || settlement_vk.degree_bits != settlement_air.degree_bits() + 1
+        {
+            return Err("native AIR differs from frozen verification key dimensions".into());
+        }
+        let transaction_shape = ProofShape::from_trusted(
+            &transaction_air,
+            &transaction_vk,
+            &transaction_cfg,
+            MAX_TRANSACTION_PROOF_BODY_LEN,
+        )
+        .map_err(|e| e.to_string())?;
+        let settlement_shape = ProofShape::from_trusted(
+            &settlement_air,
+            &settlement_vk,
+            &settlement_cfg,
+            MAX_SETTLEMENT_PROOF_BODY_LEN,
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(Self {
+            transaction_cfg,
+            transaction_air,
+            transaction_vk,
+            transaction_shape,
+            settlement_cfg,
+            settlement_air,
+            settlement_vk,
+            settlement_shape,
+        })
+    }
+
+    pub fn verify_transaction(
+        &self,
+        public: &PublicTransaction,
+        context: &ProofContext,
+        fee: &Digest,
+        root: &Digest,
+        proof: &[u8],
+    ) -> Result<(), String> {
+        check_context(context)?;
+        PublicTransaction::decode(&public.encode())
+            .map_err(|e| format!("public transaction: {e:?}"))?;
+        let proof = self
+            .transaction_shape
+            .decode(proof)
+            .map_err(|e| e.to_string())?;
+        let statement = public.statement(context, fee, root);
+        verify_with_preprocessed(
+            &self.transaction_cfg,
+            &self.transaction_air,
+            &proof,
+            &statement,
+            Some(&self.transaction_vk),
+        )
+        .map_err(|_| "native transaction proof verification failed".into())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn verify_settlement(
+        &self,
+        fees: &[Digest],
+        subsidy: u64,
+        height: u64,
+        network: [u8; 32],
+        list_hash: [u8; 32],
+        reward: &Digest,
+        proof: &[u8],
+    ) -> Result<(), String> {
+        let public = settlement_statement(fees, subsidy, height, network, list_hash, reward)?;
+        let proof = self
+            .settlement_shape
+            .decode(proof)
+            .map_err(|e| e.to_string())?;
+        verify_with_preprocessed(
+            &self.settlement_cfg,
+            &self.settlement_air,
+            &proof,
+            &public,
+            Some(&self.settlement_vk),
+        )
+        .map_err(|_| "native settlement proof verification failed".into())
+    }
+}
+
+/// Fixed-profile resident prover for a disposable single-node engineering
+/// network. Preprocessing occurs once at service startup and remains resident.
+pub struct NativeProver {
+    transaction: TransactionProver,
+    settlement: SettlementProver,
+    verifier: NativeVerifier,
+}
+
+fn same_key(left: &PreprocessedVerifierKey<Cfg>, right: &PreprocessedVerifierKey<Cfg>) -> bool {
+    left.width == right.width
+        && left.degree_bits == right.degree_bits
+        && left.commitment == right.commitment
+}
+
+impl NativeProver {
+    pub fn new() -> Result<Self, String> {
+        let verifier = NativeVerifier::new()?;
+        let transaction = TransactionProver::new(Relation::Transaction.params());
+        let settlement = SettlementProver::new(SETTLEMENT_CAPACITY, Relation::Settlement.params());
+        if !same_key(&transaction.vk, &verifier.transaction_vk)
+            || !same_key(&settlement.vk, &verifier.settlement_vk)
+        {
+            return Err(
+                "resident prover preprocessing differs from frozen verification keys".into(),
+            );
+        }
+        Ok(Self {
+            transaction,
+            settlement,
+            verifier,
+        })
+    }
+
+    pub fn transaction(
+        &self,
+        witness: &AccWitness,
+        public: &PublicTransaction,
+        context: &ProofContext,
+    ) -> Result<Vec<u8>, String> {
+        check_context(context)?;
+        let bound = public
+            .bind_witness(witness, context)
+            .map_err(|e| format!("transaction witness binding: {e:?}"))?;
+        let hasher = Hasher::new();
+        let root = bound.anchors_root(&hasher);
+        bound.check(&hasher, &root).map_err(str::to_owned)?;
+        let fee = hasher.fee_commit(bound.slot.fee, &bound.slot.fee_blind);
+        let (proof, generated_statement) = self.transaction.prove(&bound);
+        if generated_statement != public.statement(context, &fee, &root) {
+            return Err("native prover statement reconstruction mismatch".into());
+        }
+        let bytes = postcard::to_allocvec(&proof).map_err(|e| e.to_string())?;
+        self.verifier
+            .verify_transaction(public, context, &fee, &root, &bytes)?;
+        Ok(bytes)
+    }
+
+    pub fn settlement(&self, witness: &FixedSettlementWitness) -> Result<Vec<u8>, String> {
+        if witness.capacity() != SETTLEMENT_CAPACITY {
+            return Err("native settlement witness capacity must be 576".into());
+        }
+        witness
+            .check(&Hasher::new())
+            .map_err(|_| "invalid local settlement witness".to_owned())?;
+        let (proof, public) = self.settlement.prove(witness);
+        validate_settlement_public(SETTLEMENT_CAPACITY, &public)?;
+        let bytes = postcard::to_allocvec(&proof).map_err(|e| e.to_string())?;
+        let fees: Vec<_> = witness.slots.iter().map(|slot| slot.commitment).collect();
+        let reward: Digest = public[public.len() - 12..]
+            .try_into()
+            .map_err(|_| "invalid locally generated miner reward commitment")?;
+        self.verifier.verify_settlement(
+            &fees,
+            witness.issuance_reward,
+            witness.block_height,
+            witness.network,
+            witness.transaction_list_digest,
+            &reward,
+            &bytes,
+        )?;
+        Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frozen_public_keys_load_without_prover_setup() {
+        assert!(NativeVerifier::new().is_ok());
+    }
+
+    #[test]
+    fn embedded_relation_keys_match_the_authenticated_manifest() {
+        let manifest: serde_json::Value = serde_json::from_slice(MANIFEST).unwrap();
+        let relations = manifest["relations"].as_array().unwrap();
+        for relation in [Relation::Transaction, Relation::Settlement] {
+            let matching: Vec<_> = relations
+                .iter()
+                .filter(|entry| entry["kind"] == relation.name())
+                .collect();
+            assert_eq!(matching.len(), 1);
+            let key = matching[0];
+            assert_eq!(
+                key["capacity"].as_u64(),
+                Some(u64::from(relation.capacity()))
+            );
+            assert_eq!(key["public_verifier_key"]["encoding"], "SWMP-v1");
+            assert_eq!(key["public_verifier_key"]["sha256"], relation.hash());
+            assert_eq!(key["public_verifier_key"]["hex"], relation.key_hex());
+        }
+    }
+
+    #[test]
+    fn frozen_key_commitments_reencode_exact_montgomery_words() {
+        for relation in [Relation::Transaction, Relation::Settlement] {
+            let bytes = frozen_key_bytes(relation).unwrap();
+            let key = load_key(relation, &bytes).unwrap();
+            assert_eq!(
+                postcard::to_allocvec(&key.commitment).unwrap(),
+                bytes[KEY_HEADER..]
+            );
+        }
+    }
+
+    #[test]
+    fn changed_public_key_cannot_select_its_own_authentication_hash() {
+        let mut bytes = frozen_key_bytes(Relation::Transaction).unwrap();
+        bytes[47] ^= 1;
+        assert!(load_key(Relation::Transaction, &bytes).is_err());
+    }
+
+    #[test]
+    fn relation_type_capacity_and_profile_mismatches_are_rejected() {
+        let original = frozen_key_bytes(Relation::Transaction).unwrap();
+        assert!(load_key(Relation::Settlement, &original).is_err());
+        for offset in [0, 4, 6, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43] {
+            let mut bytes = original.clone();
+            bytes[offset] ^= 1;
+            assert!(load_key(Relation::Transaction, &bytes).is_err());
+        }
+        let mut trailing = original;
+        trailing.push(0);
+        assert!(load_key(Relation::Transaction, &trailing).is_err());
+    }
+
+    #[test]
+    fn settlement_context_requires_the_fixed_capacity_and_nonoverflowing_height() {
+        use p3_field::PrimeCharacteristicRing;
+        let digest = [F::ZERO; 12];
+        assert!(settlement_statement(&[], 0, 1, [0; 32], [0; 32], &digest).is_err());
+        let fees = vec![digest; 576];
+        assert!(settlement_statement(&fees, 0, u64::MAX, [0; 32], [0; 32], &digest).is_err());
+        assert!(settlement_statement(&fees, 0, 1, [0; 32], [0; 32], &digest).is_err());
+    }
+
+    #[test]
+    fn unbound_snapshot_and_malformed_proof_are_rejected() {
+        let witness = native::multi_asset::sample_empty_witness(601);
+        let public = fixture_public(&witness);
+        let h = Hasher::new();
+        let verifier = NativeVerifier::new().unwrap();
+        let fee = h.fee_commit(0, &witness.slot.fee_blind);
+        let root = witness.anchors_root(&h);
+        assert!(
+            verifier
+                .verify_transaction(&public, &ProofContext::new([4; 32]), &fee, &root, &[],)
+                .is_err()
+        );
+        let context = ProofContext::for_snapshot([4; 32], 600, [5; 32]);
+        assert!(
+            verifier
+                .verify_transaction(&public, &context, &fee, &root, &[])
+                .is_err()
+        );
+        assert!(
+            verifier
+                .verify_transaction(
+                    &public,
+                    &context,
+                    &fee,
+                    &root,
+                    &vec![0; MAX_TRANSACTION_PROOF_BODY_LEN + 1],
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn reconstructed_settlement_statement_uses_the_native_limb_order() {
+        let fees: Vec<_> = (0..576).map(|i| [F::from_usize(i + 1); 12]).collect();
+        let reward = [F::from_u32(7); 12];
+        let public =
+            settlement_statement(&fees, 0x1234_5678, 10, [3; 32], [4; 32], &reward).unwrap();
+        assert_eq!(&public[..12], &fees[0]);
+        assert_eq!(&public[575 * 12..576 * 12], &fees[575]);
+        assert_eq!(
+            &public[576 * 12..576 * 12 + 4],
+            &native::multi_asset::limbs(0x1234_5678)
+        );
+        assert_eq!(&public[public.len() - 12..], &reward);
+    }
+
+    // This fixture tests the proof's complete byte binding. Ciphertext
+    // correctness is separately enforced by wallet encryption self-checks.
+    fn fixture_public(witness: &AccWitness) -> PublicTransaction {
+        let fields = witness.slot.public_inputs(&Hasher::new());
+        let mut body = [0u8; native::codec::PUBLIC_TRANSACTION_BYTES];
+        for (i, digest) in fields.nf.iter().chain(&fields.cm_out).enumerate() {
+            body[i * 48..(i + 1) * 48].copy_from_slice(&native::codec::encode_digest(digest));
+        }
+        PublicTransaction::decode(&body).unwrap()
+    }
+
+    #[test]
+    #[ignore = "explicit fixed-profile proof compatibility check, not a benchmark"]
+    fn fixed_profiles_roundtrip_rejects_context_and_body_mutation() {
+        let prover = NativeProver::new().unwrap();
+        let verifier = NativeVerifier::new().unwrap();
+        let witness = native::multi_asset::sample_empty_witness(602);
+        let public = fixture_public(&witness);
+        let context = ProofContext::for_snapshot([6; 32], 600, [7; 32]);
+        let h = Hasher::new();
+        let fee = h.fee_commit(0, &witness.slot.fee_blind);
+        let root = witness.anchors_root(&h);
+        let proof = prover.transaction(&witness, &public, &context).unwrap();
+        assert!(proof.len() <= MAX_TRANSACTION_PROOF_BODY_LEN);
+        verifier
+            .verify_transaction(&public, &context, &fee, &root, &proof)
+            .unwrap();
+        let changed_context = ProofContext::for_snapshot(context.network, 600, [8; 32]);
+        assert!(
+            verifier
+                .verify_transaction(&public, &changed_context, &fee, &root, &proof)
+                .is_err()
+        );
+        let mut changed = public.clone();
+        changed.payment.body[0] ^= 1;
+        assert!(
+            verifier
+                .verify_transaction(&changed, &context, &fee, &root, &proof)
+                .is_err()
+        );
+        let mut corrupt = proof;
+        corrupt[0] ^= 1;
+        assert!(
+            verifier
+                .verify_transaction(&public, &context, &fee, &root, &corrupt)
+                .is_err()
+        );
+
+        use native::confidential_fees::{FeeOpening, SettlementSlot};
+        let settlement = FixedSettlementWitness {
+            issuance_reward: 10_000,
+            miner_amount: 10_000,
+            miner_asset_id: native::multi_asset::SI_ASSET_ID,
+            block_height: 601,
+            network: context.network,
+            transaction_list_digest: [11; 32],
+            miner_owner: [F::ONE; 12],
+            miner_rseed: [F::from_u32(2); 12],
+            slots: (0..576)
+                .map(|i| {
+                    let opening = FeeOpening {
+                        fee: 0,
+                        dummy: true,
+                        priority: false,
+                        blind: core::array::from_fn(|j| F::from_usize(1 + i * 8 + j)),
+                    };
+                    SettlementSlot {
+                        commitment: h.fee_commit(0, &opening.blind),
+                        opening,
+                    }
+                })
+                .collect(),
+        };
+        let fees: Vec<_> = settlement
+            .slots
+            .iter()
+            .map(|slot| slot.commitment)
+            .collect();
+        let generated_public = settlement.public_inputs();
+        let reward = generated_public[generated_public.len() - 12..]
+            .try_into()
+            .unwrap();
+        let settlement_proof = prover.settlement(&settlement).unwrap();
+        assert!(settlement_proof.len() <= MAX_SETTLEMENT_PROOF_BODY_LEN);
+        verifier
+            .verify_settlement(
+                &fees,
+                10_000,
+                601,
+                context.network,
+                [11; 32],
+                &reward,
+                &settlement_proof,
+            )
+            .unwrap();
+        assert!(
+            verifier
+                .verify_settlement(
+                    &fees,
+                    10_001,
+                    601,
+                    context.network,
+                    [11; 32],
+                    &reward,
+                    &settlement_proof,
+                )
+                .is_err()
+        );
+        assert!(
+            verifier
+                .verify_settlement(
+                    &fees,
+                    10_000,
+                    602,
+                    context.network,
+                    [11; 32],
+                    &reward,
+                    &settlement_proof,
+                )
+                .is_err()
+        );
+        assert!(
+            verifier
+                .verify_settlement(
+                    &fees,
+                    10_000,
+                    601,
+                    context.network,
+                    [12; 32],
+                    &reward,
+                    &settlement_proof,
+                )
+                .is_err()
+        );
+    }
+}

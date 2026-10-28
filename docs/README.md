@@ -3,7 +3,7 @@
 Three fixed native V1 proof relations are engineering-frozen: two-input/three-
 output transaction, 576-position settlement and three-initial-note issuance.
 Their source-bound keys and security reports are reproducible; execution
-remains inside an isolated proof workspace.
+has an isolated single-node engineering integration; it is not an activated network.
 The complete native node, wallet and network path remains integration work.
 Independent review and public testnet acceptance are outstanding.
 
@@ -14,7 +14,7 @@ Independent review and public testnet acceptance are outstanding.
 3. [Architecture](architecture.md), [protocol](protocol.md), [cryptography](cryptography.md) and [security model](security-model.md).
 4. [Transaction specification](route-a-v1.md), [multi-asset relation](v1-multi-asset.md) and [confidential fee settlement](fee-settlement.md).
 5. [Three-relation freeze reproduction](native-proof-profiles.md), [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json) and [actual-instance measurements](v1-multi-asset-evaluation.md).
-6. [Node/network milestones](v1-node-network-plan.md) and [testnet acceptance](prover-acceptance.md).
+6. [Node/network milestones](v1-node-network-plan.md), [single-node engineering runtime](v1-native-runtime.md) and [testnet acceptance](prover-acceptance.md).
 
 ## Proof implementation and measurement
 
@@ -36,8 +36,8 @@ qualify the three-output native node path.
 - [Native operational interfaces](node-operations.md) and [RPC boundary](rpc.md): integration status and requirements.
 - [Unresolved protocol and qualification questions](11-risks-open-questions.md).
 
-There are no native V1 start commands until runtime interfaces and deployment
-artifacts are implemented and qualified. There is no privileged main node;
+The isolated runtime has explicit engineering commands. Deployment-qualified
+service interfaces and public-network artifacts remain pending. There is no privileged main node;
 discovery services and the control panel have no consensus authority.
 
 ## Legacy implementation and paused V2

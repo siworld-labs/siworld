@@ -1,0 +1,164 @@
+//! Write-once local configuration and protected engineering reward receipts.
+use crate::state::Config;
+use crate::wire::Hash;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use zeroize::Zeroizing;
+const MAGIC: &[u8; 8] = b"SWNDv1\0\0";
+const CONFIG_FILE: &str = "engineering-network.bin";
+const MAX_REWARD_SECRET: usize = 4096;
+pub fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+fn check_directory(path: &Path) -> Result<(), String> {
+    let meta = fs::symlink_metadata(path).map_err(|_| "engineering directory unavailable")?;
+    if !meta.is_dir() || meta.file_type().is_symlink() {
+        return Err("expected a real engineering directory".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if meta.permissions().mode() & 0o077 != 0 {
+            return Err("engineering directory permissions are not private".into());
+        }
+    }
+    Ok(())
+}
+fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        a.dev() == b.dev() && a.ino() == b.ino()
+    }
+    #[cfg(not(unix))]
+    {
+        a.len() == b.len() && a.modified().ok() == b.modified().ok()
+    }
+}
+fn regular_read(path: &Path, private: bool, max: usize) -> Result<File, String> {
+    let before = fs::symlink_metadata(path).map_err(|_| "local file unavailable")?;
+    if !before.is_file()
+        || before.file_type().is_symlink()
+        || before.len() == 0
+        || before.len() > max as u64
+    {
+        return Err("invalid local file shape".into());
+    }
+    let file = File::open(path).map_err(|_| "local file read unavailable")?;
+    let opened = file
+        .metadata()
+        .map_err(|_| "local file metadata unavailable")?;
+    let after = fs::symlink_metadata(path).map_err(|_| "local file changed while opening")?;
+    if !after.is_file()
+        || !same_file(&before, &opened)
+        || !same_file(&opened, &after)
+        || opened.len() == 0
+        || opened.len() > max as u64
+    {
+        return Err("local file changed while opening".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if private && opened.permissions().mode() & 0o077 != 0 {
+            return Err("local private file permissions are not private".into());
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = private;
+    Ok(file)
+}
+fn private_new(path: &Path) -> Result<File, String> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+        .open(path)
+        .map_err(|_| "refusing to overwrite or open private material".into())
+}
+fn sync_directory(path: &Path) -> Result<(), String> {
+    File::open(path)
+        .and_then(|f| f.sync_all())
+        .map_err(|_| "directory durability failed".into())
+}
+pub fn initialize(path: &Path, work_bits: u8) -> Result<Config, String> {
+    if work_bits > 24 {
+        return Err("engineering work bits exceed 24".into());
+    }
+    let mut network = [0; 32];
+    getrandom::fill(&mut network).map_err(|_| "OS entropy unavailable")?;
+    let config = Config::development(network, work_bits)?;
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder
+        .create(path)
+        .map_err(|_| "initialization requires a new directory with an existing parent")?;
+    let mut file = private_new(&path.join(CONFIG_FILE))?;
+    file.write_all(MAGIC)
+        .and_then(|_| file.write_all(&config.network))
+        .and_then(|_| file.write_all(&[config.work_bits]))
+        .and_then(|_| file.sync_all())
+        .map_err(|_| "configuration durability failed")?;
+    sync_directory(path)?;
+    sync_directory(
+        path.parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new(".")),
+    )?;
+    Ok(config)
+}
+pub fn load(path: &Path) -> Result<Config, String> {
+    check_directory(path)?;
+    let file = regular_read(&path.join(CONFIG_FILE), true, 41)?;
+    let mut bytes = Vec::with_capacity(41);
+    file.take(42)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "cannot read engineering configuration")?;
+    if bytes.len() != 41 || &bytes[..8] != MAGIC {
+        return Err("unsupported engineering configuration".into());
+    }
+    Config::development(
+        bytes[8..40]
+            .try_into()
+            .map_err(|_| "invalid network width")?,
+        bytes[40],
+    )
+}
+fn reward_path(path: &Path, id: &Hash) -> PathBuf {
+    path.join(format!("reward-{}.secret", hex(id)))
+}
+pub fn save_reward(path: &Path, id: &Hash, secret: &[u8]) -> Result<(), String> {
+    check_directory(path)?;
+    if secret.is_empty() || secret.len() > MAX_REWARD_SECRET {
+        return Err("invalid reward receipt size".into());
+    }
+    let mut file = private_new(&reward_path(path, id))?;
+    file.write_all(secret)
+        .and_then(|_| file.sync_all())
+        .map_err(|_| "reward receipt durability failed")?;
+    sync_directory(path)
+}
+pub fn read_reward(path: &Path, id: &Hash) -> Result<Zeroizing<Vec<u8>>, String> {
+    check_directory(path)?;
+    let path = reward_path(path, id);
+    let file = regular_read(&path, true, MAX_REWARD_SECRET)?;
+    let mut out = Zeroizing::new(Vec::new());
+    file.take((MAX_REWARD_SECRET + 1) as u64)
+        .read_to_end(&mut out)
+        .map_err(|_| "reward receipt read failed")?;
+    if out.len() > MAX_REWARD_SECRET {
+        return Err("reward receipt size changed".into());
+    }
+    Ok(out)
+}
+#[cfg(test)]
+mod tests;

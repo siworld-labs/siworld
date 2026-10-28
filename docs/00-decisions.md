@@ -311,3 +311,21 @@ Independent verifier CPU/memory qualification,
 full valid-block timings, node admission/decoder integration, issuance-fee
 policy and durable issuance transitions remain separate gates. A successful
 standalone proof does not activate consensus or establish testnet acceptance.
+
+
+## Native M1 engineering integration boundary
+
+The separate [single-node engineering runtime](v1-native-runtime.md) integrates
+native transaction and fixed-576 settlement verification with strict ascending
+BLAKE3 statement-ID ordering, all-input reuse checks, the canonical snapshot
+window and an atomic append/replay transition. It creates independent disposable
+engineering directories and imports no retained chain, key or wallet data.
+The frozen native relation keys and parameters are unchanged.
+
+The explicit engineering nonce-work parameter and existing subsidy/fee helper
+reuse do not adopt production PoW, difficulty, epoch recalibration or a public
+genesis. Unsupported issuance operations remain absent until the open fee and
+resource policies are decided. Networking, reorganizations, pruning, checkpoint
+bootstrap, wallet durability, transport privacy and sustained acceptance remain
+separate implementation gates. A linear single-node proof/replay test does not
+establish those properties.
