@@ -272,15 +272,22 @@ async fn stalled_server_handshake_times_out_then_reauthenticates() {
     let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = probe.local_addr().unwrap();
     let server = tokio::spawn(async move {
-        let (stalled, _) = probe.accept().await.unwrap();
-        tokio::time::sleep(Duration::from_millis(55)).await;
+        let (mut stalled, _) = probe.accept().await.unwrap();
+        // With no challenge, the client can only close after its deadline.
+        // Observe that close before handing the address to the real listener.
+        let mut unexpected = [0; 1];
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(3), stalled.read(&mut unexpected))
+                .await
+                .unwrap()
+                .unwrap(),
+            0
+        );
         drop(stalled);
         drop(probe);
-        WorkerListener::bind(config(address))
-            .await
-            .unwrap()
-            .serve()
-            .await;
+        let mut ready = config(address);
+        ready.io_timeout = Duration::from_secs(1);
+        WorkerListener::bind(ready).await.unwrap().serve().await;
     });
     let mut client = WorkerClient::new(
         address,
@@ -289,11 +296,14 @@ async fn stalled_server_handshake_times_out_then_reauthenticates() {
         RetryPolicy {
             attempts: 4,
             delay: Duration::from_millis(10),
-            io_timeout: Duration::from_millis(40),
+            io_timeout: Duration::from_secs(1),
         },
     )
     .unwrap();
-    client.heartbeat().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), client.heartbeat())
+        .await
+        .unwrap()
+        .unwrap();
     server.abort();
     let _ = server.await;
 }
