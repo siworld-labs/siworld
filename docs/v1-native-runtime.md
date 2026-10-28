@@ -4,9 +4,9 @@ Status: the continuous single-node service and native node-integration library
 are implemented engineering components. The library adds bounded admission,
 authenticated-stream protocol interfaces, full-proof synchronization,
 verified-work fork selection, wallet primitives and a public subsidy audit.
-Compilation and test execution of the new integration remain pending remote
-CI. The real 24-hour service observation and final
-offline replay remain separate required evidence; this document does not
+Remote CI compiles and tests the integration, including separately selected
+native-proof tests. The real 24-hour service observation and final offline
+replay remain separate required evidence; this document does not
 report their completion. No production hybrid-handshake provider or network
 service command is supplied. The runtime does not activate a public network,
 replace an existing database or change the retained seven-node legacy network.
@@ -120,6 +120,10 @@ bounded helper. The compact announcement handler accepts a complete local
 reconstruction or returns unavailability; the connection scheduler must still
 orchestrate missing-proof requests or a full-proof retry. A missing reference
 is not a cryptographic invalidity verdict.
+
+Canonical locator and synchronization-base lookups reserve one maximum block
+plus bookkeeping before decoding stored proofs. Exhaustion is retryable and
+does not invalidate the peer or alter pending transactions.
 
 One shared 640-MiB logical transport budget covers retained receive buffers,
 with at most 16 handshakes and a 4-MiB aggregate handshake allowance. Candidate
@@ -305,7 +309,7 @@ atomic failure, detached-record reopen, wallet rescan and public-audit checks.
 Some tests use deterministic synthetic verifiers to isolate state and transport
 behavior. Separately selected native-proof tests exercise frozen proving and
 verification; the wallet proof test uses synthetic funding history. The new
-suite awaits compilation and test execution in remote CI. None of these
+suite is covered by the dedicated native runtime CI job. None of these
 correctness checks substitutes for actual hybrid-provider tests,
 target-hardware performance or sustained-load acceptance.
 

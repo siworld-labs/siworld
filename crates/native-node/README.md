@@ -9,8 +9,10 @@ seed-wallet transfers and public subsidy replay.
 The transport has no production hybrid authenticator or plaintext fallback.
 The CLI does not start a network listener. Checkpoint bootstrap, proof pruning,
 protected wallet persistence and native issuance admission remain separate
-implementation gates. New network integration tests require recorded remote
-execution before qualification. No existing network is modified or activated.
+implementation gates. Remote CI covers protocol rejection, synchronization,
+reorganization, wallet and audit tests, with separately selected native-proof
+integration tests. These checks do not qualify a network deployment. No existing
+network is modified or activated.
 
 See [the runtime scope and commands](../../docs/v1-native-runtime.md) and
 [the remaining network milestones](../../docs/v1-node-network-plan.md).

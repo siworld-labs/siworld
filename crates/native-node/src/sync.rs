@@ -107,6 +107,8 @@ impl Locator {
         Err("no canonical locator ancestor".into())
     }
 }
+/// Non-genesis lookups decode one complete stored block. Network callers must
+/// reserve a maximum block plus bookkeeping before resolving locators or bases.
 pub fn canonical_id(store: &Store, height: u64) -> Result<Hash, String> {
     if height == 0 {
         Ok(store.state().config.genesis_id())

@@ -5,10 +5,10 @@ independent native-proof engineering network. The native library contains
 bounded admission, authenticated-stream protocol interfaces, full-proof sync,
 verified-work fork choice, atomic reorganization, seed-derived wallet
 primitives and a public subsidy audit. A production hybrid provider and
-listening network service are not implemented. Compilation and test execution
-of the new integration remain pending remote CI; no network acceptance is
-implied. The frozen
-proof profiles and retained seven-node legacy network remain unchanged.
+listening network service are not implemented. Remote CI covers compilation,
+protocol rejection and separately selected native-proof integration tests; no
+network acceptance is implied. The frozen proof profiles and retained
+seven-node legacy network remain unchanged.
 
 ## Proof parameters and activation
 
@@ -413,9 +413,10 @@ recovery, without a production provider/listening service or qualified wire
 measurements. Verified-work forks and atomic depth-24 reorganization are
 implemented with local replay limits. N8 has seed-derived scanning/transfer
 primitives without protected durability or full valid-chain M2 acceptance.
-The offline audit covers SI subsidy/fund credits only. Compilation and test
-execution of the new integration remain pending remote CI. The frozen service
-observation is not replaced or restarted by this library work.
+The offline audit covers SI subsidy/fund credits only. The dedicated native
+runtime CI job covers compilation, rejection tests and separately selected
+native-proof integration tests. The frozen service observation is not replaced
+or restarted by this library work.
 
 Estimates are engineering days for one engineer familiar with the codebase,
 excluding independent review, infrastructure procurement and elapsed soak or

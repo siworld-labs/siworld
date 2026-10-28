@@ -10,10 +10,13 @@ use crate::state::{BlockVerifier, State};
 use crate::store::Store;
 use crate::sync::{self, Batch, CompactBlock, Locator, Reference, Staging};
 use crate::wire::{
-    Block, GROUP, Hash, MAX_ENVELOPE_BYTES, MAX_SLOTS, MIN_SLOTS, SIDECAR_BYTES, Sidecar, Snapshot,
-    Transaction,
+    Block, GROUP, Hash, MAX_BLOCK_BYTES, MAX_ENVELOPE_BYTES, MAX_SLOTS, MIN_SLOTS, SIDECAR_BYTES,
+    Sidecar, Snapshot, Transaction,
 };
 use std::io::{Read, Write};
+
+// A canonical ID lookup currently decodes one complete stored proof block.
+const BLOCK_LOOKUP_BYTES: usize = MAX_BLOCK_BYTES + 65_536;
 
 #[derive(Debug)]
 pub enum Error {
@@ -169,14 +172,18 @@ impl<V: BlockVerifier> Node<V> {
                 let _guard = reservation;
                 match kind {
                     p2p::GET_BLOCKS => {
-                        let (ancestor, after) = decode_request(&body, &self.store)?;
-                        // Reserve the batch before reading/copying any stored proof.
+                        // Locator resolution also decodes stored proof blocks.
+                        // Reserve before any lookup, including ancestor matching.
                         // Leave bounded control-frame space while streaming replies.
                         let allowance = self
                             .budget
                             .available()?
                             .saturating_sub(p2p::MAX_CONTROL_BYTES + 65536);
+                        if allowance < BLOCK_LOOKUP_BYTES {
+                            return Err(p2p::Error::ResourceExhausted.into());
+                        }
                         let batch_reservation = self.budget.reserve(allowance)?;
+                        let (ancestor, after) = decode_request(&body, &self.store)?;
                         let batch = match sync::serve_batch(
                             &self.store,
                             ancestor,
@@ -302,6 +309,7 @@ impl<V: BlockVerifier> Node<V> {
         let body = if let Some(staging) = &attempt.staging {
             encode_continue(staging.base(), staging.continuation()?)
         } else {
+            let _lookup_guard = self.budget.reserve(BLOCK_LOOKUP_BYTES)?;
             let mut b = vec![0];
             b.extend(Locator::from_store(&self.store)?.encode()?);
             b
@@ -325,6 +333,7 @@ impl<V: BlockVerifier> Node<V> {
             if meta.after != meta.ancestor {
                 return Err(invalid());
             }
+            let _lookup_guard = self.budget.reserve(BLOCK_LOOKUP_BYTES)?;
             attempt.staging = Some(Staging::new(
                 &self.store,
                 meta.ancestor,

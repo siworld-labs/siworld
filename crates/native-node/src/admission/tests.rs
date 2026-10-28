@@ -214,19 +214,29 @@ fn duplicate_inputs_and_outputs_within_one_transaction_are_refused() {
         let verify = verifier();
         let mut pool = Mempool::new(state.config.network);
         let (mut transaction, mut sidecar) = fixture(&state, 1, 10);
+        // Build a valid envelope first; the normal encoder rejects duplicate
+        // nullifiers before malformed remote bytes can reach admission.
+        let mut envelope = transaction.encode_envelope(&state.config.network).unwrap();
         let duplicate = transaction.record.body[source * 48..(source + 1) * 48].to_vec();
         transaction.record.body[destination * 48..(destination + 1) * 48]
             .copy_from_slice(&duplicate);
         sidecar.transaction_id = transaction.record.statement_id(&state.config.network);
-        assert!(
+        let public_start = TX_PREFIX_BYTES - 4 - transaction.record.fee_commit.len() - PUBLIC_BYTES;
+        envelope[public_start..public_start + PUBLIC_BYTES]
+            .copy_from_slice(&transaction.record.body);
+        assert_eq!(
             pool.submit_encoded(
                 &state,
                 PeerId([1; 32]),
-                &transaction.encode_envelope(&state.config.network).unwrap(),
+                &envelope,
                 Some(&sidecar.encode().unwrap()),
                 &verify
-            )
-            .is_err()
+            ),
+            Err(AdmissionError::Invalid(if source == 0 {
+                InvalidReason::Envelope
+            } else {
+                InvalidReason::CanonicalConflict
+            }))
         );
         assert_eq!(verify.calls.get(), 0);
         empty(&pool);

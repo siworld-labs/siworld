@@ -397,8 +397,8 @@ pruned-public-history rescan and full M2 workflow acceptance remain incomplete.
 The service's existing private reward receipts remain required. Frozen proof
 source, parameters and public verifier artifacts are unchanged.
 
-Compilation and test execution of the new integration remain pending remote
-CI. Synthetic-verifier state/transport tests and native-proof tests with
+The dedicated native runtime CI job compiles the integration and runs
+synthetic-verifier state/transport tests and native-proof tests. Tests with
 synthetic funding do not establish end-to-end valid-chain wallet acceptance or
 production cryptographic transport. Unsupported issuance operations remain
 absent until the dedicated testnet fund account, atomic fee collection and

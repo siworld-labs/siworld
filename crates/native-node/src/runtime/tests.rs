@@ -620,3 +620,157 @@ fn compact_reconstruction_exhaustion_is_retryable_and_keeps_pending_transactions
     assert_eq!(node.mempool().len(), 64);
     assert!(node.transport_budget().reserve(1024 * 1024).is_ok());
 }
+
+#[test]
+fn outgoing_locator_lookup_exhaustion_precedes_get_blocks_and_preserves_pending() {
+    let dir = Directory::new();
+    let mut node = setup(&dir);
+    let block = candidate(node.state(), 10_000);
+    node.import_branch(0, &[block], CandidatePolicy::default())
+        .unwrap();
+    let (transaction, sidecar) = payment(node.state());
+    let envelope = transaction
+        .encode_envelope(&node.state().config.network)
+        .unwrap();
+    let pending = node
+        .submit_local(&envelope, Some(&sidecar.encode().unwrap()))
+        .unwrap();
+    let fingerprint = node.state().fingerprint();
+    let (mut session, output) = scripted(&node, [51; 32], Vec::new());
+    let budget = node.transport_budget();
+    let pressure = budget.reserve(p2p::CONNECTION_BYTES - 65_536).unwrap();
+    let available = budget.available().unwrap();
+    let mut attempt = SyncAttempt::default();
+    assert!(matches!(
+        node.synchronize(&mut session, 90, &mut attempt),
+        Err(Error::Transport(p2p::Error::ResourceExhausted))
+    ));
+    assert!(sent(&output).is_empty());
+    assert_eq!(node.state().fingerprint(), fingerprint);
+    assert!(node.mempool().contains(&pending));
+    assert_eq!(node.mempool().len(), 1);
+    assert!(attempt.peer.is_none() && attempt.staging.is_none() && attempt.reservations.is_empty());
+    assert_eq!(budget.available().unwrap(), available);
+    drop(pressure);
+    assert!(full_budget_available(&budget));
+}
+
+#[test]
+fn incoming_locator_lookup_exhaustion_is_retryable_and_preserves_pending() {
+    let dir = Directory::new();
+    let mut node = setup(&dir);
+    let block = candidate(node.state(), 10_000);
+    node.import_branch(0, &[block], CandidatePolicy::default())
+        .unwrap();
+    let (transaction, sidecar) = payment(node.state());
+    let envelope = transaction
+        .encode_envelope(&node.state().config.network)
+        .unwrap();
+    let pending = node
+        .submit_local(&envelope, Some(&sidecar.encode().unwrap()))
+        .unwrap();
+    let fingerprint = node.state().fingerprint();
+    let mut request = vec![0];
+    request.extend(Locator::from_store(node.store()).unwrap().encode().unwrap());
+    let packet = frame(node.binding(), p2p::GET_BLOCKS, 91, &request);
+    let (mut session, output) = scripted(&node, [52; 32], vec![packet]);
+    let budget = node.transport_budget();
+    let pressure = budget.reserve(p2p::CONNECTION_BYTES - 65_536).unwrap();
+    let available = budget.available().unwrap();
+    assert!(matches!(
+        node.serve_once(&mut session),
+        Err(Error::Transport(p2p::Error::ResourceExhausted))
+    ));
+    assert!(sent(&output).is_empty());
+    assert_eq!(node.state().fingerprint(), fingerprint);
+    assert!(node.mempool().contains(&pending));
+    assert_eq!(node.mempool().len(), 1);
+    assert_eq!(budget.available().unwrap(), available);
+    drop(pressure);
+    assert!(full_budget_available(&budget));
+}
+
+#[test]
+fn staging_lookup_exhaustion_after_metadata_discards_attempt_and_preserves_pending() {
+    struct PressuredResponse {
+        channel: Scripted,
+        budget: Budget,
+        pressure: Option<Reservation>,
+    }
+    impl Read for PressuredResponse {
+        fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+            if self.channel.input.position() >= p2p::HELLO_BYTES as u64 && self.pressure.is_none() {
+                let retained = self.budget.available().unwrap() - 65_536;
+                self.pressure = Some(self.budget.reserve(retained).unwrap());
+            }
+            self.channel.read(bytes)
+        }
+    }
+    impl Write for PressuredResponse {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.channel.write(bytes)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.channel.flush()
+        }
+    }
+
+    let dir = Directory::new();
+    let mut node = setup(&dir);
+    let block = candidate(node.state(), 10_000);
+    node.import_branch(0, &[block], CandidatePolicy::default())
+        .unwrap();
+    let (transaction, sidecar) = payment(node.state());
+    let envelope = transaction
+        .encode_envelope(&node.state().config.network)
+        .unwrap();
+    let pending = node
+        .submit_local(&envelope, Some(&sidecar.encode().unwrap()))
+        .unwrap();
+    let fingerprint = node.state().fingerprint();
+    let base = node.state().tip_snapshot().selector;
+    let binding = node.binding();
+    let meta = BatchMeta {
+        ancestor: base,
+        after: base,
+        count: 0,
+        more: false,
+    };
+    let mut input = p2p::Hello {
+        binding,
+        role: p2p::Role::Validator,
+    }
+    .encode()
+    .to_vec();
+    for packet in replies(&node, 92, meta, &[]) {
+        input.extend(packet);
+    }
+    let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let budget = node.transport_budget();
+    let channel = PressuredResponse {
+        channel: Scripted {
+            input: std::io::Cursor::new(input),
+            output: output.clone(),
+        },
+        budget: budget.clone(),
+        pressure: None,
+    };
+    let capability = p2p::Authenticated::from_verified_provider(channel, binding, [53; 32]);
+    let mut session =
+        Session::establish(capability, binding, p2p::Role::Validator, budget.clone()).unwrap();
+    let mut attempt = SyncAttempt::default();
+    assert!(matches!(
+        node.synchronize(&mut session, 92, &mut attempt),
+        Err(Error::Transport(p2p::Error::ResourceExhausted))
+    ));
+    let requests = sent(&output);
+    assert_eq!(requests.len(), 1);
+    assert_eq!((requests[0].0, requests[0].1), (p2p::GET_BLOCKS, 92));
+    assert_eq!(node.state().fingerprint(), fingerprint);
+    assert!(node.mempool().contains(&pending));
+    assert_eq!(node.mempool().len(), 1);
+    assert!(attempt.peer.is_none() && attempt.staging.is_none() && attempt.reservations.is_empty());
+    assert_eq!(budget.available().unwrap(), 65_536);
+    drop(session);
+    assert!(full_budget_available(&budget));
+}
