@@ -148,7 +148,8 @@ impl SettlementSlot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SettlementError {
     EmptySettlement,
-    MinerAssetNotSi,
+    InvalidRewardPlan,
+    MinerAssetNotSip,
     DuplicateCommitment { index: usize },
     DummyFeeNonZero { index: usize, fee: u64 },
     RealFeeZero { index: usize },

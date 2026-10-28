@@ -1,5 +1,12 @@
 # V1 Storage, Retention and Bootstrap
 
+The [monetary revision](v1-economics.md) requires new source-bound proof
+measurements and final encoding of one/five reward notes, pool/burn/fund
+records and lock fields. The numerical tables below retain the pre-revision
+baseline and conditional allowances; they are not revised-network acceptance.
+Reconcile the final formats, issuance limits and actual database overhead
+before claiming bandwidth margin or SSD lifetime.
+
 Status: selected retention policy and component capacity model for the
 multi-asset V1 format. Final persistent record sizes and long-run whole-node
 resource qualification remain incomplete. Transaction proof caps are selected
@@ -65,7 +72,7 @@ recovery check before readiness. Restore derives spending/view/change keys
 from the backed-up material and scans permanent ciphertexts from genesis, or an
 authenticated wallet birth height, including segments older than the node's
 bootstrap checkpoint. Authenticate those segments against the permanent-data
-manifest, check AEAD and note commitments, recover SI and asset IDs/amounts,
+manifest, check AEAD and note commitments, recover SIP and asset IDs/amounts,
 and reconcile spends against permanent nullifiers. A state checkpoint does not
 allow skipping old ciphertexts when recovering an old unspent note. Test
 offline recovery across proof deletion, checkpoints, reorganization and backup
@@ -212,10 +219,13 @@ One real three-day-after-finality lifecycle is required by
 
 ## Supply audit implementation requirement
 
-Provide an integer-only height-by-height SI issuance auditor using the shared
-subsidy schedule and fund transition. Recompute subsidy, 90/5/5 credits, fund
-maturities/releases, valid ML-DSA expenditures and counters, and cumulative SI
-emission against the curve. Transfers and fee recycling are not new issuance.
+Provide an integer-only height-by-height SIP issuance auditor using the shared
+subsidy schedule and [monetary transition](v1-economics.md). Recompute nominal
+87/10/3 nominal allocations and the adopted independent fund-wallet ratios, mode-specific rewards, Holder pool deposits/claims,
+cumulative burn, locked subsidy schedules, per-credit fund maturity/vesting,
+valid ML-DSA expenditures and counters, and cumulative SIP emission against
+the curve. Check supply conservation at every height. Public lock/circulation
+figures are scheduled subsidy measures, not private unspent holdings. Transfers and fee recycling are not new issuance.
 Verify public asset declarations and the native issuance-to-note supply
 relation separately; do not infer private holdings or reveal fee openings.
 

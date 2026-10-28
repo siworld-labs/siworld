@@ -16,3 +16,6 @@ pub mod multi_asset_transaction;
 #[cfg(feature = "security-report")]
 pub mod security;
 pub mod settlement;
+
+#[cfg(test)]
+mod economic_rewards_tests;

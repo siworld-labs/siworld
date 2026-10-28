@@ -6,7 +6,7 @@
       "id": "proof-composition",
       "area": "proofs",
       "status": "planned",
-      "scope": "Native D8 multi-asset transaction, fixed-supply issuance and confidential-fee settlement AIRs; pinned D8/W24 dependency changes; random-codeword PCS; challenger and MMCS geometry; source, suite and public verifier artifacts; enforced query/batch grinding; two-worker hiding and RNG use; ciphertext/fee binding; bounded decoding and canonical snapshot admission. Recursive application aggregation is separate paused V2 research.",
+      "scope": "Native D8 multi-asset transaction, fixed-supply issuance and confidential-fee settlement AIRs; pinned D8/W24 dependency changes; random-codeword PCS; challenger and MMCS geometry; source, suite and public verifier artifacts; enforced query/batch grinding; two-worker hiding and RNG use; ciphertext/fee binding; bounded decoding and canonical snapshot admission. Recursive application aggregation is separate paused V2 research. Revised input unlock-height constraints tied to canonical snapshot heights; mode-dependent one/five SIP reward notes, private-fee addition and complete commitments; fresh actual-AIR screening and public-key reproduction after the economic revision.",
       "excluded": [
         "unmodified upstream Plonky3",
         "unmodified upstream Plonky3-recursion"
@@ -30,7 +30,7 @@
       "id": "hash-and-consensus",
       "area": "consensus",
       "status": "planned",
-      "scope": "SIWORLD Poseidon2 instances, BLAKE3 consensus hashes, ASERT, proof-of-work and cumulative-work fork choice.",
+      "scope": "SIWORLD Poseidon2 instances, BLAKE3 consensus hashes, ASERT, proof-of-work and cumulative-work fork choice. Shared native issuance and rounding, Voyager/Holder allocation, Holder pool deposits/claims, cumulative burn and supply conservation, per-credit 1,461-day fund vesting, authenticated expenditures and atomic economic reorganization rollback.",
       "excluded": [
         "unmodified upstream BLAKE3",
         "unmodified upstream Poseidon2 reference code"
@@ -38,7 +38,10 @@
       "implementation_paths": [
         "crates/poseidon2",
         "crates/consensus",
-        "crates/state"
+        "crates/state",
+        "crates/core/src/v1_economics.rs",
+        "crates/native-node",
+        "docs/v1-economics.md"
       ],
       "report": null,
       "accepted_commit": null,
@@ -48,7 +51,7 @@
       "id": "post-quantum-integration",
       "area": "cryptography",
       "status": "planned",
-      "scope": "SIWORLD integration of ML-KEM-768, ML-DSA-65, sender output self-checks, selective payment receipts, genuine padding encryption, key lifecycle, encoding, authorization and downgrade boundaries.",
+      "scope": "SIWORLD integration of ML-KEM-768, ML-DSA-65, sender output self-checks, selective payment receipts, genuine padding encryption, key lifecycle, encoding, authorization and downgrade boundaries. Note lock ciphertext recovery, denomination-only source renaming with preserved address/serialization domains, and off-chain threshold backup/custody boundaries; V1 does not implement consensus multisignature.",
       "excluded": [
         "unmodified upstream ML-KEM",
         "unmodified upstream ML-DSA"

@@ -4,7 +4,7 @@
 //! Every candidate block then uses the same atomic transition as production and
 //! replay. Local capacity exhaustion never establishes consensus invalidity.
 use crate::state::{BlockVerifier, MAX_REORG_DEPTH, State};
-use crate::wire::{BLOCK_FIXED_BYTES, Block, Hash, TX_PREFIX_BYTES};
+use crate::wire::{Block, Hash};
 use siworld_core::pow::Work;
 use std::fmt;
 
@@ -113,20 +113,27 @@ pub(crate) fn candidate_budget(
     let mut bytes = 0usize;
     for block in blocks {
         block.validate_shape().map_err(ChainError::Invalid)?;
-        let encoded = block.transactions.iter().fold(
-            BLOCK_FIXED_BYTES.checked_add(block.settlement_proof.len()),
-            |total, tx| {
-                total
-                    .and_then(|n| n.checked_add(4 + TX_PREFIX_BYTES))
-                    .and_then(|n| n.checked_add(tx.proof.len()))
-            },
-        );
+        let encoded = Some(block.encoded_len().map_err(ChainError::Invalid)?);
         let owned = block.transactions.iter().fold(
             block
                 .transactions
                 .capacity()
                 .checked_mul(std::mem::size_of::<crate::wire::Transaction>())
                 .and_then(|n| n.checked_add(block.settlement_proof.capacity()))
+                .and_then(|n| {
+                    block
+                        .rewards
+                        .capacity()
+                        .checked_mul(std::mem::size_of::<crate::wire::RewardRecord>())
+                        .and_then(|size| n.checked_add(size))
+                })
+                .and_then(|n| {
+                    block
+                        .fund_spends
+                        .capacity()
+                        .checked_mul(std::mem::size_of::<crate::fund_spend::FundSpend>())
+                        .and_then(|size| n.checked_add(size))
+                })
                 .and_then(|n| n.checked_add(std::mem::size_of::<Block>())),
             |total, tx| total.and_then(|n| n.checked_add(tx.proof.capacity())),
         );
@@ -163,6 +170,7 @@ fn state_budget(state: &State) -> Option<usize> {
                 .checked_mul(std::mem::size_of::<crate::state::CanonicalSnapshot>())?,
         )?
         .checked_add(state.timestamps.capacity().checked_mul(8)?)?
+        .checked_add(state.economics.logical_memory_bytes()?)?
         .checked_add(8192)
 }
 

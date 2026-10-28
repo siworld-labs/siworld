@@ -126,7 +126,7 @@ mod tests {
             key.verifying_key()
         );
 
-        let message = b"pay 1 SI to alice";
+        let message = b"pay 1 SIP to alice";
         let sig = key.sign(message, &Digest([3; 32]));
         assert!(key.verifying_key().verify(message, &sig));
         // Another hedge gives another valid signature of the same message.
@@ -135,7 +135,7 @@ mod tests {
         assert!(key.verifying_key().verify(message, &again));
 
         assert!(!other.verifying_key().verify(message, &sig));
-        assert!(!key.verifying_key().verify(b"pay 2 SI to alice", &sig));
+        assert!(!key.verifying_key().verify(b"pay 2 SIP to alice", &sig));
         let mut bad = sig;
         bad.0[100] ^= 1;
         assert!(!key.verifying_key().verify(message, &bad));

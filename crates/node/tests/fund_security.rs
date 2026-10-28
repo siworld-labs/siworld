@@ -90,16 +90,16 @@ fn grant(n: &Node) -> FundGrant {
         budget: siworld_node::fund_keys::FundBudget {
             version: 1,
             id: "ab".repeat(32),
-            direct_si: "1000000000".into(),
-            lock_si: "1000000000".into(),
-            total_si: "2000000000".into(),
-            max_payout_si: "1000000".into(),
+            direct_sip: "1000000000".into(),
+            lock_sip: "1000000000".into(),
+            total_sip: "2000000000".into(),
+            max_payout_sip: "1000000".into(),
         },
         genesis: hex(&n.genesis.id),
         seconds: 60,
-        direct_si: "0.0003".into(),
-        lock_si: "0".into(),
-        max_payout_si: "0.0002".into(),
+        direct_sip: "0.0003".into(),
+        lock_sip: "0".into(),
+        max_payout_sip: "0.0002".into(),
         recipients: vec![encode_address(&recipient(3))],
         approval: None,
     }
@@ -196,24 +196,24 @@ fn authorization_binds_chain_recipients_amounts_accounts_and_expiry_without_refi
             0 => bad.seconds = 0,
             1 => bad.seconds = 3601,
             2 => bad.recipients.clear(),
-            3 => bad.direct_si = "-1".into(),
-            4 => bad.max_payout_si = "0".into(),
+            3 => bad.direct_sip = "-1".into(),
+            4 => bad.max_payout_sip = "0".into(),
             5 => bad.recipients.push(bad.recipients[0].clone()),
-            6 => bad.direct_si = "184467440738".into(),
-            7 => bad.max_payout_si = "1e3".into(),
+            6 => bad.direct_sip = "184467440738".into(),
+            7 => bad.max_payout_sip = "1e3".into(),
             8 => bad.recipients = vec![bad.recipients[0].clone(); 33],
             9 => bad.version = 3,
             10 => bad.budget.version = 2,
             11 => bad.budget.id = "AB".repeat(32),
             12 => bad.approval_id.clear(),
             13 => bad.approval_id = "AB".repeat(32),
-            14 => bad.budget.total_si = "0".into(),
-            15 => bad.budget.total_si = "184467440738".into(),
-            16 => bad.budget.direct_si = "0.000000001".into(),
-            17 => bad.budget.max_payout_si = "0.0001".into(),
+            14 => bad.budget.total_sip = "0".into(),
+            15 => bad.budget.total_sip = "184467440738".into(),
+            16 => bad.budget.direct_sip = "0.000000001".into(),
+            17 => bad.budget.max_payout_sip = "0.0001".into(),
             _ => {
-                bad.budget.direct_si = "0".into();
-                bad.budget.lock_si = "0".into();
+                bad.budget.direct_sip = "0".into();
+                bad.budget.lock_sip = "0".into();
             }
         }
         assert!(n.unlock_fund(PASSWORD, &bad).is_err());
@@ -282,7 +282,7 @@ fn wrong_genesis_keys_fail_before_installation_and_failed_payouts_keep_budget() 
         PASSWORD,
     );
     let mut g = grant(&n);
-    g.lock_si = "100".into();
+    g.lock_sip = "100".into();
     n.unlock_fund(PASSWORD, &g).unwrap();
     assert!(matches!(
         n.payout(request_id(), DevAccount::Lock, &recipient(3), 10_000),

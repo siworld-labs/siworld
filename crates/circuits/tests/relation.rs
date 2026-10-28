@@ -10,7 +10,7 @@ use siworld_core::{Ciphertext, Condition, Digest, Note, CIPHERTEXT_LEN};
 use siworld_crypto::{expand, miner_rho, note_commitment, output_rho, SpendKey};
 use siworld_state::ChainState;
 
-const SI: u64 = 100_000_000;
+const SIP: u64 = 100_000_000;
 
 /// The relation does not look at ciphertexts (docs/security-model.md), so these tests leave them blank.
 const NO_CT: [Ciphertext; 2] = [Ciphertext([0; CIPHERTEXT_LEN]); 2];
@@ -37,7 +37,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let params = ChainParams::devnet();
-    let funded = note(SI, 0);
+    let funded = note(SIP, 0);
     let state = ChainState::genesis_with_commitments(&params, &[note_commitment(&funded)]);
     Fixture {
         params,
@@ -103,11 +103,11 @@ fn fee_must_be_one_of_two_tiers() {
     let f = fixture();
     let base = fee_base(0);
     let prio = fee_priority(0);
-    assert_eq!(f.prove([f.real(), dummy(1)], [SI - base, 0], base), Ok(()));
-    assert_eq!(f.prove([f.real(), dummy(1)], [SI - prio, 0], prio), Ok(()));
+    assert_eq!(f.prove([f.real(), dummy(1)], [SIP - base, 0], base), Ok(()));
+    assert_eq!(f.prove([f.real(), dummy(1)], [SIP - prio, 0], prio), Ok(()));
     for fee in [0, 1, base - 1, base + 1, 2 * base] {
         assert_eq!(
-            f.prove([f.real(), dummy(1)], [SI - fee, 0], fee),
+            f.prove([f.real(), dummy(1)], [SIP - fee, 0], fee),
             Err(RelationError::BadFee),
             "fee {fee}"
         );
@@ -134,18 +134,18 @@ fn outputs_respect_minimum_deposit() {
     let f = fixture();
     let fee = fee_base(0);
     assert_eq!(
-        f.prove([f.real(), dummy(1)], [SI - fee - 1, 1], fee),
+        f.prove([f.real(), dummy(1)], [SIP - fee - 1, 1], fee),
         Err(RelationError::BelowMinimumDeposit { output: 1 })
     );
     assert_eq!(
         f.prove(
             [f.real(), dummy(1)],
-            [SI - fee - MIN_PACKAGE_DEPOSIT, MIN_PACKAGE_DEPOSIT],
+            [SIP - fee - MIN_PACKAGE_DEPOSIT, MIN_PACKAGE_DEPOSIT],
             fee
         ),
         Ok(())
     );
-    assert_eq!(f.prove([f.real(), dummy(1)], [SI - fee, 0], fee), Ok(()));
+    assert_eq!(f.prove([f.real(), dummy(1)], [SIP - fee, 0], fee), Ok(()));
 }
 
 #[test]
@@ -153,11 +153,11 @@ fn value_is_conserved() {
     let f = fixture();
     let fee = fee_base(0);
     assert_eq!(
-        f.prove([f.real(), dummy(1)], [SI - fee + 1, 0], fee),
+        f.prove([f.real(), dummy(1)], [SIP - fee + 1, 0], fee),
         Err(RelationError::Unbalanced)
     );
     assert_eq!(
-        f.prove([f.real(), dummy(1)], [SI - fee - 1, 0], fee),
+        f.prove([f.real(), dummy(1)], [SIP - fee - 1, 0], fee),
         Err(RelationError::Unbalanced)
     );
 }
@@ -190,7 +190,7 @@ fn output_rho_must_be_derived_from_input_nullifiers() {
     let inputs = || [f.real(), dummy(1)];
     let nf = inputs().map(|i| i.nullifier());
     let good = [0, 1].map(|j| output_rho(&nf[0], &nf[1], j));
-    let outs = [SI / 2, SI - SI / 2 - fee];
+    let outs = [SIP / 2, SIP - SIP / 2 - fee];
     assert_eq!(f.prove_with_rho(inputs(), outs, fee, good), Ok(()));
 
     // A sender creates two packages with the same ρ for one recipient: their

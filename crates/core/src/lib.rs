@@ -8,5 +8,6 @@ pub mod issuance;
 pub mod params;
 pub mod pow;
 pub mod types;
+pub mod v1_economics;
 
 pub use types::*;

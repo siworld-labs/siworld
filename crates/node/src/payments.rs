@@ -898,7 +898,7 @@ impl PaymentOrder {
         Self {
             payment_id: id.to_string(),
             to: encode_address(to),
-            amount: crate::amount::format_si(amount),
+            amount: crate::amount::format_sip(amount),
             priority,
         }
     }
@@ -1335,7 +1335,7 @@ impl Node {
         for order in orders {
             let id = PaymentId::parse(&order.payment_id)?;
             let to = crate::address::parse_address(&order.to).ok_or(PaymentError::Conflict)?;
-            let amount = crate::amount::parse_si(&order.amount).ok_or(PaymentError::Conflict)?;
+            let amount = crate::amount::parse_sip(&order.amount).ok_or(PaymentError::Conflict)?;
             if canonical
                 .insert(id, (encode_address(&to), amount, order.priority))
                 .is_some()

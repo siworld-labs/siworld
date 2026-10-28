@@ -2,13 +2,13 @@
 
 > **Superseded by V1 (Route A).** This page documents the legacy recursive implementation. The retained seven-node N=2 engineering testnet uses this classical proof route; it is not a native V1 testnet or post-quantum acceptance result. See the [current V1 overview](../v1-overview.md).
 
-This document describes the retained SI-only implementation. Native V1
+This document describes the retained SIP-only implementation. Native V1
 requirements are distinguished in the selected-route section below; existing
 constants and recursive behavior are not new-network acceptance criteria. Constants are in `crates/core/src/params.rs`; executable rules are in `crates/consensus`. Genesis commits network parameters. Mainnet constructors contain placeholders and do not define an activated network.
 
 ## Units and issuance
 
-Amounts are unsigned integer atoms: 1 SI = 100,000,000 atoms. Ratios use integer fixed point. SIP is a reserved denomination, not a separate asset: 1 SI = 10,000 SIP. Current wallet input and output use SI.
+Amounts are unsigned integer atoms: 1 SIP = 100,000,000 atoms. Ratios use integer fixed point. Current wallet input and output use SIP.
 
 | Constant | Value |
 |---|---|

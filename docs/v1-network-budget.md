@@ -1,5 +1,12 @@
 # Native V1 Network Capacity Budget
 
+The [monetary revision](v1-economics.md) requires new source-bound proof
+measurements and final encoding of one/five reward notes, pool/burn/fund
+records and lock fields. The numerical tables below retain the pre-revision
+baseline and conditional allowances; they are not revised-network acceptance.
+Reconcile the final formats, issuance limits and actual database overhead
+before claiming bandwidth margin or SSD lifetime.
+
 Status: reproducible engineering budget for the multi-asset codec. The
 transaction proof-length limit is **655,360 bytes (640 KiB)** and the
 minimum uplink is **43 Mbps**, selected from the actual-AIR performance scan;
@@ -21,7 +28,7 @@ Selection requires all three four-worker generation trials on the EPYC 7763
 reference host to complete within two seconds and the actual-AIR security
 report to meet the selected 80-bit quantum target. Round the transaction
 proof cap up to a complete 64-KiB unit while retaining at least 10% above the
-largest selected-profile proof body in the evidence. The selected profile is
+largest selected-profile proof body in the evidence. The pre-economic-revision profile was
 log_blowup 7, 41 queries, query/batch grinding 20, commit grinding 0, binary
 folding and final polynomial log length 0. Its three reference-host generation
 times were 1.332143, 1.315662 and 1.316440 seconds; proof bodies were

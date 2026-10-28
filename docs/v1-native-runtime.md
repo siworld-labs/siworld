@@ -14,7 +14,13 @@ Independent security review remains pending.
 
 ## Scope
 
-`crates/native-node` composes the frozen native transaction and fixed-capacity
+The [economic revision](v1-economics.md) reopens proof qualification. The
+retained continuous-service observation uses its frozen pre-revision artifacts
+and must not be restarted or reinterpreted as acceptance of revised economics.
+New economic state, reward outputs and lock checks require separate tests,
+replay evidence, source-bound keys and a new explicitly activated network.
+
+`crates/native-node` composes the native transaction and fixed-capacity
 settlement relations with a versioned block codec, canonical ordering, a common
 state transition, and replay-verified local persistence. It uses D8/W24 with
 12-element digests throughout; it does not truncate them into legacy digests.
@@ -32,7 +38,7 @@ excludes proof bodies.
 
 The producer and replay validator call the same state transition. Every
 transaction proof and the independent settlement proof must verify before
-accepted state changes. Output commitments and the SI reward note are appended
+accepted state changes. Output commitments and all SIP reward notes are appended
 to the depth-40 commitment tree. Accepted snapshot identities expire after
 4096 canonical entries; an absent or removed identity is invalid even when
 another snapshot has the same root. The chain library verifies complete
@@ -86,7 +92,7 @@ nullifiers and all outputs, validates the sidecar against the transaction
 identity and fee commitment, then independently verifies the frozen relation.
 Verified entries are retained until canonical inclusion or explicit eviction;
 private fee sorting does not change canonical block ordering. Candidate
-assembly checks every opening and adds the private fee sum to the SI miner
+assembly checks every opening and adds the private fee sum to the SIP miner
 reward with checked integer arithmetic.
 
 The verified pool permits 512 MiB and 2,048 entries, with 16 MiB/64 entries
@@ -144,8 +150,8 @@ After independently replaying a complete supplied canonical history, it
 checks authenticated recipient/change ciphertexts and reconstructed note
 commitments, derives spent status and atomically replaces private receipts.
 Replaying a replacement chain removes orphan receipts and restores orphan
-spends. The wallet can prepare fixed two-input/three-output SI or issued-asset
-transfers, pay standard or priority fees only in SI, recheck all output
+spends. The wallet can prepare fixed two-input/three-output SIP or issued-asset
+transfers, pay standard or priority fees only in SIP, recheck all output
 encodings before proving and return the transaction, matching sidecar and
 private payment opening. Seed bytes and supported private buffers are erased
 on drop; dependency-internal and native-field copies are outside that guarantee.
@@ -157,7 +163,7 @@ public-history segments remain separate work. A native-proof test using
 synthetic funding is not full-chain M2 acceptance.
 
 The `audit` command acquires the engineering-directory lease and independently
-replays canonical proof-carrying blocks. It checks each height's integer SI
+replays canonical proof-carrying blocks. It checks each height's integer SIP
 subsidy and direct/locked development-fund credits against accepted counters,
 then binds its report to the exact height, tip and state fingerprint. Output
 contains only public subsidy/fund-credit records. It does not audit asset
@@ -313,7 +319,7 @@ suite is covered by the dedicated native runtime CI job. None of these
 correctness checks substitutes for actual hybrid-provider tests,
 target-hardware performance or sustained-load acceptance.
 
-M1 does not implement issuance admission. The testnet fee is fixed at 50 SI
+M1 does not implement issuance admission. The testnet fee is fixed at 50 SIP
 (5,000,000,000 atoms), entirely credited to a dedicated development-fund
 account. That account is not configured, so issuance remains closed and fails
 closed. Destination configuration, atomic fee consumption/fund credit and

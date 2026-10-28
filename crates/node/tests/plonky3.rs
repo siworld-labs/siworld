@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use siworld_consensus::{mine, TipChange};
 use siworld_core::issuance::{block_reward, epoch_of, fee_base, reward_split};
-use siworld_core::params::ATOMS_PER_SI;
+use siworld_core::params::ATOMS_PER_SIP;
 use siworld_core::{Block, Digest};
 use siworld_crypto::{SecretSeed, SpendKey};
 use siworld_node::genesis::{AllocationFile, Genesis, GenesisFile, ProofsFile};
@@ -16,7 +16,7 @@ use siworld_node::node::{Balance, Node};
 use siworld_node::wire::{decode_tx, encode_tx};
 use siworld_prover::Plonky3System;
 
-const SI: u64 = ATOMS_PER_SI;
+const SIP: u64 = ATOMS_PER_SIP;
 
 fn key(i: u8) -> SpendKey {
     SpendKey::from_digest(Digest([i; 32]))
@@ -93,7 +93,7 @@ fn a_proven_payment_crosses_the_network() {
 
     // b admits the payment with its leaf proof, knowing only the root key;
     // a, the miner, includes it.
-    let tx = a.pay(&b.address(), 10 * SI, false).unwrap();
+    let tx = a.pay(&b.address(), 10 * SIP, false).unwrap();
     assert!(!tx.proof.body.is_empty(), "a real leaf proof");
     let fee = fee_base(epoch_of(1));
     b.submit_tx(decode_tx(&encode_tx(&tx)).unwrap(), Some(Digest([0xa; 32])))
@@ -103,7 +103,7 @@ fn a_proven_payment_crosses_the_network() {
     assert_eq!(relay(&a, &mut b, 2), TipChange::Extended);
     assert!(b.mempool.is_empty(), "included transactions leave the pool");
 
-    let change = 90 * SI - fee;
+    let change = 90 * SIP - fee;
     let mined_by_a = share(1) + share(2) + fee;
     assert_eq!(
         a.balance().unwrap(),
@@ -116,8 +116,8 @@ fn a_proven_payment_crosses_the_network() {
     assert_eq!(
         b.balance().unwrap(),
         Balance {
-            total: 10 * SI,
-            spendable: 10 * SI,
+            total: 10 * SIP,
+            spendable: 10 * SIP,
             pending: 0
         }
     );

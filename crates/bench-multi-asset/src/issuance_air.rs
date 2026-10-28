@@ -2,7 +2,7 @@
 //!
 //! The public statement binds the asset identifier, declared supply, complete
 //! signed declaration digest and ordered initial note commitments. Signature,
-//! asset-ID derivation, policy and SI fee checks remain native validation steps.
+//! asset-ID derivation, policy and SIP fee checks remain native validation steps.
 
 use crate::air::{LinearLayers, P2, P2Air, p2_constants};
 use crate::common::{DIGEST, F, LIMB_BITS, LIMBS, RATE, WIDTH};
@@ -144,6 +144,10 @@ impl<AB: AirBuilder<F = F>> Air<AB> for IssuanceAir {
             // Bind otherwise native-only declaration fields to the proof transcript.
             b.assert_eq(l[CONTEXT + e], pis[PUBLIC_BINDING + e]);
         }
+        // Asset issuance creates ordinary unlocked notes only.
+        for k in 0..LIMBS {
+            b.assert_zero(x(l[UNLOCK + k]) * active.clone());
+        }
         // Seven independent 16-bit range checks per row cover value, unlock,
         // all 16 asset limbs, and all before/after accumulator limbs.
         for lane in 0..RANGE_LANES {
@@ -257,7 +261,7 @@ impl IssuanceProver {
                 .map_err(|_| IssuanceError::InvalidProof)?;
         Ok((proof, public))
     }
-    /// The fee callback must verify an already validated SI payment bound to
+    /// The fee callback must verify an already validated SIP payment bound to
     /// this declaration digest; it must never merely check a claimed amount.
     #[allow(clippy::too_many_arguments)]
     pub fn verify_signed(
@@ -268,7 +272,7 @@ impl IssuanceProver {
         version: u32,
         policy: IssuancePolicy,
         ciphertexts: &[Vec<u8>],
-        verify_si_fee: impl FnOnce(&[u8; 32], u64) -> bool,
+        verify_sip_fee: impl FnOnce(&[u8; 32], u64) -> bool,
     ) -> Result<VerifiedIssuance, IssuanceError> {
         signed.declaration.validate(network, version, policy)?;
         signed.verify_signature()?;
@@ -279,7 +283,7 @@ impl IssuanceProver {
             return Err(IssuanceError::NoteCountMismatch);
         }
         self.verify(proof, &signed.declaration.public_inputs())?;
-        if !verify_si_fee(&signed.declaration.binding(), policy.required_fee_atoms) {
+        if !verify_sip_fee(&signed.declaration.binding(), policy.required_fee_atoms) {
             return Err(IssuanceError::UnpaidIssuanceFee);
         }
         Ok(VerifiedIssuance(signed.declaration.clone()))
@@ -374,6 +378,20 @@ mod tests {
     use crate::multi_asset::Hasher;
     use p3_air::check_all_constraints;
     #[test]
+    fn issuance_rejects_locked_initial_notes_in_air() {
+        let (_, mut w, _) = fixture(3);
+        w.notes[0].unlock_height = 1;
+        w.declaration.note_commitments[0] = Hasher::new().note_cm(&w.notes[0]);
+        let air = IssuanceAir::new(3);
+        let (trace, public) = generate_trace(&air, &w);
+        assert!(
+            !check_all_constraints(&air, &trace, &public, Some(1))
+                .failures
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn hidden_supply_trace_rejects_public_tampering() {
         let (_, w, _) = fixture(3);
         let air = IssuanceAir::new(3);
@@ -401,7 +419,7 @@ mod tests {
         }
     }
     #[test]
-    fn native_issuance_round_trip_requires_signature_supply_and_si_fee() {
+    fn native_issuance_round_trip_requires_signature_supply_and_sip_fee() {
         let (signed, witness, policy) = fixture(2);
         let prover = IssuanceProver::new(2, FriParams::fast());
         let (proof, public) = prover.prove(&witness).unwrap();

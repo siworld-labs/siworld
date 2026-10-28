@@ -16,7 +16,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use siworld_crypto::{expand, SecretSeed};
-use siworld_node::amount::{format_si, parse_si};
+use siworld_node::amount::{format_sip, parse_sip};
 use siworld_node::devnet::DEFAULT_SEED;
 use siworld_node::{hex, parse_hex32, BlockInfo, Config, Devnet, WALLET_NAMES};
 
@@ -31,7 +31,7 @@ them from --seed too, which replays a run exactly but lets anyone who knows
 the seed tell padding from payments.
 
 While `run` is running, type on standard input:
-  pay <from> <to> <amount in SI> [priority]   e.g. pay alice dave 12.5
+  pay <from> <to> <amount in SIP> [priority]   e.g. pay alice dave 12.5
   balance [wallet]                            show test-wallet balances
   help | quit";
 
@@ -110,17 +110,17 @@ fn print_balances(net: &Devnet, only: Option<&str>) {
             continue;
         }
         let bal = net.balance(name).unwrap_or(0);
-        println!("  {name:<6} {} SI", format_si(bal));
+        println!("  {name:<6} {} SIP", format_sip(bal));
     }
 }
 
 fn pay(net: &mut Devnet, from: &str, to: &str, amount: &str, priority: bool) {
-    let Some(atoms) = parse_si(amount) else {
+    let Some(atoms) = parse_sip(amount) else {
         println!("invalid amount: {amount}");
         return;
     };
     match net.pay(from, to, atoms, priority) {
-        Ok(()) => println!("submitted: {from} → {to} {} SI", format_si(atoms)),
+        Ok(()) => println!("submitted: {from} → {to} {} SIP", format_sip(atoms)),
         Err(e) => println!("payment failed: {e:?}"),
     }
 }

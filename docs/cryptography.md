@@ -1,5 +1,10 @@
 # Native V1 Cryptographic Construction
 
+The [economic revision](v1-economics.md) reopens the affected source-bound proof
+profiles. Earlier b7/b8 selections and preprocessing identities below describe
+the baseline; new unlock-height, reward-mode and fund relations require fresh
+actual-AIR screening and implementation review.
+
 Status: implemented isolated native proof relations and selected integration
 requirements. **Engineering target ≥80-bit quantum security, pending independent review.**
 No independent full-system cryptographic approval is recorded.
@@ -17,18 +22,18 @@ grinding, binary folding and final-polynomial log length zero. It binds
 source/dependency identities, public verifier data and actual-instance security
 and resource evidence. Settlement and issuance use separately measured
 b8/q36/g20 profiles. The [three-relation engineering manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-freezes exactly 576 settlement positions and three initial issuance notes with
+records the pre-economic-revision 576 settlement positions and three initial issuance notes with
 reproduced public preprocessing keys and complete actual-AIR reports. These
 fixed scopes do not adopt issuance policy or qualify other capacity keys;
 independent approval and activation remain separate. See
 [reproduction](native-proof-profiles.md).
 
 The two-input/three-output transaction relation enforces per-asset integer
-conservation and SI-only confidential fees. It checks anchor membership in a
+conservation and SIP-only confidential fees. It checks anchor membership in a
 depth-12 recent-root tree, and binds ciphertext bytes, the accepted snapshot
 context and fee commitment. Native issuance constrains hidden minted supply;
 ML-DSA-65 verifies the declaration outside its AIR. Native settlement binds
-fee commitments to an SI-only miner reward note. Node acceptance must
+fee commitments to a SIP-only miner reward note. Node acceptance must
 reconstruct all trusted statements rather than accept peer-supplied roots,
 keys, subsidies or asset registry decisions.
 

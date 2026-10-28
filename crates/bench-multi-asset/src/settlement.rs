@@ -1,84 +1,189 @@
-//! Fixed-capacity confidential-fee settlement AIR and native prover.
+//! Fixed-capacity native confidential-fee settlement and economic reward relation.
 //!
-//! This is an evaluation implementation. It proves one fee-opening row per
-//! fixed slot and binds the private limb-wise sum to a miner note commitment.
-//! Block context is authenticated through the public Fiat--Shamir transcript.
-//! It does not
-//! activate Scheme B on the node or consensus path.
-
+//! The verifier reconstructs the reward plan from the parent consensus state.
+//! The AIR binds that trusted plan, all fee openings and the ordered reward
+//! commitments. Fee totals and reward-note openings remain private.
 use crate::air::{LinearLayers, P2, p2_constants};
-use crate::confidential_fees::{SettlementError, SettlementSlot};
+use crate::confidential_fees::{FeeOpening, SettlementError, SettlementSlot};
 use crate::multi_asset::{self as common, F, Hasher, LIMB_BITS, LIMBS, RATE, WIDTH};
 use crate::{Cfg, FriParams};
-use p3_air::check_all_constraints;
-use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
+use p3_air::{Air, AirBuilder, BaseAir, WindowAccess, check_all_constraints};
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
 use p3_matrix::dense::RowMajorMatrix;
 use p3_poseidon2_air::Poseidon2Air;
-use p3_uni_stark::SubAirBuilder;
 use p3_uni_stark::{
-    PreprocessedProverData, PreprocessedVerifierKey, Proof, prove_with_preprocessed,
+    PreprocessedProverData, PreprocessedVerifierKey, Proof, SubAirBuilder, prove_with_preprocessed,
     setup_preprocessed, verify_with_preprocessed,
 };
 
-pub type FeeP2Air = Poseidon2Air<F, LinearLayers, WIDTH, 3, 0, 4, 23>;
-const P2_OUT: usize = P2 - WIDTH;
-const FEE: usize = P2;
-const BLIND: usize = FEE + LIMBS;
-const SUM: usize = BLIND + common::FEE_BLIND_LEN;
-// Carry columns start after the complete limb group.  Keeping the starts
-// disjoint is essential: the final limb is a value, not a carry witness.
-const SUM_CARRY: usize = SUM + LIMBS;
-const REWARD_CARRY: usize = SUM_CARRY + (LIMBS - 1);
-const RANGE_BITS: usize = REWARD_CARRY + (LIMBS - 1);
-const MINER_AMOUNT: usize = RANGE_BITS + LIMBS * LIMB_BITS;
-const MINER_RANGE: usize = MINER_AMOUNT + LIMBS;
-const MINER_OWNER: usize = MINER_RANGE + LIMBS * LIMB_BITS;
-const MINER_RSEED: usize = MINER_OWNER + common::DIGEST;
-const MINER_RHO: usize = MINER_RSEED + common::DIGEST;
-const MINER_UNLOCK: usize = MINER_RHO + common::DIGEST;
-const UNLOCK_RANGE: usize = MINER_UNLOCK + LIMBS;
-const UNLOCK_CARRY: usize = UNLOCK_RANGE + LIMBS * LIMB_BITS;
-const MINER_ASSET: usize = UNLOCK_CARRY + LIMBS - 1;
-const MAIN_WIDTH: usize = MINER_ASSET + 16;
-
-const PRE_ACTIVE: usize = 0;
-const PRE_FIRST: usize = 1;
-const PRE_LAST: usize = 2;
-const PRE_MINER: usize = 3;
-const MINER_ROWS: usize = 8;
-const PRE_SLOTS: usize = PRE_MINER + MINER_ROWS;
-
-pub const fn public_len(capacity: usize) -> usize {
-    capacity * common::DIGEST + 2 * LIMBS + 16 + 16 + common::DIGEST
+pub const MAX_REWARD_NOTES: usize = 5;
+pub const HOLDER_UNLOCK_OFFSETS: [u64; 4] = [52_560, 105_120, 157_680, 210_240];
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum RewardMode {
+    Voyager = 0,
+    Holder = 1,
+}
+impl RewardMode {
+    pub const fn note_count(self) -> usize {
+        match self {
+            Self::Voyager => 1,
+            Self::Holder => 5,
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RewardAllocation {
+    pub amount: u64,
+    pub unlock_height: u64,
+}
+/// Deterministic allocation supplied by the authenticated consensus transition.
+/// Amounts exclude fees; every fee atom is added only to allocation zero.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RewardPlan {
+    pub block_height: u64,
+    pub mode: RewardMode,
+    pub allocations: Vec<RewardAllocation>,
+}
+impl RewardPlan {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.allocations.len() != self.mode.note_count()
+            || self
+                .allocations
+                .iter()
+                .any(|a| a.unlock_height < self.block_height)
+        {
+            return Err("reward plan count or unlock height mismatch".into());
+        }
+        Ok(())
+    }
+}
+#[derive(Clone, Debug)]
+pub struct RewardNoteWitness {
+    pub asset_id: common::AssetId,
+    pub owner: common::Digest,
+    pub rseed: common::Digest,
+    pub amount: u64,
+}
+#[derive(Clone, Debug)]
+pub struct FixedSettlementWitness {
+    pub plan: RewardPlan,
+    pub network: [u8; 32],
+    pub transaction_list_digest: [u8; 32],
+    pub rewards: Vec<RewardNoteWitness>,
+    pub slots: Vec<SettlementSlot>,
 }
 
-/// Validate public encodings before cryptographic work. The caller must also
-/// reconstruct every value from the trusted candidate block, including the
-/// ordered transaction/fee list, reward, height and network. This helper does
-/// not make a peer-supplied context trustworthy.
+pub const fn context_offset(capacity: usize) -> usize {
+    capacity * common::DIGEST
+}
+pub const fn reward_mode_offset(capacity: usize) -> usize {
+    context_offset(capacity) + LIMBS
+}
+pub const fn reward_allocations_offset(capacity: usize) -> usize {
+    context_offset(capacity) + LIMBS + 2 + 32
+}
+pub const fn reward_commitments_offset(capacity: usize) -> usize {
+    reward_allocations_offset(capacity) + MAX_REWARD_NOTES * 2 * LIMBS
+}
+pub const fn public_len(capacity: usize) -> usize {
+    reward_commitments_offset(capacity) + MAX_REWARD_NOTES * common::DIGEST
+}
+fn byte_limbs(bytes: &[u8; 32]) -> [F; 16] {
+    core::array::from_fn(|i| {
+        F::from_u32(u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]]) as u32)
+    })
+}
+/// Build the fixed statement from locally authenticated context, never from a peer's proof statement.
+pub fn settlement_public(
+    fees: &[common::Digest],
+    plan: &RewardPlan,
+    network: [u8; 32],
+    list_hash: [u8; 32],
+    commitments: &[common::Digest],
+) -> Result<Vec<F>, String> {
+    plan.validate()?;
+    if fees.is_empty() || commitments.len() != plan.mode.note_count() {
+        return Err("settlement commitment count mismatch".into());
+    }
+    let mut out = Vec::with_capacity(public_len(fees.len()));
+    for fee in fees {
+        out.extend_from_slice(fee);
+    }
+    out.extend_from_slice(&common::limbs(plan.block_height));
+    out.push(F::from_u32(plan.mode as u32));
+    out.push(F::from_usize(plan.mode.note_count()));
+    out.extend_from_slice(&byte_limbs(&network));
+    out.extend_from_slice(&byte_limbs(&list_hash));
+    for i in 0..MAX_REWARD_NOTES {
+        if let Some(a) = plan.allocations.get(i) {
+            out.extend_from_slice(&common::limbs(a.amount));
+            out.extend_from_slice(&common::limbs(a.unlock_height));
+        } else {
+            out.extend_from_slice(&[F::ZERO; 2 * LIMBS]);
+        }
+    }
+    for i in 0..MAX_REWARD_NOTES {
+        out.extend_from_slice(commitments.get(i).unwrap_or(&[F::ZERO; common::DIGEST]));
+    }
+    validate_settlement_public(fees.len(), &out)?;
+    Ok(out)
+}
 pub fn validate_settlement_public(capacity: usize, public: &[F]) -> Result<(), String> {
-    if public.len() != public_len(capacity) {
+    if capacity == 0 || public.len() != public_len(capacity) {
         return Err("invalid settlement public-input length".into());
     }
-    let numeric = capacity * common::DIGEST;
-    let commitment = numeric + 2 * LIMBS + 32;
-    if public[numeric..commitment]
+    let start = context_offset(capacity);
+    let commitments = reward_commitments_offset(capacity);
+    if public[start..commitments]
         .iter()
-        .any(|x| x.as_canonical_u32() >= (1u32 << LIMB_BITS))
+        .any(|x| x.as_canonical_u32() >= (1 << LIMB_BITS))
     {
         return Err("noncanonical settlement numeric or context limb".into());
     }
-    let height = public[numeric + LIMBS..numeric + 2 * LIMBS]
-        .iter()
-        .enumerate()
-        .fold(0u64, |out, (i, value)| {
-            out | ((value.as_canonical_u32() as u64) << (i * LIMB_BITS))
-        });
-    if height.checked_add(common::COINBASE_MATURITY).is_none() {
-        return Err("miner unlock height overflows".into());
+    let mode = public[reward_mode_offset(capacity)].as_canonical_u32();
+    let count = match mode {
+        0 => 1,
+        1 => 5,
+        _ => return Err("invalid reward mode".into()),
+    };
+    if public[reward_mode_offset(capacity) + 1].as_canonical_u32() as usize != count {
+        return Err("reward count differs from mode".into());
     }
-    for (i, left) in public[..numeric]
+    let integer = |offset| {
+        (0..LIMBS).fold(0u64, |a, k| {
+            a | ((public[offset + k].as_canonical_u32() as u64) << (k * LIMB_BITS))
+        })
+    };
+    let height = integer(start);
+    for i in 0..MAX_REWARD_NOTES {
+        let allocation = reward_allocations_offset(capacity) + i * 2 * LIMBS;
+        let cm = commitments + i * common::DIGEST;
+        if i < count {
+            if integer(allocation + LIMBS) < height {
+                return Err("reward unlock precedes block".into());
+            }
+            if public[cm..cm + common::DIGEST]
+                .iter()
+                .all(|x| *x == F::ZERO)
+            {
+                return Err("zero active reward commitment".into());
+            }
+            for previous in 0..i {
+                let p = commitments + previous * common::DIGEST;
+                if public[p..p + common::DIGEST] == public[cm..cm + common::DIGEST] {
+                    return Err("duplicate reward commitment".into());
+                }
+            }
+        } else if public[allocation..allocation + 2 * LIMBS]
+            .iter()
+            .chain(&public[cm..cm + common::DIGEST])
+            .any(|x| *x != F::ZERO)
+        {
+            return Err("noncanonical inactive reward slot".into());
+        }
+    }
+    for (i, left) in public[..start]
         .as_chunks::<{ common::DIGEST }>()
         .0
         .iter()
@@ -95,71 +200,44 @@ pub fn validate_settlement_public(capacity: usize, public: &[F]) -> Result<(), S
     }
     Ok(())
 }
-
-fn byte_limbs(bytes: &[u8; 32]) -> [F; 16] {
-    core::array::from_fn(|i| {
-        F::from_u32(u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]]) as u32)
-    })
-}
-
-/// Witness for a fixed-capacity block. `slots.len()` is the capacity and must
-/// include dummy openings for every unused position.
-#[derive(Clone, Debug)]
-pub struct FixedSettlementWitness {
-    pub issuance_reward: u64,
-    /// Private reward-note amount. It is never placed in public inputs.
-    pub miner_amount: u64,
-    pub miner_asset_id: common::AssetId,
-    pub block_height: u64,
-    pub network: [u8; 32],
-    pub transaction_list_digest: [u8; 32],
-    pub miner_owner: common::Digest,
-    pub miner_rseed: common::Digest,
-    pub slots: Vec<SettlementSlot>,
-}
-
 impl FixedSettlementWitness {
     pub fn capacity(&self) -> usize {
         self.slots.len()
     }
-
-    pub fn public_inputs(&self) -> Vec<F> {
-        let mut out = Vec::with_capacity(public_len(self.capacity()));
-        for slot in &self.slots {
-            out.extend_from_slice(&slot.commitment);
+    pub fn reward_note(&self, index: usize) -> common::Note {
+        let reward = &self.rewards[index];
+        common::Note {
+            asset_id: reward.asset_id,
+            owner: reward.owner,
+            value: reward.amount,
+            unlock_height: self.plan.allocations[index].unlock_height,
+            rho: Hasher::new().reward_rho(self.plan.block_height, index),
+            rseed: reward.rseed,
         }
-        out.extend_from_slice(&common::limbs(self.issuance_reward));
-        out.extend_from_slice(&common::limbs(self.block_height));
-        out.extend_from_slice(&byte_limbs(&self.network));
-        out.extend_from_slice(&byte_limbs(&self.transaction_list_digest));
-        let hasher = Hasher::new();
-        let unlock = self
-            .block_height
-            .checked_add(common::COINBASE_MATURITY)
-            .expect("miner unlock height");
-        let rho = hasher.sponge(
-            common::TAG_MINER_RHO,
-            &[common::padded_block(&common::limbs(self.block_height))],
-        );
-        out.extend_from_slice(&hasher.note_cm(&common::Note {
-            owner: self.miner_owner,
-            value: self.miner_amount,
-            unlock_height: unlock,
-            rho,
-            rseed: self.miner_rseed,
-            asset_id: self.miner_asset_id,
-        }));
-        out
     }
-
-    /// Check the native opening relation before invoking the AIR prover.
-    pub fn check(&self, hasher: &Hasher) -> Result<(), SettlementError> {
-        if self.miner_asset_id != common::SI_ASSET_ID {
-            return Err(SettlementError::MinerAssetNotSi);
+    pub fn reward_commitments(&self) -> Vec<common::Digest> {
+        let h = Hasher::new();
+        (0..self.rewards.len())
+            .map(|i| h.note_cm(&self.reward_note(i)))
+            .collect()
+    }
+    pub fn public_inputs(&self) -> Vec<F> {
+        settlement_public(
+            &self.slots.iter().map(|s| s.commitment).collect::<Vec<_>>(),
+            &self.plan,
+            self.network,
+            self.transaction_list_digest,
+            &self.reward_commitments(),
+        )
+        .expect("canonical reward context")
+    }
+    pub fn check(&self, h: &Hasher) -> Result<(), SettlementError> {
+        self.plan
+            .validate()
+            .map_err(|_| SettlementError::InvalidRewardPlan)?;
+        if self.rewards.len() != self.plan.mode.note_count() {
+            return Err(SettlementError::InvalidRewardPlan);
         }
-        self.block_height
-            .checked_add(common::COINBASE_MATURITY)
-            .ok_or(SettlementError::MinerUnlockOverflow)?;
         if self.slots.is_empty() {
             return Err(SettlementError::EmptySettlement);
         }
@@ -167,48 +245,75 @@ impl FixedSettlementWitness {
         for (i, slot) in self.slots.iter().enumerate() {
             if self.slots[..i]
                 .iter()
-                .any(|other| other.commitment == slot.commitment)
+                .any(|s| s.commitment == slot.commitment)
             {
                 return Err(SettlementError::DuplicateCommitment { index: i });
             }
-            if hasher.fee_commit(slot.opening.fee, &slot.opening.blind) != slot.commitment {
+            if h.fee_commit(slot.opening.fee, &slot.opening.blind) != slot.commitment {
                 return Err(SettlementError::CommitmentMismatch { index: i });
             }
             sum = sum
                 .checked_add(slot.opening.fee)
                 .ok_or(SettlementError::FeeSumOverflow)?;
         }
-        let expected = self
-            .issuance_reward
-            .checked_add(sum)
-            .ok_or(SettlementError::RewardOverflow)?;
-        if expected != self.miner_amount {
-            return Err(SettlementError::MinerAmountMismatch {
-                expected,
-                actual: self.miner_amount,
-            });
+        for (i, (r, a)) in self.rewards.iter().zip(&self.plan.allocations).enumerate() {
+            if r.asset_id != common::SIP_ASSET_ID {
+                return Err(SettlementError::MinerAssetNotSip);
+            }
+            let expected = a
+                .amount
+                .checked_add(if i == 0 { sum } else { 0 })
+                .ok_or(SettlementError::RewardOverflow)?;
+            if r.amount != expected {
+                return Err(SettlementError::MinerAmountMismatch {
+                    expected,
+                    actual: r.amount,
+                });
+            }
         }
         Ok(())
     }
 }
 
+pub type FeeP2Air = Poseidon2Air<F, LinearLayers, WIDTH, 3, 0, 4, 23>;
+const P2_OUT: usize = P2 - WIDTH;
+const FEE: usize = P2;
+const BLIND: usize = FEE + LIMBS;
+const SUM: usize = BLIND + common::FEE_BLIND_LEN;
+const SUM_CARRY: usize = SUM + LIMBS;
+const REWARD_CARRY: usize = SUM_CARRY + LIMBS - 1;
+const RANGE_BITS: usize = REWARD_CARRY + LIMBS - 1;
+const IMMEDIATE_AMOUNT: usize = RANGE_BITS + LIMBS * LIMB_BITS;
+const IMMEDIATE_BITS: usize = IMMEDIATE_AMOUNT + LIMBS;
+const NOTE_AMOUNT: usize = IMMEDIATE_BITS + LIMBS * LIMB_BITS;
+const NOTE_BITS: usize = NOTE_AMOUNT + LIMBS;
+const OWNER: usize = NOTE_BITS + LIMBS * LIMB_BITS;
+const RSEED: usize = OWNER + common::DIGEST;
+const RHO: usize = RSEED + common::DIGEST;
+const UNLOCK: usize = RHO + common::DIGEST;
+const UNLOCK_BITS: usize = UNLOCK + LIMBS;
+const ASSET: usize = UNLOCK_BITS + LIMBS * LIMB_BITS;
+const MAIN_WIDTH: usize = ASSET + 16;
+const PRE_ACTIVE: usize = 0;
+const PRE_FIRST: usize = 1;
+const PRE_LAST: usize = 2;
+const PRE_REWARD: usize = 3;
+const REWARD_ROWS: usize = 6;
+const PRE_SLOTS: usize = PRE_REWARD + MAX_REWARD_NOTES * REWARD_ROWS;
 pub struct SettlementAir {
     pub capacity: usize,
     pub height: usize,
     p2: FeeP2Air,
 }
-
 impl SettlementAir {
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0);
-        let height = (capacity + MINER_ROWS).next_power_of_two();
         Self {
             capacity,
-            height,
+            height: (capacity + MAX_REWARD_NOTES * REWARD_ROWS).next_power_of_two(),
             p2: FeeP2Air::new(p2_constants()),
         }
     }
-
     pub fn degree_bits(&self) -> usize {
         self.height.trailing_zeros() as usize
     }
@@ -218,26 +323,22 @@ impl SettlementAir {
     pub fn preprocessed_width(&self) -> usize {
         PRE_SLOTS + self.capacity
     }
-
-    /// Extract the concrete per-row constraint count for this fixed capacity.
-    /// The checker is used only by the evaluation harness; proving and
-    /// verification do not execute it.
-    pub fn constraint_count(&self, witness: &FixedSettlementWitness) -> usize {
-        let (trace, public) = generate_trace(self, witness);
-        check_all_constraints(self, &trace, &public, Some(1)).total_constraints_per_row
+    pub fn constraint_count(&self, w: &FixedSettlementWitness) -> usize {
+        let (t, p) = generate_trace(self, w);
+        check_all_constraints(self, &t, &p, Some(1)).total_constraints_per_row
     }
-    pub fn with_min_height(mut self, min_height: usize) -> Self {
-        assert!(min_height.is_power_of_two());
-        if min_height > self.height {
-            self.height = min_height;
-        }
+    pub fn with_min_height(mut self, height: usize) -> Self {
+        assert!(height.is_power_of_two());
+        self.height = self.height.max(height);
         self
     }
     fn slot_selector(&self, i: usize) -> usize {
         PRE_SLOTS + i
     }
+    fn reward_selector(&self, i: usize, stage: usize) -> usize {
+        PRE_REWARD + i * REWARD_ROWS + stage
+    }
 }
-
 impl BaseAir<F> for SettlementAir {
     fn width(&self) -> usize {
         MAIN_WIDTH
@@ -245,56 +346,46 @@ impl BaseAir<F> for SettlementAir {
     fn preprocessed_width(&self) -> usize {
         self.preprocessed_width()
     }
+    fn num_public_values(&self) -> usize {
+        public_len(self.capacity)
+    }
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<F>> {
         let width = self.preprocessed_width();
         let mut values = F::zero_vec(self.height * width);
-        for r in 0..self.height {
-            let row = &mut values[r * width..(r + 1) * width];
-            if r < self.capacity {
-                row[PRE_ACTIVE] = F::ONE;
-                row[self.slot_selector(r)] = F::ONE;
-            }
-            if r == 0 {
-                row[PRE_FIRST] = F::ONE;
-            }
-            if r + 1 == self.capacity {
-                row[PRE_LAST] = F::ONE;
-            }
-            if (self.capacity..self.capacity + MINER_ROWS).contains(&r) {
-                row[PRE_MINER + r - self.capacity] = F::ONE;
+        for r in 0..self.capacity {
+            values[r * width + PRE_ACTIVE] = F::ONE;
+            values[r * width + self.slot_selector(r)] = F::ONE;
+        }
+        values[PRE_FIRST] = F::ONE;
+        values[(self.capacity - 1) * width + PRE_LAST] = F::ONE;
+        for i in 0..MAX_REWARD_NOTES {
+            for stage in 0..REWARD_ROWS {
+                values[(self.capacity + i * REWARD_ROWS + stage) * width
+                    + self.reward_selector(i, stage)] = F::ONE;
             }
         }
         Some(RowMajorMatrix::new(values, width))
     }
-    fn num_public_values(&self) -> usize {
-        public_len(self.capacity)
-    }
 }
-
 impl<AB: AirBuilder<F = F>> Air<AB> for SettlementAir {
     fn eval(&self, b: &mut AB) {
         let mut sub = SubAirBuilder::<AB, FeeP2Air, AB::Var>::new(b, 0..P2);
         self.p2.eval(&mut sub);
-
         let main = b.main();
         let pre = b.preprocessed().clone();
-        let pis: Vec<AB::PublicVar> = b.public_values().to_vec();
         let l = main.current_slice();
         let n = main.next_slice();
         let pl = pre.current_slice();
+        let pis = b.public_values().to_vec();
         let x = |v: AB::Var| -> AB::Expr { v.into() };
         let active = x(pl[PRE_ACTIVE]);
         let first = x(pl[PRE_FIRST]);
         let last = x(pl[PRE_LAST]);
-
-        // One rate block contains four fee limbs and eight independent blinding elements.
         for e in 0..RATE {
             let expected = if e < LIMBS {
                 x(l[FEE + e])
-            } else if e < LIMBS + common::FEE_BLIND_LEN {
-                x(l[BLIND + e - LIMBS])
             } else {
-                AB::Expr::ZERO
+                x(l[BLIND + e - LIMBS])
             };
             b.assert_zero((x(l[e]) - expected) * active.clone());
         }
@@ -303,209 +394,188 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SettlementAir {
         for e in RATE + 2..WIDTH {
             b.assert_zero(x(l[e]) * active.clone());
         }
-
-        // Bind each permutation digest to the corresponding public commitment.
         for i in 0..self.capacity {
-            let selector = x(pl[self.slot_selector(i)]);
             for e in 0..common::DIGEST {
                 b.assert_zero(
-                    (x(l[P2_OUT + e]) - pis[i * common::DIGEST + e].into()) * selector.clone(),
+                    (x(l[P2_OUT + e]) - pis[i * common::DIGEST + e].into())
+                        * x(pl[self.slot_selector(i)]),
                 );
             }
         }
-
-        let base_offset = self.capacity * common::DIGEST;
-        for k in 0..LIMBS {
-            for q in 0..LIMB_BITS {
-                b.assert_bool(l[RANGE_BITS + k * LIMB_BITS + q]);
+        for (start, bits) in [
+            (FEE, RANGE_BITS),
+            (IMMEDIATE_AMOUNT, IMMEDIATE_BITS),
+            (NOTE_AMOUNT, NOTE_BITS),
+            (UNLOCK, UNLOCK_BITS),
+        ] {
+            for k in 0..LIMBS {
+                let mut limb = AB::Expr::ZERO;
+                for bit in 0..LIMB_BITS {
+                    b.assert_bool(l[bits + k * LIMB_BITS + bit]);
+                    limb += x(l[bits + k * LIMB_BITS + bit]) * F::from_u32(1 << bit);
+                }
+                b.assert_eq(limb, l[start + k]);
             }
-            let mut limb = AB::Expr::ZERO;
-            for q in 0..LIMB_BITS {
-                limb += x(l[RANGE_BITS + k * LIMB_BITS + q]) * F::from_u32(1 << q);
-            }
-            b.assert_eq(limb, l[FEE + k]);
         }
-
-        // Running sum. A current row stores the sum after its own fee.
-        // The transition is constrained only while both rows are real slots.
         for k in 0..LIMBS {
-            if k + 1 < LIMBS {
-                b.assert_bool(l[SUM_CARRY + k]);
-            }
             let carry = if k + 1 < LIMBS {
+                b.assert_bool(l[SUM_CARRY + k]);
                 x(l[SUM_CARRY + k])
             } else {
                 AB::Expr::ZERO
             };
-            let prior = if k == 0 {
+            let previous = if k == 0 {
                 AB::Expr::ZERO
             } else {
                 x(l[SUM_CARRY + k - 1])
             };
             b.assert_zero(
-                (x(l[SUM + k]) + x(n[FEE + k]) + prior
+                (x(l[SUM + k]) + x(n[FEE + k]) + previous
                     - x(n[SUM + k])
                     - carry * F::from_u32(1 << LIMB_BITS))
                     * (active.clone() - last.clone()),
             );
-        }
-        for k in 0..LIMBS {
             b.assert_zero((x(l[SUM + k]) - x(l[FEE + k])) * first.clone());
-        }
-
-        // On the last real row, sum + issuance = miner amount, with checked carries.
-        let issuance = base_offset;
-        for k in 0..LIMBS {
-            if k + 1 < LIMBS {
-                b.assert_bool(l[REWARD_CARRY + k]);
-            }
-            let prior = if k == 0 {
-                AB::Expr::ZERO
-            } else {
-                x(l[REWARD_CARRY + k - 1])
-            };
             let carry = if k + 1 < LIMBS {
+                b.assert_bool(l[REWARD_CARRY + k]);
                 x(l[REWARD_CARRY + k])
             } else {
                 AB::Expr::ZERO
             };
-            b.assert_zero(
-                (x(l[SUM + k]) + pis[issuance + k].into() + prior
-                    - x(l[MINER_AMOUNT + k])
-                    - carry * F::from_u32(1 << LIMB_BITS))
-                    * last.clone(),
-            );
-        }
-
-        // The payout opening remains private and is copied through the entire
-        // trace. Numeric limbs are range-checked independently of fee limbs.
-        for column in MINER_AMOUNT..UNLOCK_RANGE {
-            b.when_transition().assert_eq(l[column], n[column]);
-        }
-        for (start, bits) in [(MINER_AMOUNT, MINER_RANGE), (MINER_UNLOCK, UNLOCK_RANGE)] {
-            for k in 0..LIMBS {
-                let mut value = AB::Expr::ZERO;
-                for q in 0..LIMB_BITS {
-                    b.assert_bool(l[bits + k * LIMB_BITS + q]);
-                    value += x(l[bits + k * LIMB_BITS + q]) * F::from_u32(1 << q);
-                }
-                b.assert_eq(value, l[start + k]);
-            }
-        }
-        let height = base_offset + LIMBS;
-        let maturity = common::limbs(common::COINBASE_MATURITY);
-        for k in 0..LIMBS {
             let previous = if k == 0 {
                 AB::Expr::ZERO
             } else {
-                x(l[UNLOCK_CARRY + k - 1])
-            };
-            let carry = if k + 1 == LIMBS {
-                AB::Expr::ZERO
-            } else {
-                b.assert_bool(l[UNLOCK_CARRY + k]);
-                x(l[UNLOCK_CARRY + k])
+                x(l[REWARD_CARRY + k - 1])
             };
             b.assert_zero(
-                pis[height + k].into() + maturity[k] + previous
-                    - x(l[MINER_UNLOCK + k])
-                    - carry * F::from_u32(1 << LIMB_BITS),
+                (x(l[SUM + k])
+                    + pis[reward_allocations_offset(self.capacity) + k].into()
+                    + previous
+                    - x(l[IMMEDIATE_AMOUNT + k])
+                    - carry * F::from_u32(1 << LIMB_BITS))
+                    * last.clone(),
             );
+            b.when_transition()
+                .assert_eq(l[IMMEDIATE_AMOUNT + k], n[IMMEDIATE_AMOUNT + k]);
         }
-
-        // First tail row: rho = H_miner_rho(height).
-        let rho_selector = x(pl[PRE_MINER]);
-        for e in 0..RATE {
-            let value = if e < LIMBS {
-                pis[height + e].into()
-            } else {
-                AB::Expr::ZERO
-            };
-            b.assert_zero((x(l[e]) - value) * rho_selector.clone());
-        }
-        for e in RATE..WIDTH {
-            let value = if e == RATE {
-                F::from_u32(common::TAG_MINER_RHO)
-            } else if e == RATE + 1 {
-                F::ONE
-            } else {
-                F::ZERO
-            };
-            b.assert_zero((x(l[e]) - value) * rho_selector.clone());
-        }
-        for e in 0..common::DIGEST {
-            b.assert_zero((x(l[P2_OUT + e]) - x(l[MINER_RHO + e])) * rho_selector.clone());
-        }
-
-        // The SI asset ID is fixed inside the AIR, not only checked by the host.
+        let mode: AB::Expr = pis[reward_mode_offset(self.capacity)].into();
+        b.assert_bool(mode.clone());
+        b.assert_eq(
+            pis[reward_mode_offset(self.capacity) + 1],
+            AB::Expr::ONE + mode.clone() * F::from_u32(4),
+        );
         for limb in 0..16 {
-            b.assert_zero(l[MINER_ASSET + limb]);
+            b.assert_zero(l[ASSET + limb]);
         }
-
-        // Next five rows: the ordinary multi-asset note commitment, with the amount and
-        // rseed hidden. The capacity of each later overwrite block is the
-        // preceding permutation output, exactly as Hasher::note_cm specifies.
-        for stage in 0..5 {
-            let selector = x(pl[PRE_MINER + 1 + stage]);
-            for e in 0..RATE {
-                let value = match stage {
-                    0 => x(l[MINER_OWNER + e]),
-                    1 if e < LIMBS => x(l[MINER_AMOUNT + e]),
-                    1 if e < 2 * LIMBS => x(l[MINER_UNLOCK + e - LIMBS]),
-                    1 => x(l[MINER_ASSET + e - 2 * LIMBS]),
-                    2 => x(l[MINER_ASSET + e + 4]),
-                    3 => x(l[MINER_RHO + e]),
-                    _ => x(l[MINER_RSEED + e]),
-                };
-                b.assert_zero((x(l[e]) - value) * selector.clone());
+        for i in 0..MAX_REWARD_NOTES {
+            let enabled = if i == 0 { AB::Expr::ONE } else { mode.clone() };
+            let inactive = AB::Expr::ONE - enabled.clone();
+            let allocation = reward_allocations_offset(self.capacity) + i * 2 * LIMBS;
+            for e in 0..2 * LIMBS {
+                b.assert_zero(pis[allocation + e].into() * inactive.clone());
             }
-            if stage == 0 {
-                for e in RATE..WIDTH {
-                    let value = if e == RATE {
-                        F::from_u32(common::TAG_NOTE)
-                    } else if e == RATE + 1 {
-                        F::from_u32(5)
+            for e in 0..common::DIGEST {
+                b.assert_zero(
+                    pis[reward_commitments_offset(self.capacity) + i * common::DIGEST + e].into()
+                        * inactive.clone(),
+                );
+            }
+            for stage in 0..REWARD_ROWS {
+                let selector = x(pl[self.reward_selector(i, stage)]);
+                let selected = selector.clone() * enabled.clone();
+                for k in 0..LIMBS {
+                    let amount = if i == 0 {
+                        x(l[IMMEDIATE_AMOUNT + k])
                     } else {
-                        F::ZERO
+                        pis[allocation + k].into()
                     };
-                    b.assert_zero((x(l[e]) - value) * selector.clone());
+                    b.assert_zero((x(l[NOTE_AMOUNT + k]) - amount) * selected.clone());
+                    b.assert_zero(
+                        (x(l[UNLOCK + k]) - pis[allocation + LIMBS + k].into()) * selected.clone(),
+                    );
                 }
-            }
-            if stage < 4 {
-                for e in RATE..WIDTH {
-                    b.when_transition()
-                        .assert_zero((x(n[e]) - x(l[P2_OUT + e])) * selector.clone());
+                if stage + 1 < REWARD_ROWS {
+                    for col in NOTE_AMOUNT..MAIN_WIDTH {
+                        b.when_transition()
+                            .assert_zero((x(n[col]) - x(l[col])) * selector.clone());
+                    }
                 }
-            }
-        }
-        let miner_commitment = base_offset + 2 * LIMBS + 32;
-        for e in 0..common::DIGEST {
-            b.assert_zero(
-                (x(l[P2_OUT + e]) - pis[miner_commitment + e].into()) * x(pl[PRE_MINER + 5]),
-            );
-        }
-        for stage in 6..MINER_ROWS {
-            let selector = x(pl[PRE_MINER + stage]);
-            for e in 0..WIDTH {
-                b.assert_zero(x(l[e]) * selector.clone());
+                for col in NOTE_AMOUNT..MAIN_WIDTH {
+                    b.assert_zero(x(l[col]) * selector.clone() * inactive.clone());
+                }
+                for e in 0..RATE {
+                    let value = match stage {
+                        0 if e < LIMBS => pis[context_offset(self.capacity) + e].into(),
+                        0 if e == LIMBS => AB::Expr::from_u32(i as u32),
+                        0 => AB::Expr::ZERO,
+                        1 => x(l[OWNER + e]),
+                        2 if e < LIMBS => x(l[NOTE_AMOUNT + e]),
+                        2 if e < 2 * LIMBS => x(l[UNLOCK + e - LIMBS]),
+                        2 => x(l[ASSET + e - 2 * LIMBS]),
+                        3 => x(l[ASSET + e + 4]),
+                        4 => x(l[RHO + e]),
+                        _ => x(l[RSEED + e]),
+                    };
+                    b.assert_zero((x(l[e]) - value) * selected.clone());
+                }
+                if stage <= 1 {
+                    for e in RATE..WIDTH {
+                        let value = if e == RATE {
+                            F::from_u32(if stage == 0 {
+                                common::TAG_MINER_RHO
+                            } else {
+                                common::TAG_NOTE
+                            })
+                        } else if e == RATE + 1 {
+                            F::from_u32(if stage == 0 { 1 } else { 5 })
+                        } else {
+                            F::ZERO
+                        };
+                        b.assert_zero((x(l[e]) - value) * selected.clone());
+                    }
+                }
+                if (1..5).contains(&stage) {
+                    for e in RATE..WIDTH {
+                        b.when_transition()
+                            .assert_zero((x(n[e]) - x(l[P2_OUT + e])) * selected.clone());
+                    }
+                }
+                if stage == 0 {
+                    for e in 0..common::DIGEST {
+                        b.assert_zero((x(l[P2_OUT + e]) - x(l[RHO + e])) * selected.clone());
+                    }
+                }
+                if stage == 5 {
+                    for e in 0..common::DIGEST {
+                        b.assert_zero(
+                            (x(l[P2_OUT + e])
+                                - pis[reward_commitments_offset(self.capacity)
+                                    + i * common::DIGEST
+                                    + e]
+                                    .into())
+                                * selected.clone(),
+                        );
+                    }
+                }
+                for e in 0..WIDTH {
+                    b.assert_zero(x(l[e]) * selector.clone() * inactive.clone());
+                }
             }
         }
     }
 }
-
 pub struct SettlementProver {
     pub cfg: Cfg,
     pub air: SettlementAir,
     pub pdata: PreprocessedProverData<Cfg>,
     pub vk: PreprocessedVerifierKey<Cfg>,
 }
-
 impl SettlementProver {
     pub fn new(capacity: usize, params: FriParams) -> Self {
         let cfg = params.config();
         let air = SettlementAir::new(capacity).with_min_height(params.hiding_min_height());
         let (pdata, vk) = setup_preprocessed(&cfg, &air, air.degree_bits())
-            .expect("preprocessed commitment")
+            .expect("settlement preprocessing")
             .expect("preprocessed AIR");
         Self {
             cfg,
@@ -514,133 +584,102 @@ impl SettlementProver {
             vk,
         }
     }
-
-    pub fn prove(&self, witness: &FixedSettlementWitness) -> (Proof<Cfg>, Vec<F>) {
-        assert_eq!(witness.capacity(), self.air.capacity);
-        witness
-            .check(&Hasher::new())
-            .expect("invalid settlement witness");
-        let (trace, pis) = generate_trace(&self.air, witness);
-        let proof = prove_with_preprocessed(&self.cfg, &self.air, trace, &pis, Some(&self.pdata))
-            .expect("settlement proof generation");
-        (proof, pis)
+    pub fn prove(&self, w: &FixedSettlementWitness) -> (Proof<Cfg>, Vec<F>) {
+        assert_eq!(w.capacity(), self.air.capacity);
+        w.check(&Hasher::new()).expect("invalid reward settlement");
+        let (trace, public) = generate_trace(&self.air, w);
+        let proof =
+            prove_with_preprocessed(&self.cfg, &self.air, trace, &public, Some(&self.pdata))
+                .expect("settlement proof generation");
+        (proof, public)
     }
-
-    pub fn verify(&self, proof: &Proof<Cfg>, pis: &[F]) -> Result<(), String> {
-        validate_settlement_public(self.air.capacity, pis)?;
-        verify_with_preprocessed(&self.cfg, &self.air, proof, pis, Some(&self.vk))
+    pub fn verify(&self, proof: &Proof<Cfg>, public: &[F]) -> Result<(), String> {
+        validate_settlement_public(self.air.capacity, public)?;
+        verify_with_preprocessed(&self.cfg, &self.air, proof, public, Some(&self.vk))
             .map_err(|e| format!("{e:?}"))
     }
 }
-
-fn generate_trace(
-    air: &SettlementAir,
-    witness: &FixedSettlementWitness,
-) -> (RowMajorMatrix<F>, Vec<F>) {
-    let mut inputs = vec![[F::ZERO; WIDTH]; air.height];
-    let mut rows = vec![F::ZERO; air.height * MAIN_WIDTH];
-    let mut sum = 0u64;
-    let mut cumulative = [0u32; LIMBS];
-    for r in 0..air.capacity {
-        let slot = &witness.slots[r];
-        let off = r * MAIN_WIDTH;
-        let fee = common::limbs(slot.opening.fee);
-        let block = common::fee_block(slot.opening.fee, &slot.opening.blind);
-        let mut input = [F::ZERO; WIDTH];
-        input[..RATE].copy_from_slice(&block);
-        input[RATE] = F::from_u32(common::TAG_FEE);
-        input[RATE + 1] = F::ONE;
-        inputs[r] = input;
-        for k in 0..LIMBS {
-            rows[off + FEE + k] = fee[k];
-            rows[off + RANGE_BITS + k * LIMB_BITS..off + RANGE_BITS + (k + 1) * LIMB_BITS]
-                .copy_from_slice(&std::array::from_fn::<F, LIMB_BITS, _>(|q| {
-                    F::from_u32((fee[k].as_canonical_u32() >> q) & 1)
-                }));
+fn put_bits(rows: &mut [F], offset: usize, start: usize, bits: usize, value: u64) {
+    let limbs = common::limbs(value);
+    rows[offset + start..offset + start + LIMBS].copy_from_slice(&limbs);
+    for k in 0..LIMBS {
+        for bit in 0..LIMB_BITS {
+            rows[offset + bits + k * LIMB_BITS + bit] =
+                F::from_u32((limbs[k].as_canonical_u32() >> bit) & 1);
         }
-        rows[off + BLIND..off + BLIND + common::FEE_BLIND_LEN].copy_from_slice(&slot.opening.blind);
-
-        sum = sum.checked_add(slot.opening.fee).expect("sum overflow");
-        let sum_limbs = common::limbs(sum);
-        for k in 0..LIMBS {
-            rows[off + SUM + k] = sum_limbs[k];
-        }
-        // The carry in row r adds row r+1's fee to the cumulative sum.
-        if r + 1 < air.capacity {
-            let next_fee = common::limbs(witness.slots[r + 1].opening.fee);
-            let mut sc = 0u64;
-            for k in 0..LIMBS - 1 {
-                sc = (sum_limbs[k].as_canonical_u32() as u64
-                    + next_fee[k].as_canonical_u32() as u64
-                    + sc)
-                    >> LIMB_BITS;
-                rows[off + SUM_CARRY + k] = F::from_u64(sc);
-            }
-        }
-        cumulative = sum_limbs.map(|x| x.as_canonical_u32());
     }
-    let hasher = Hasher::new();
-    let unlock_height = witness
-        .block_height
-        .checked_add(common::COINBASE_MATURITY)
-        .expect("miner unlock height overflow");
-    let amount = common::limbs(witness.miner_amount);
-    let height = common::limbs(witness.block_height);
-    let unlock = common::limbs(unlock_height);
-    let (rho_inputs, rho) =
-        hasher.sponge_trace(common::TAG_MINER_RHO, &[common::padded_block(&height)]);
-    inputs[air.capacity] = rho_inputs[0];
-    let note = common::Note {
-        asset_id: witness.miner_asset_id,
-        owner: witness.miner_owner,
-        value: witness.miner_amount,
-        unlock_height,
-        rho,
-        rseed: witness.miner_rseed,
-    };
-    let (note_inputs, _) = hasher.sponge_trace(common::TAG_NOTE, &note.blocks());
-    inputs[air.capacity + 1..air.capacity + 6].copy_from_slice(&note_inputs);
-    let maturity = common::limbs(common::COINBASE_MATURITY);
-    for r in 0..air.height {
+}
+pub(crate) fn generate_trace(
+    air: &SettlementAir,
+    w: &FixedSettlementWitness,
+) -> (RowMajorMatrix<F>, Vec<F>) {
+    let h = Hasher::new();
+    let mut inputs = vec![[F::ZERO; WIDTH]; air.height];
+    let mut rows = F::zero_vec(air.height * MAIN_WIDTH);
+    let mut sum = 0u64;
+    for r in 0..air.capacity {
         let off = r * MAIN_WIDTH;
-        rows[off + MINER_AMOUNT..off + MINER_AMOUNT + LIMBS].copy_from_slice(&amount);
-        for limb in 0..16 {
-            rows[off + MINER_ASSET + limb] = F::from_u32(u16::from_le_bytes([
-                witness.miner_asset_id.0[2 * limb],
-                witness.miner_asset_id.0[2 * limb + 1],
-            ]) as u32);
-        }
-        rows[off + MINER_OWNER..off + MINER_OWNER + common::DIGEST]
-            .copy_from_slice(&witness.miner_owner);
-        rows[off + MINER_RSEED..off + MINER_RSEED + common::DIGEST]
-            .copy_from_slice(&witness.miner_rseed);
-        rows[off + MINER_RHO..off + MINER_RHO + common::DIGEST].copy_from_slice(&rho);
-        rows[off + MINER_UNLOCK..off + MINER_UNLOCK + LIMBS].copy_from_slice(&unlock);
-        for (limbs, bits) in [(&amount, MINER_RANGE), (&unlock, UNLOCK_RANGE)] {
-            for k in 0..LIMBS {
-                for q in 0..LIMB_BITS {
-                    rows[off + bits + k * LIMB_BITS + q] =
-                        F::from_u32((limbs[k].as_canonical_u32() >> q) & 1);
-                }
+        let slot = &w.slots[r];
+        inputs[r] = Hasher::first_input(
+            common::TAG_FEE,
+            1,
+            &common::fee_block(slot.opening.fee, &slot.opening.blind),
+        );
+        put_bits(&mut rows, off, FEE, RANGE_BITS, slot.opening.fee);
+        rows[off + BLIND..off + BLIND + common::FEE_BLIND_LEN].copy_from_slice(&slot.opening.blind);
+        sum = sum.checked_add(slot.opening.fee).expect("fee sum overflow");
+        let limbs = common::limbs(sum);
+        rows[off + SUM..off + SUM + LIMBS].copy_from_slice(&limbs);
+        if r + 1 < air.capacity {
+            let next = common::limbs(w.slots[r + 1].opening.fee);
+            let mut carry = 0u64;
+            for k in 0..LIMBS - 1 {
+                carry = (u64::from(limbs[k].as_canonical_u32())
+                    + u64::from(next[k].as_canonical_u32())
+                    + carry)
+                    >> LIMB_BITS;
+                rows[off + SUM_CARRY + k] = F::from_u64(carry);
             }
         }
-        let mut carry = 0u64;
-        for k in 0..LIMBS - 1 {
-            carry = (height[k].as_canonical_u32() as u64
-                + maturity[k].as_canonical_u32() as u64
-                + carry)
-                >> LIMB_BITS;
-            rows[off + UNLOCK_CARRY + k] = F::from_u64(carry);
-        }
+    }
+    for r in 0..air.height {
+        put_bits(
+            &mut rows,
+            r * MAIN_WIDTH,
+            IMMEDIATE_AMOUNT,
+            IMMEDIATE_BITS,
+            w.rewards[0].amount,
+        );
     }
     let final_off = (air.capacity - 1) * MAIN_WIDTH;
-    let issuance = common::limbs(witness.issuance_reward);
-    let mut rc = 0u64;
+    let total = common::limbs(sum);
+    let base = common::limbs(w.plan.allocations[0].amount);
+    let mut carry = 0u64;
     for k in 0..LIMBS - 1 {
-        rc = (cumulative[k] as u64 + issuance[k].as_canonical_u32() as u64 + rc) >> LIMB_BITS;
-        rows[final_off + REWARD_CARRY + k] = F::from_u64(rc);
+        carry = (u64::from(total[k].as_canonical_u32())
+            + u64::from(base[k].as_canonical_u32())
+            + carry)
+            >> LIMB_BITS;
+        rows[final_off + REWARD_CARRY + k] = F::from_u64(carry);
     }
-
+    for i in 0..w.rewards.len() {
+        let note = w.reward_note(i);
+        let row = air.capacity + i * REWARD_ROWS;
+        let mut block = common::padded_block(&common::limbs(w.plan.block_height));
+        block[LIMBS] = F::from_usize(i);
+        inputs[row] = Hasher::first_input(common::TAG_MINER_RHO, 1, &block);
+        let (note_inputs, _) = h.sponge_trace(common::TAG_NOTE, &note.blocks());
+        inputs[row + 1..row + 6].copy_from_slice(&note_inputs);
+        for r in row..row + REWARD_ROWS {
+            let off = r * MAIN_WIDTH;
+            put_bits(&mut rows, off, NOTE_AMOUNT, NOTE_BITS, note.value);
+            put_bits(&mut rows, off, UNLOCK, UNLOCK_BITS, note.unlock_height);
+            rows[off + OWNER..off + OWNER + common::DIGEST].copy_from_slice(&note.owner);
+            rows[off + RSEED..off + RSEED + common::DIGEST].copy_from_slice(&note.rseed);
+            rows[off + RHO..off + RHO + common::DIGEST].copy_from_slice(&note.rho);
+            rows[off + ASSET..off + ASSET + 16].copy_from_slice(&note.asset_id.limbs());
+        }
+    }
     let p2 = p3_poseidon2_air::generate_trace_rows::<F, LinearLayers, WIDTH, 3, 0, 4, 23>(
         inputs,
         &p2_constants(),
@@ -649,189 +688,189 @@ fn generate_trace(
     for r in 0..air.height {
         rows[r * MAIN_WIDTH..r * MAIN_WIDTH + P2].copy_from_slice(&p2.values[r * P2..(r + 1) * P2]);
     }
-    (
-        RowMajorMatrix::new(rows, MAIN_WIDTH),
-        witness.public_inputs(),
-    )
+    (RowMajorMatrix::new(rows, MAIN_WIDTH), w.public_inputs())
 }
-
+/// Synthetic fixed-shape fixture; its allocation is not a consensus economics oracle.
+pub fn sample_fixed_settlement_witness(
+    capacity: usize,
+    mode: RewardMode,
+) -> FixedSettlementWitness {
+    let h = Hasher::new();
+    let slots = (0..capacity)
+        .map(|i| {
+            let opening = FeeOpening {
+                fee: if i == 0 { 1000 } else { 0 },
+                blind: core::array::from_fn(|j| F::from_usize(1 + i * 8 + j)),
+                dummy: i != 0,
+                priority: false,
+            };
+            SettlementSlot::from_opening(&h, opening)
+        })
+        .collect();
+    let allocations = (0..mode.note_count())
+        .map(|i| RewardAllocation {
+            amount: if i == 0 { 60_000 } else { 10_000 },
+            unlock_height: 1000
+                + if i == 0 {
+                    24
+                } else {
+                    HOLDER_UNLOCK_OFFSETS[i - 1]
+                },
+        })
+        .collect::<Vec<_>>();
+    let rewards = allocations
+        .iter()
+        .enumerate()
+        .map(|(i, a)| RewardNoteWitness {
+            asset_id: common::SIP_ASSET_ID,
+            owner: core::array::from_fn(|j| F::from_usize(800 + j)),
+            rseed: core::array::from_fn(|j| F::from_usize(900 + i * 12 + j)),
+            amount: a.amount + if i == 0 { 1000 } else { 0 },
+        })
+        .collect();
+    FixedSettlementWitness {
+        plan: RewardPlan {
+            block_height: 1000,
+            mode,
+            allocations,
+        },
+        network: [9; 32],
+        transaction_list_digest: [11; 32],
+        rewards,
+        slots,
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::confidential_fees::FeeOpening;
-    use crate::multi_asset::{F, FEE_BASE, Hasher};
-    use p3_air::check_all_constraints;
-    use p3_field::PrimeCharacteristicRing;
-
-    fn blind(seed: u32) -> [F; common::FEE_BLIND_LEN] {
-        core::array::from_fn(|i| F::from_u32(seed + i as u32))
-    }
-
-    fn witness(capacity: usize) -> FixedSettlementWitness {
-        let hasher = Hasher::new();
-        let mut slots = Vec::with_capacity(capacity);
-        slots.push(SettlementSlot::from_opening(
-            &hasher,
-            FeeOpening::standard(blind(1)),
-        ));
-        for i in 1..capacity {
-            slots.push(SettlementSlot::from_opening(
-                &hasher,
-                FeeOpening::dummy(blind(100 + i as u32)),
-            ));
-        }
-        FixedSettlementWitness {
-            miner_asset_id: common::SI_ASSET_ID,
-            issuance_reward: 100,
-            miner_amount: 100 + FEE_BASE,
-            block_height: 1000,
-            network: [9; 32],
-            transaction_list_digest: [11; 32],
-            miner_owner: core::array::from_fn(|i| F::from_u32(800 + i as u32)),
-            miner_rseed: core::array::from_fn(|i| F::from_u32(900 + i as u32)),
-            slots,
+    #[test]
+    fn both_modes_satisfy_air_and_all_context_fields_are_bound() {
+        for mode in [RewardMode::Voyager, RewardMode::Holder] {
+            let w = sample_fixed_settlement_witness(4, mode);
+            let air = SettlementAir::new(4);
+            let (t, p) = generate_trace(&air, &w);
+            assert!(
+                check_all_constraints(&air, &t, &p, Some(1))
+                    .failures
+                    .is_empty()
+            );
+            let prover = SettlementProver::new(4, FriParams::fast());
+            let (proof, p) = prover.prove(&w);
+            prover.verify(&proof, &p).unwrap();
+            for i in 0..p.len() {
+                let mut changed = p.clone();
+                changed[i] += F::ONE;
+                assert!(prover.verify(&proof, &changed).is_err(), "field {i}");
+            }
         }
     }
-
     #[test]
-    fn fixed_capacity_trace_satisfies_air() {
-        let w = witness(4);
-        let air = SettlementAir::new(w.capacity());
-        let (trace, pis) = generate_trace(&air, &w);
-        let failures = check_all_constraints(&air, &trace, &pis, None).failures;
-        assert!(failures.is_empty(), "settlement AIR failures: {failures:?}");
+    fn reward_count_inactive_slots_and_numeric_encodings_are_canonical() {
+        let w = sample_fixed_settlement_witness(4, RewardMode::Voyager);
+        let mut p = w.public_inputs();
+        p[reward_mode_offset(4) + 1] = F::from_u32(5);
+        assert!(validate_settlement_public(4, &p).is_err());
+        let mut p = w.public_inputs();
+        p[reward_commitments_offset(4) + common::DIGEST] = F::ONE;
+        assert!(validate_settlement_public(4, &p).is_err());
+        let mut p = w.public_inputs();
+        p[context_offset(4)] = F::from_u32(1 << LIMB_BITS);
+        assert!(validate_settlement_public(4, &p).is_err());
     }
-
     #[test]
-    fn fixed_capacity_proof_round_trip() {
-        let w = witness(4);
-        let prover = SettlementProver::new(4, FriParams::fast());
-        let (proof, pis) = prover.prove(&w);
-        prover
-            .verify(&proof, &pis)
-            .expect("settlement proof verifies");
-    }
-
-    #[test]
-    fn public_statement_has_one_commitment_per_slot() {
-        let w = witness(8);
-        assert_eq!(w.public_inputs().len(), public_len(8));
-        assert_eq!(w.public_inputs().len(), 8 * crate::common::DIGEST + 52);
-    }
-
-    #[test]
-    fn native_settlement_proof_verifies_and_binds_reward_statement() {
-        let w = witness(4);
-        let prover = SettlementProver::new(w.capacity(), crate::FriParams::fast());
-        let (proof, public) = prover.prove(&w);
-        prover
-            .verify(&proof, &public)
-            .expect("valid settlement proof");
-        let mut changed = public.clone();
-        let last = changed.len() - 1;
-        changed[last] += F::ONE;
-        assert!(prover.verify(&proof, &changed).is_err());
-    }
-
-    #[test]
-    fn miner_amount_is_private_and_only_changes_public_note_commitment() {
-        let w = witness(4);
-        let mut changed = w.clone();
-        changed.miner_amount += 1;
-        let public = w.public_inputs();
-        let altered = changed.public_inputs();
-        let note = public.len() - common::DIGEST;
-        assert_eq!(public[..note], altered[..note]);
-        assert_ne!(public[note..], altered[note..]);
-        assert_eq!(
-            public[note..],
-            Hasher::new().miner_note_cm(
-                w.miner_amount,
-                w.block_height,
-                &w.miner_owner,
-                &w.miner_rseed
-            )
-        );
-    }
-
-    #[test]
-    fn invalid_private_reward_amount_fails_air_constraints() {
-        let mut w = witness(4);
-        w.miner_amount += 1;
-        let air = SettlementAir::new(w.capacity());
+    fn private_fee_carries_and_each_reward_rho_are_constrained() {
+        let h = Hasher::new();
+        let mut w = sample_fixed_settlement_witness(4, RewardMode::Holder);
+        let fees = [u16::MAX as u64, u32::MAX as u64, (1u64 << 48) - 1, 7];
+        let mut sum = 0u64;
+        for (slot, fee) in w.slots.iter_mut().zip(fees) {
+            slot.opening.fee = fee;
+            slot.commitment = h.fee_commit(fee, &slot.opening.blind);
+            sum = sum.checked_add(fee).unwrap();
+        }
+        w.rewards[0].amount = w.plan.allocations[0].amount + sum;
+        w.check(&h).unwrap();
+        let air = SettlementAir::new(4);
         let (trace, public) = generate_trace(&air, &w);
         assert!(
-            !check_all_constraints(&air, &trace, &public, None)
+            check_all_constraints(&air, &trace, &public, Some(1))
                 .failures
                 .is_empty()
         );
-    }
-
-    #[test]
-    fn native_proof_binds_all_public_fee_reward_and_context_fields() {
-        let w = witness(4);
-        let prover = SettlementProver::new(w.capacity(), crate::FriParams::fast());
-        let (proof, public) = prover.prove(&w);
-        for i in 0..public.len() {
-            let mut changed = public.clone();
-            changed[i] += F::ONE;
-            assert!(prover.verify(&proof, &changed).is_err(), "public field {i}");
+        for (row, column) in [
+            (0, SUM_CARRY),
+            (3, REWARD_CARRY),
+            (4, IMMEDIATE_AMOUNT),
+            (4, NOTE_AMOUNT),
+        ] {
+            let mut changed = trace.clone();
+            changed.values[row * MAIN_WIDTH + column] += F::ONE;
+            assert!(
+                !check_all_constraints(&air, &changed, &public, Some(1))
+                    .failures
+                    .is_empty(),
+                "row {row}, column {column}"
+            );
+        }
+        for index in 1..MAX_REWARD_NOTES {
+            let mut changed = trace.clone();
+            let rho = h.reward_rho(w.plan.block_height, 0);
+            for stage in 0..REWARD_ROWS {
+                let start = (w.capacity() + index * REWARD_ROWS + stage) * MAIN_WIDTH + RHO;
+                changed.values[start..start + common::DIGEST].copy_from_slice(&rho);
+            }
+            assert!(
+                !check_all_constraints(&air, &changed, &public, Some(1))
+                    .failures
+                    .is_empty(),
+                "reward index {index}"
+            );
         }
     }
-
     #[test]
-    fn public_range_and_maturity_overflow_are_rejected() {
-        let w = witness(4);
-        let mut public = w.public_inputs();
-        public[w.capacity() * common::DIGEST] = F::from_u32(1 << LIMB_BITS);
-        assert!(validate_settlement_public(w.capacity(), &public).is_err());
-        let mut public = w.public_inputs();
-        let height = w.capacity() * common::DIGEST + LIMBS;
-        public[height..height + LIMBS].copy_from_slice(&common::limbs(u64::MAX));
-        assert!(validate_settlement_public(w.capacity(), &public).is_err());
-    }
-
-    #[test]
-    fn settlement_accepts_openings_from_different_anchor_fee_schedules() {
-        let mut w = witness(4);
-        let opening = FeeOpening::for_base_fee(FEE_BASE + 17, false, false, blind(52));
-        w.slots[1] = SettlementSlot::from_opening(&Hasher::new(), opening);
-        w.miner_amount += FEE_BASE + 17;
-        w.check(&Hasher::new())
-            .expect("transaction proofs establish each anchored fee tier");
-        let air = SettlementAir::new(w.capacity());
+    fn host_rejects_fee_overflow_and_air_rejects_wrapped_immediate_reward() {
+        let h = Hasher::new();
+        let mut w = sample_fixed_settlement_witness(4, RewardMode::Voyager);
+        for (slot, fee) in w.slots.iter_mut().zip([u64::MAX, 1, 0, 0]) {
+            slot.opening.fee = fee;
+            slot.commitment = h.fee_commit(fee, &slot.opening.blind);
+        }
+        assert_eq!(w.check(&h), Err(SettlementError::FeeSumOverflow));
+        let mut w = sample_fixed_settlement_witness(4, RewardMode::Voyager);
+        w.plan.allocations[0].amount = u64::MAX;
+        w.rewards[0].amount = w.slots.iter().map(|s| s.opening.fee).sum::<u64>() - 1;
+        assert_eq!(w.check(&h), Err(SettlementError::RewardOverflow));
+        let air = SettlementAir::new(4);
         let (trace, public) = generate_trace(&air, &w);
-        assert!(
-            check_all_constraints(&air, &trace, &public, None)
-                .failures
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn symbolic_constraint_degree_is_extracted_from_the_complete_relation() {
-        use p3_air::symbolic::{AirLayout, get_max_constraint_degree};
-        let air = SettlementAir::new(576);
-        let mut layout = AirLayout::from_air(&air);
-        layout.preprocessed_width = air.preprocessed_width();
-        assert_eq!(
-            get_max_constraint_degree::<F, _>(&air, layout, air.height),
-            3
-        );
-    }
-
-    #[test]
-    fn token_reward_is_rejected_inside_air_without_host_check() {
-        let mut witness = witness(2);
-        witness.miner_asset_id = common::AssetId([3; 32]);
-        assert_eq!(
-            witness.check(&Hasher::new()),
-            Err(SettlementError::MinerAssetNotSi)
-        );
-        let air = SettlementAir::new(2);
-        let (trace, public) = generate_trace(&air, &witness);
         assert!(
             !check_all_constraints(&air, &trace, &public, Some(1))
+                .failures
+                .is_empty()
+        );
+    }
+    #[test]
+    fn voyager_cannot_activate_unprovided_holder_notes_by_changing_mode() {
+        let w = sample_fixed_settlement_witness(4, RewardMode::Voyager);
+        let air = SettlementAir::new(4);
+        let (trace, mut public) = generate_trace(&air, &w);
+        public[reward_mode_offset(4)] = F::ONE;
+        public[reward_mode_offset(4) + 1] = F::from_u32(5);
+        assert!(validate_settlement_public(4, &public).is_err());
+        assert!(
+            !check_all_constraints(&air, &trace, &public, Some(1))
+                .failures
+                .is_empty()
+        );
+    }
+    #[test]
+    fn non_sip_reward_is_rejected_by_the_air() {
+        let mut w = sample_fixed_settlement_witness(4, RewardMode::Holder);
+        w.rewards[2].asset_id = common::AssetId([2; 32]);
+        assert!(w.check(&Hasher::new()).is_err());
+        let air = SettlementAir::new(4);
+        let (t, p) = generate_trace(&air, &w);
+        assert!(
+            !check_all_constraints(&air, &t, &p, Some(1))
                 .failures
                 .is_empty()
         );

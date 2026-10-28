@@ -1,17 +1,19 @@
 # Confidential Fee Settlement for Route A V1
 
-Status: selected V1 design with an isolated native AIR/prover implementation. This
+Status: selected V1 design with an isolated native AIR/prover implementation. The
+[monetary revision](v1-economics.md) reopens settlement and transaction profile
+qualification; the earlier fixed-key measurements below are baseline evidence. This
 document specifies Scheme B, a confidential settlement mechanism for the
 native, non-recursive transaction route. The direction is selected for V1, but
-it is not an activated consensus rule. The multi-asset transaction profile is
-[engineering-frozen](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-at b7/q41/g20 with a 655,360-byte transaction body cap. Settlement remains an
-independent b8/q36/g20 relation with its own 524,288-byte body cap. The
-[source-bound relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-engineering-freezes exactly 576 positions and the public preprocessing key;
-other capacity keys need separate identities. Its isolated
-AIR constrains the reward asset to SI and uses the five-block asset-bound note
-commitment. See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md).
+it is not an activated consensus rule. The prior
+[transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+used b7/q41/g20 with a 655,360-byte body cap; the prior independent settlement
+used b8/q36/g20 with its own 524,288-byte cap. Their
+[source-bound manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+records exactly 576 positions and the earlier public preprocessing key.
+Revised one/five-note reward settlement needs fresh key, security and resource
+evidence. Every revised reward commitment must bind its SIP asset and unlock
+height inside the AIR. See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md).
 Independent review and node integration remain activation gates, and the
 retained seven-node network is unchanged.
 
@@ -20,7 +22,7 @@ retained seven-node network is unchanged.
 Route A broadcasts one native proof with each fixed-shape transaction. Nodes
 verify the proof before mempool admission, and a block carries compact
 references to those transactions. The required V1 transaction has two inputs and three outputs with
-private per-asset balances and SI-only fees. The isolated multi-asset AIR and
+private per-asset balances and SIP-only fees. The isolated multi-asset AIR and
 codec implement this shape; the earlier two-output code is an unchanged
 baseline. Real and padding transactions use the same public byte length and the
 same proof envelope shape. A real transaction commits either the standard or
@@ -35,9 +37,9 @@ The settlement mechanism must meet four requirements:
 1. The proof must establish the selected fee rule without publishing the tier
    or amount for an individual transaction. The public statement contains only
    a randomized fee commitment.
-2. A block must credit the miner with its exact post-fund issuance share plus
-   the fees of its included transactions, including zero-fee padding, exactly
-   once.
+2. A block must credit the miner with its exact mode-dependent subsidy and
+   Holder claim, plus all included fees in note zero, exactly once. The public
+   pool, burn and fund updates follow the shared integer transition.
 3. A node must reject omission, duplication, overflow, replay, and forged
    settlement data before changing state.
 4. No public field may classify a slot as real or padding, or make an
@@ -102,7 +104,7 @@ the implemented permanent per-position record is 2,115 bytes before amortized
 block context. The isolated AIR proves the following; node acceptance remains
 separate work:
 
-- the two inputs and three outputs satisfy independent per-asset balances and SI-only fees;
+- the two inputs and three outputs satisfy independent per-asset balances and SIP-only fees;
 - every positive-amount input proves ownership and commitment-tree membership;
   a zero-amount dummy input uses the canonical dummy witness and skips that
   membership check;
@@ -173,44 +175,38 @@ integration tests remain activation gates.
 
 ## Block settlement statement
 
-For a block with `M` fixed positions, the miner constructs a private witness
-for every position, including generated padding. The settlement proof binds the
-following public values:
+For a block with `M` fixed positions, the miner supplies fee openings for
+every position, including generated padding. The public statement binds the
+network/suite identity, block height, public Voyager/Holder mode, canonical
+pre-block pool context, ordered transaction identity/fee-commitment digest,
+and every reward-note commitment. Validators derive this context using the
+[shared integer monetary transition](v1-economics.md). Peer-provided subsidy or
+pool figures cannot override accepted state.
 
-- network/suite identity and candidate block height;
-- the domain-separated digest of the ordered transaction identities, including
-  network, height and declared position count;
-- the corresponding ordered fee commitment `F_i` for each position;
-- the miner reward-note commitment;
-- the miner's post-fund issuance share recomputed from the block height.
-
-The proof keeps the `f_i`, blindings, payout opening and total private.
-It proves:
+Let `R[j]` be the deterministic subsidy-plus-pool-claim amounts produced by
+that transition: one note for Voyager and five for Holder. The AIR proves:
 
 ```text
-F_i = Poseidon2_fee_v1(f_i || r_i)                    for every i
-T   = sum(i = 0..M-1) f_i                            (checked integer sum)
-miner_amount = miner_issuance_share(height) + T       (checked integer sum)
-miner_commitment = NoteCommit(miner_amount, miner_blind)
+F_i = Poseidon2_fee_v1(f_i || r_i)         for every i
+T = sum(i = 0..M-1) f_i                  checked integer sum
+reward_amount[0] = R[0] + T              checked integer sum
+reward_amount[j] = R[j]                  for all j > 0
+reward_commitment[j] = NoteCommit(full_reward_note[j])
 ```
 
-The existing witness field named `issuance_reward` carries the miner's
-post-fund share, not the complete block reward. The block transition must
-compute `miner_issuance_share = reward - 2 * floor(reward / 20)` with the
-protocol's integer issuance schedule and fund split before reconstructing the
-settlement statement. The AIR binds this public input but does not derive the
-issuance schedule or fund shares itself.
+Each full reward note binds the reserved SIP asset ID, amount, owner,
+height-derived unlock, distinct reward index/randomness and seed. A host-only
+SIP or lock check is insufficient. All fees go to note zero and never enter
+the subsidy percentages, pool or burn. Note zero, including the Holder claim
+and fees, matures at `height + 24`; Holder notes 1–4 use the selected
+52,560/105,120/157,680/210,240-block offsets. The mode-dependent reward count
+and exact subsidy allocations must be checked independently of secret fees.
 
-`T` is not a public block field. The miner note commitment is the public
-settlement result; its amount and note opening remain private. The standard
-note relation constrains owner, value, height-derived unlock, miner rho and
-random seed. The isolated multi-asset AIR additionally constrains every reward
-asset-ID limb to the reserved SI value and hashes the complete five-block note.
-A host-only SI check is insufficient. The public Fiat--Shamir transcript binds
-the network, block height
+`T`, individual fees and note openings remain private. The public transcript
+binds the network, block height
 and ordered transaction-list digest. The block transition reconstructs these
-values, the ordered fee commitments and miner issuance share from trusted
-candidate data.
+values, the ordered fee commitments, all mode-dependent reward allocations
+and unlock heights from trusted candidate data.
 The reward ciphertext belongs to the authenticated block/output codec and its
 wallet self-check, rather than a claim of in-AIR encryption correctness.
 The public block therefore
@@ -268,7 +264,7 @@ production codec ledger and qualified transaction/576-position settlement
 measurements. The
 [node integration plan](v1-node-network-plan.md) specifies the proposed
 2,184-byte envelope prefix, 78-byte sidecar and initial local byte/CPU policies.
-Its new reward-note AIR must bind the reserved SI asset ID inside the circuit;
+Its new reward-note AIR must bind the reserved SIP asset ID inside the circuit;
 the diagnostic four-block assetless reward commitment is not the new relation.
 
 ## Mempool and block validation flow
@@ -289,10 +285,10 @@ the diagnostic four-block assetless reward commitment is not the new relation.
    for ordering and settlement. A node validates the sidecar's transaction
    binding and commitment before retaining it; the node does not log `f` or
    classify the slot.
-5. The miner obtains a validated sidecar for every position. It constructs a
-   fixed-capacity block, recomputes the miner's post-fund issuance share from
-   the candidate height, includes the miner output exactly once, and produces
-   the settlement proof. Missing or context-mismatched sidecar data aborts
+5. The miner obtains a validated sidecar for every position. It reconstructs
+   the mode, subsidy, pool claim and one/five reward outputs from the common
+   economic transition, includes each output exactly once and produces the
+   fixed-capacity settlement proof. Missing or context-mismatched sidecar data aborts
    block production.
 6. A receiving node verifies the header, compact references, every transaction
    proof, and the settlement proof. It checks that every `F_i` and transaction
@@ -335,9 +331,9 @@ The implementation test plan must reject each case below before state mutation:
   or a settlement sum that differs from the fee portion of the miner reward;
 - overflowing a fee limb, the per-position total, or `miner_issuance_share + T`,
   including carries at every boundary;
-- claiming a miner amount that is not exactly its post-fund issuance share
-  plus the proved private sum, claiming it twice, or moving the miner output to another
-  block height;
+- claiming reward amounts/counts that differ from the selected mode, adding
+  fees outside note zero, claiming twice, changing a lock height or moving
+  any reward to another block height;
 - transplanting a settlement proof into a different network, block or suite,
   or binding a fee opening to a different transaction statement or snapshot;
   an unchanged pending transaction may be selected for a later candidate
@@ -373,7 +369,13 @@ operational recovery. After that period, nodes delete the proof bodies and
 sidecars. The public fee commitments `F_i` remain permanently with the
 confirmed transaction; no fee opening is retained in the permanent record.
 
-## Parameter freeze and activation gates
+## Revised profile and activation gates
+
+The economic revision supersedes earlier single-reward-note qualification.
+Re-screen revised transaction, settlement and issuance AIRs with pinned
+`p3-security`, regenerate source-bound public keys and run three resource
+measurements per selected profile. The old artifacts below remain unchanged
+pre-revision evidence and cannot satisfy these new gates.
 
 The engineering transaction-profile freeze records the implemented AIR,
 parameters, public preprocessing commitment, fixed implementation/dependency
@@ -414,12 +416,12 @@ is enabled on the retained network.
 The selected multi-asset transaction profile is b7/q41/g20; all three qualified
 four-worker generation trials complete within two seconds. Its 655,360-byte
 cap has at least 10% margin over the largest observed body. The independent
-settlement b8/q36/g20 profile retains a 524,288-byte body cap, SI reward-asset
+settlement b8/q36/g20 profile retains a 524,288-byte body cap, SIP reward-asset
 constraints and the five-block reward commitment. The
 [multi-asset evaluation](v1-multi-asset-evaluation.md) records actual dimensions,
 all transaction scan trials, security terms and separate settlement evidence.
 These engineering profiles are not cryptographic approval or activated
 consensus. External ML-DSA issuance authentication is paired with a separate
-native fixed-supply proof and an SI fee-payment verification gate; real
+native fixed-supply proof and an SIP fee-payment verification gate; real
 payment consumption, node issuance atomicity and issuance fee policy remain
 open.

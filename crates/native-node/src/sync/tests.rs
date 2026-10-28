@@ -68,7 +68,7 @@ fn compact_rejects_wrong_body_duplicate_order_and_changed_reward() {
             0 => bad.references.swap(0, 1),
             1 => bad.references[1] = bad.references[0],
             2 => bad.expected_id[0] ^= 1,
-            _ => bad.reward.ciphertext[0] ^= 1,
+            _ => bad.rewards[0].ciphertext[0] ^= 1,
         };
         assert!(
             bad.reconstruct(|r| block

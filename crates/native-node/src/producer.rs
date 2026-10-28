@@ -3,7 +3,7 @@
 
 use crate::pool::Padding;
 use crate::proofs::NativeProver;
-use crate::state::{State, base_fee, subsidy_split, tail_slots};
+use crate::state::{State, base_fee, tail_slots};
 use crate::wire::{Block, GROUP, MAX_SLOTS, MIN_SLOTS, PublicRecord, RewardRecord, Transaction};
 use native::codec::{ProofContext, PublicTransaction, decode_digest, encode_digest};
 use native::confidential_fees::{FeeOpening, SettlementSlot};
@@ -13,17 +13,19 @@ use native::encryption::{
     encrypt_payment_with_opening,
 };
 use native::multi_asset::{
-    AccWitness, AnchorTree, F, Hasher, InputWitness, Note, OutputWitness, SI_ASSET_ID, SlotWitness,
-    TREE_DEPTH,
+    AccWitness, AnchorTree, F, Hasher, InputWitness, Note, OutputWitness, SIP_ASSET_ID,
+    SlotWitness, TREE_DEPTH,
 };
 use native::settlement::FixedSettlementWitness;
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
+use siworld_core::v1_economics::RewardMode;
 use std::collections::BTreeSet;
 use zeroize::Zeroizing;
 
-pub const REWARD_SECRET_BYTES: usize = 4 + 2 + 32 + 8 + 48 + 48 + 48 + 1184 + 32;
+const REWARD_ENTRY_BYTES: usize = 48 + 48 + 48 + 1184 + 32;
+pub const MAX_REWARD_SECRET_BYTES: usize = 48 + 5 * REWARD_ENTRY_BYTES;
 const REWARD_SECRET_MAGIC: &[u8; 4] = b"SWRM";
-const REWARD_SECRET_VERSION: u16 = 1;
+const REWARD_SECRET_VERSION: u16 = 2;
 
 pub struct ProducedBlock {
     pub block: Block,
@@ -44,9 +46,16 @@ impl PreparedTransaction {
     }
 }
 
-struct PreparedReward {
-    record: RewardRecord,
-    note: Note,
+/// Explicit template-local settings. There is no default reward mode.
+/// The supplied payment address must belong to a separately backed-up wallet.
+#[derive(Clone)]
+pub struct MiningSettings {
+    pub mode: RewardMode,
+    pub recipient: PaymentAddress,
+}
+struct PreparedRewards {
+    records: Vec<RewardRecord>,
+    notes: Vec<Note>,
     secret: Zeroizing<Vec<u8>>,
 }
 
@@ -112,7 +121,7 @@ fn prepare_empty(state: &State, roots: &AnchorTree) -> Result<PreparedTransactio
         decode_digest(&snapshot.commitment_root).map_err(|_| "invalid local commitment root")?;
     let input = || -> Result<InputWitness, String> {
         Ok(InputWitness {
-            asset_id: SI_ASSET_ID,
+            asset_id: SIP_ASSET_ID,
             nk: random_fields()?,
             rho: random_fields()?,
             rseed: random_fields()?,
@@ -124,7 +133,7 @@ fn prepare_empty(state: &State, roots: &AnchorTree) -> Result<PreparedTransactio
     };
     let output = || -> Result<OutputWitness, String> {
         Ok(OutputWitness {
-            asset_id: SI_ASSET_ID,
+            asset_id: SIP_ASSET_ID,
             owner: h.owner(&random_fields()?),
             value: 0,
             unlock_height: 0,
@@ -226,116 +235,122 @@ fn decode_payment(bytes: &[u8; 1313]) -> PaymentCiphertext {
     }
 }
 
-fn prepare_reward(state: &State, total_fees: u64) -> Result<PreparedReward, String> {
-    let height = state
-        .height
-        .checked_add(1)
-        .ok_or("engineering block height exhausted")?;
-    let unlock_height = height
-        .checked_add(native::multi_asset::COINBASE_MATURITY)
-        .ok_or("engineering reward maturity height overflows")?;
-    let miner_amount = subsidy_split(height)
-        .0
-        .checked_add(total_fees)
-        .ok_or("engineering miner reward amount overflows")?;
+fn prepare_rewards(
+    state: &State,
+    total_fees: u64,
+    settings: &MiningSettings,
+) -> Result<PreparedRewards, String> {
+    let plan = state.reward_plan(settings.mode)?;
     let h = Hasher::new();
-    let nk = random_fields()?;
-    let note = Note {
-        asset_id: SI_ASSET_ID,
-        owner: h.owner(&nk),
-        value: miner_amount,
-        unlock_height,
-        rho: h.miner_rho(height),
-        rseed: random_fields()?,
-    };
-    let recipient =
-        RecipientViewKey::generate(note.owner).map_err(|_| "reward KEM key generation failed")?;
-    let address = recipient.address();
     let ec = EncryptionContext::new(state.config.network);
-    let (payment, opening) = encrypt_payment_with_opening(&address, &note, &ec)
-        .map_err(|_| "reward encryption failed")?;
-    let commitment = h.note_cm(&note);
-    let checked = recipient
-        .decrypt_payment(&commitment, &payment, &ec)
-        .map_err(|_| "reward payment self-check failed")?;
-    if !same_note(&checked, &note) {
-        return Err("reward note self-check failed".into());
-    }
-    let mut secret = Zeroizing::new(Vec::with_capacity(REWARD_SECRET_BYTES));
+    let mut records = Vec::with_capacity(plan.allocations.len());
+    let mut notes = Vec::with_capacity(plan.allocations.len());
+    let mut secret = Zeroizing::new(Vec::with_capacity(
+        48 + REWARD_ENTRY_BYTES * plan.allocations.len(),
+    ));
     secret.extend_from_slice(REWARD_SECRET_MAGIC);
     secret.extend_from_slice(&REWARD_SECRET_VERSION.to_le_bytes());
     secret.extend_from_slice(&state.config.network);
-    secret.extend_from_slice(&height.to_le_bytes());
-    secret.extend_from_slice(&encode_digest(&commitment));
-    secret.extend_from_slice(&encode_digest(&nk));
-    secret.extend_from_slice(&encode_digest(&note.rseed));
-    secret.extend_from_slice(address.encapsulation_key());
-    secret.extend_from_slice(opening.expose_encapsulation_coins());
-    Ok(PreparedReward {
-        record: RewardRecord {
+    secret.extend_from_slice(&plan.block_height.to_le_bytes());
+    secret.push(settings.mode.to_byte());
+    secret.push(plan.allocations.len() as u8);
+    for (index, allocation) in plan.allocations.iter().enumerate() {
+        let note = Note {
+            asset_id: SIP_ASSET_ID,
+            owner: settings.recipient.owner(),
+            value: allocation
+                .amount
+                .checked_add(if index == 0 { total_fees } else { 0 })
+                .ok_or("miner reward amount overflows")?,
+            unlock_height: allocation.unlock_height,
+            rho: h.reward_rho(plan.block_height, index),
+            rseed: random_fields()?,
+        };
+        let commitment = h.note_cm(&note);
+        let (payment, opening) = encrypt_payment_with_opening(&settings.recipient, &note, &ec)
+            .map_err(|_| "reward encryption failed")?;
+        let checked = opening
+            .verify_payment(&settings.recipient, &commitment, &payment, &ec)
+            .map_err(|_| "reward payment self-check failed")?;
+        if !same_note(&checked, &note) {
+            return Err("reward note self-check failed".into());
+        }
+        secret.extend_from_slice(&encode_digest(&commitment));
+        secret.extend_from_slice(&encode_digest(&note.owner));
+        secret.extend_from_slice(&encode_digest(&note.rseed));
+        secret.extend_from_slice(settings.recipient.encapsulation_key());
+        secret.extend_from_slice(opening.expose_encapsulation_coins());
+        records.push(RewardRecord {
             commitment: encode_digest(&commitment),
             ciphertext: encode_payment(&payment),
-        },
-        note,
+        });
+        notes.push(note);
+    }
+    Ok(PreparedRewards {
+        records,
+        notes,
         secret,
     })
 }
 
-/// Authenticate the fixed local recovery record against a block's encrypted
-/// reward. This is receipt-based engineering recovery, not wallet scanning.
-/// The returned/temporary native field copies are outside byte-buffer erasure.
+/// Authenticate each local encryption receipt against its ordered block reward.
+/// Spending keys remain in the seed-backed wallet, never in these receipts.
 pub fn validate_reward_secret(block: &Block, secret: &[u8]) -> Result<(), String> {
-    if secret.len() != REWARD_SECRET_BYTES
+    let count = match block.reward_mode {
+        RewardMode::Voyager => 1,
+        RewardMode::Holder => 5,
+    };
+    if block.rewards.len() != count
+        || secret.len() != 48 + count * REWARD_ENTRY_BYTES
         || &secret[..4] != REWARD_SECRET_MAGIC
         || secret[4..6] != REWARD_SECRET_VERSION.to_le_bytes()
         || secret[6..38] != block.network
         || secret[38..46] != block.height.to_le_bytes()
-        || secret[46..94] != block.reward.commitment
+        || secret[46] != block.reward_mode.to_byte()
+        || usize::from(secret[47]) != count
     {
         return Err("local reward recovery record binding mismatch".into());
     }
-    let digest = |offset| {
-        decode_digest(
-            secret[offset..offset + 48]
-                .try_into()
-                .expect("fixed recovery digest"),
-        )
-        .map_err(|_| "noncanonical private reward digest".to_owned())
-    };
-    let nk = digest(94)?;
-    let rseed = digest(142)?;
     let h = Hasher::new();
-    let owner = h.owner(&nk);
-    let address = PaymentAddress::new(
-        owner,
-        secret[190..1374].try_into().expect("fixed KEM public key"),
-    )
-    .map_err(|_| "invalid reward recovery address")?;
-    let opening = PaymentEncryptionOpening::from_encapsulation_coins(
-        secret[1374..1406]
-            .try_into()
-            .expect("fixed encapsulation opening"),
-    );
-    let commitment =
-        decode_digest(&block.reward.commitment).map_err(|_| "invalid reward commitment")?;
-    let note = opening
-        .verify_payment(
-            &address,
-            &commitment,
-            &decode_payment(&block.reward.ciphertext),
-            &EncryptionContext::new(block.network),
+    for (index, record) in block.rewards.iter().enumerate() {
+        let entry = &secret[48 + index * REWARD_ENTRY_BYTES..48 + (index + 1) * REWARD_ENTRY_BYTES];
+        if entry[..48] != record.commitment {
+            return Err("reward receipt commitment mismatch".into());
+        }
+        let digest = |offset| {
+            decode_digest(entry[offset..offset + 48].try_into().expect("fixed digest"))
+                .map_err(|_| "noncanonical reward receipt digest".to_owned())
+        };
+        let owner = digest(48)?;
+        let rseed = digest(96)?;
+        let address = PaymentAddress::new(
+            owner,
+            entry[144..1328].try_into().expect("fixed public key"),
         )
-        .map_err(|_| "reward recovery authentication failed")?;
-    if note.owner != owner
-        || note.rseed != rseed
-        || note.asset_id != SI_ASSET_ID
-        || block
-            .height
-            .checked_add(native::multi_asset::COINBASE_MATURITY)
-            != Some(note.unlock_height)
-        || note.rho != h.miner_rho(block.height)
-    {
-        return Err("reward recovery note mismatch".into());
+        .map_err(|_| "invalid reward recovery address")?;
+        let opening = PaymentEncryptionOpening::from_encapsulation_coins(
+            entry[1328..1360]
+                .try_into()
+                .expect("fixed encapsulation coins"),
+        );
+        let commitment =
+            decode_digest(&record.commitment).map_err(|_| "invalid reward commitment")?;
+        let note = opening
+            .verify_payment(
+                &address,
+                &commitment,
+                &decode_payment(&record.ciphertext),
+                &EncryptionContext::new(block.network),
+            )
+            .map_err(|_| "reward recovery authentication failed")?;
+        if note.owner != owner
+            || note.rseed != rseed
+            || note.asset_id != SIP_ASSET_ID
+            || note.rho != h.reward_rho(block.height, index)
+            || note.unlock_height < block.height
+        {
+            return Err("reward recovery note mismatch".into());
+        }
     }
     Ok(())
 }
@@ -368,6 +383,7 @@ fn prepare_candidate(
     state: &State,
     mut positions: Vec<Padding>,
     timestamp: u64,
+    settings: &MiningSettings,
 ) -> Result<PreparedCandidate, String> {
     check_count(positions.len())?;
     if timestamp <= state.median_time_past() {
@@ -428,7 +444,7 @@ fn prepare_candidate(
         transactions.push(value.transaction);
     }
     slots.extend(tail_slots(state.config.network, height, count)?);
-    let reward = prepare_reward(state, total_fees)?;
+    let reward = prepare_rewards(state, total_fees, settings)?;
     let block = Block {
         network: state.config.network,
         height,
@@ -437,18 +453,25 @@ fn prepare_candidate(
         target: state.next_target(),
         nonce: 0,
         transactions,
-        reward: reward.record,
+        reward_mode: settings.mode,
+        rewards: reward.records,
+        fund_spends: Vec::new(),
         settlement_proof: Vec::new(),
     };
     let witness = FixedSettlementWitness {
-        issuance_reward: subsidy_split(height).0,
-        miner_amount: reward.note.value,
-        miner_asset_id: SI_ASSET_ID,
-        block_height: height,
+        plan: state.reward_plan(settings.mode)?,
         network: block.network,
         transaction_list_digest: block.list_digest(),
-        miner_owner: reward.note.owner,
-        miner_rseed: reward.note.rseed,
+        rewards: reward
+            .notes
+            .iter()
+            .map(|note| native::settlement::RewardNoteWitness {
+                asset_id: note.asset_id,
+                owner: note.owner,
+                rseed: note.rseed,
+                amount: note.value,
+            })
+            .collect(),
         slots,
     };
     witness
@@ -463,14 +486,15 @@ fn prepare_candidate(
 
 /// Assemble current-height settlement around previously verified positions.
 /// Transaction proofs and snapshot identities are preserved. Every committed
-/// fee enters the SI miner reward with checked integer addition.
+/// fee enters the SIP miner reward with checked integer addition.
 pub fn assemble(
     state: &State,
     prover: &NativeProver,
     positions: Vec<Padding>,
     timestamp: u64,
+    settings: &MiningSettings,
 ) -> Result<ProducedBlock, String> {
-    let mut prepared = prepare_candidate(state, positions, timestamp)?;
+    let mut prepared = prepare_candidate(state, positions, timestamp, settings)?;
     prepared.block.settlement_proof = prover.settlement(&prepared.settlement)?;
     prepared.block.validate_shape()?;
     validate_reward_secret(&prepared.block, &prepared.reward_secret)?;
@@ -486,6 +510,7 @@ pub fn produce(
     state: &State,
     prover: &NativeProver,
     count: usize,
+    settings: &MiningSettings,
 ) -> Result<ProducedBlock, String> {
     check_count(count)?;
     let mut prepared = Vec::with_capacity(count);
@@ -509,7 +534,7 @@ pub fn produce(
                     .ok_or("engineering timestamp exhausted")?,
             )
     };
-    let mut produced = assemble(state, prover, prepared, timestamp)?;
+    let mut produced = assemble(state, prover, prepared, timestamp, settings)?;
     let seed = produced.block.pow_seed()?;
     while !siworld_core::pow::meets_target(
         &siworld_core::pow::pow_hash(&seed, produced.block.nonce, state.config.pow_iterations),
@@ -576,6 +601,7 @@ mod tests {
                     &tx.witness.d_ct,
                     &tx.opening_commitment(),
                     &roots.root(),
+                    state.height,
                 )
             );
         }
@@ -591,34 +617,71 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reward_material_restores_and_rejects_every_binding_mutation() {
-        let state = State::new(Config::development([32; 32], 0).unwrap()).unwrap();
-        let reward = prepare_reward(&state, 0).unwrap();
-        let block = Block {
-            network: state.config.network,
-            height: 1,
-            parent: state.tip,
-            timestamp: state.timestamp() + 1,
-            target: state.next_target(),
-            nonce: 0,
-            transactions: Vec::new(),
-            reward: reward.record,
-            settlement_proof: Vec::new(),
-        };
-        validate_reward_secret(&block, &reward.secret).unwrap();
-        for offset in [0, 4, 6, 38, 46, 94, 142, 190, REWARD_SECRET_BYTES - 1] {
-            let mut invalid = reward.secret.to_vec();
-            invalid[offset] ^= 1;
-            assert!(
-                validate_reward_secret(&block, &invalid).is_err(),
-                "field offset {offset}"
-            );
+    fn settings(mode: RewardMode) -> MiningSettings {
+        let keys =
+            crate::wallet::WalletKeys::from_seed([32; 32], Zeroizing::new([42; 32]), 0).unwrap();
+        MiningSettings {
+            mode,
+            recipient: keys.address(),
         }
-        assert!(validate_reward_secret(&block, &reward.secret[..REWARD_SECRET_BYTES - 1]).is_err());
-        let mut changed = block;
-        changed.reward.ciphertext[0] ^= 1;
-        assert!(validate_reward_secret(&changed, &reward.secret).is_err());
+    }
+
+    #[test]
+    fn every_reward_is_seed_recoverable_with_unique_indexed_nullifiers() {
+        let state = State::new(Config::development([32; 32], 0).unwrap()).unwrap();
+        let keys =
+            crate::wallet::WalletKeys::from_seed(state.config.network, Zeroizing::new([42; 32]), 0)
+                .unwrap();
+        for mode in [RewardMode::Voyager, RewardMode::Holder] {
+            let rewards = prepare_rewards(
+                &state,
+                9,
+                &MiningSettings {
+                    mode,
+                    recipient: keys.address(),
+                },
+            )
+            .unwrap();
+            let block = Block {
+                network: state.config.network,
+                height: 1,
+                parent: state.tip,
+                timestamp: 2,
+                target: state.next_target(),
+                nonce: 0,
+                transactions: Vec::new(),
+                fund_spends: Vec::new(),
+                reward_mode: mode,
+                rewards: rewards.records,
+                settlement_proof: Vec::new(),
+            };
+            validate_reward_secret(&block, &rewards.secret).unwrap();
+            assert_eq!(
+                block.rewards.len(),
+                if mode == RewardMode::Holder { 5 } else { 1 }
+            );
+            let mut unique = BTreeSet::new();
+            for (index, note) in rewards.notes.iter().enumerate() {
+                assert!(unique.insert(encode_digest(&Hasher::new().reward_rho(1, index))));
+                assert_eq!(
+                    note.unlock_height,
+                    state.reward_plan(mode).unwrap().allocations[index].unlock_height
+                );
+                assert_eq!(note.owner, keys.address().owner());
+            }
+            for index in 0..block.rewards.len() {
+                let mut changed = block.clone();
+                changed.rewards[index].ciphertext[0] ^= 1;
+                assert!(validate_reward_secret(&changed, &rewards.secret).is_err());
+            }
+            let mut changed = block.clone();
+            changed.reward_mode = if mode == RewardMode::Holder {
+                RewardMode::Voyager
+            } else {
+                RewardMode::Holder
+            };
+            assert!(validate_reward_secret(&changed, &rewards.secret).is_err());
+        }
     }
 
     #[test]
@@ -676,14 +739,21 @@ mod tests {
             let mut positions = fee_positions(&state, &fees);
             positions[2].opening.dummy = dummy;
             positions[2].opening.priority = priority;
-            let prepared = prepare_candidate(&state, positions, state.timestamp() + 1).unwrap();
+            let prepared = prepare_candidate(
+                &state,
+                positions,
+                state.timestamp() + 1,
+                &settings(RewardMode::Voyager),
+            )
+            .unwrap();
             prepared.settlement.check(&Hasher::new()).unwrap();
-            assert_eq!(prepared.settlement.issuance_reward, subsidy_split(1).0);
+            let plan = state.reward_plan(RewardMode::Voyager).unwrap();
+            assert_eq!(prepared.settlement.plan, plan);
             assert_eq!(
-                prepared.settlement.miner_amount,
-                subsidy_split(1).0 + fees.iter().sum::<u64>()
+                prepared.settlement.rewards[0].amount,
+                plan.allocations[0].amount + fees.iter().sum::<u64>()
             );
-            assert_eq!(prepared.settlement.miner_asset_id, SI_ASSET_ID);
+            assert_eq!(prepared.settlement.rewards[0].asset_id, SIP_ASSET_ID);
             assert_eq!(prepared.settlement.slots.len(), MAX_SLOTS);
             let fees_by_id: std::collections::BTreeMap<_, _> = fee_positions(&state, &fees)
                 .into_iter()
@@ -725,17 +795,25 @@ mod tests {
     fn fee_sum_and_subsidy_overflow_fail_without_state_changes() {
         let state = State::new(Config::development([42; 32], 0).unwrap()).unwrap();
         let fingerprint = state.fingerprint();
-        for first in [u64::MAX, u64::MAX - subsidy_split(1).0] {
+        for first in [
+            u64::MAX,
+            u64::MAX - state.reward_plan(RewardMode::Voyager).unwrap().allocations[0].amount,
+        ] {
             let mut fees = vec![0; 64];
             fees[0] = first;
             fees[1] = 1;
             assert!(
-                prepare_candidate(&state, fee_positions(&state, &fees), state.timestamp() + 1)
-                    .is_err()
+                prepare_candidate(
+                    &state,
+                    fee_positions(&state, &fees),
+                    state.timestamp() + 1,
+                    &settings(RewardMode::Voyager)
+                )
+                .is_err()
             );
             assert_eq!(state.fingerprint(), fingerprint);
         }
-        assert!(prepare_reward(&state, u64::MAX).is_err());
+        assert!(prepare_rewards(&state, u64::MAX, &settings(RewardMode::Voyager)).is_err());
         assert_eq!(state.fingerprint(), fingerprint);
     }
 
@@ -754,7 +832,15 @@ mod tests {
                     .proof
                     .resize(crate::wire::MAX_TX_PROOF + 1, 1),
             }
-            assert!(prepare_candidate(&state, positions, state.timestamp() + 1).is_err());
+            assert!(
+                prepare_candidate(
+                    &state,
+                    positions,
+                    state.timestamp() + 1,
+                    &settings(RewardMode::Voyager)
+                )
+                .is_err()
+            );
             assert_eq!(state.fingerprint(), fingerprint);
         }
     }
@@ -779,7 +865,7 @@ mod tests {
         let mut store =
             Store::open(directory.0.join("chain.redb"), config.clone(), &verifier).unwrap();
         let prover = NativeProver::new().unwrap();
-        let produced = produce(store.state(), &prover, 64).unwrap();
+        let produced = produce(store.state(), &prover, 64, &settings(RewardMode::Voyager)).unwrap();
         let id = produced.block.id().unwrap();
         validate_reward_secret(&produced.block, &produced.reward_secret).unwrap();
         local::save_reward(&directory.0, &id, &produced.reward_secret).unwrap();
@@ -800,7 +886,7 @@ mod tests {
         let recovered = local::read_reward(&directory.0, &id).unwrap();
         validate_reward_secret(&accepted, &recovered).unwrap();
         let mut changed = accepted;
-        changed.reward.ciphertext[0] ^= 1;
+        changed.rewards[0].ciphertext[0] ^= 1;
         assert!(validate_reward_secret(&changed, &recovered).is_err());
         drop(restarted);
     }

@@ -15,7 +15,7 @@ use crate::multi_asset_air::*;
 /// yields a trace that violates the constraints.
 pub fn generate(air: &SlotAir, w: &SlotWitness) -> (RowMajorMatrix<F>, Vec<F>) {
     assert!(!air.pub_in_regs());
-    build(air, w, None, Vec::new(), None)
+    build(air, w, None, Vec::new(), None, None)
 }
 
 /// Chain mode: returns (main trace, [s_in, s_out, 1]), where s_out = H(s_in, slot public values).
@@ -30,21 +30,39 @@ pub fn generate_chain(
     let mut stmt = s_in.to_vec();
     stmt.extend_from_slice(&s_out);
     stmt.push(F::ONE);
-    build(air, w, None, stmt, None)
+    build(air, w, None, stmt, None, None)
 }
 
 /// Accumulator mode: returns (main trace, [E, fee limbs, 1, 𝒜 entry]). The entry's 𝒜 path is
 /// not part of the leaf; the level-1 merge node checks it.
 pub fn generate_acc(air: &SlotAir, w: &AccWitness) -> (RowMajorMatrix<F>, Vec<F>) {
     assert!(air.acc);
-    build(air, &w.slot, Some(w), acc_stmt(w), None)
+    build(air, &w.slot, Some(w), acc_stmt(w), None, None)
 }
 
 /// Native transaction mode: the fee limbs remain private and only the
 /// randomized fee commitment is public in the statement.
 pub fn generate_acc_confidential(air: &SlotAir, w: &AccWitness) -> (RowMajorMatrix<F>, Vec<F>) {
     assert!(air.acc && air.confidential_fee);
-    build(air, &w.slot, Some(w), acc_stmt_confidential(w), None)
+    build(air, &w.slot, Some(w), acc_stmt_confidential(w), None, None)
+}
+
+pub fn generate_acc_confidential_at_snapshot(
+    air: &SlotAir,
+    w: &AccWitness,
+    snapshot_height: u64,
+) -> (RowMajorMatrix<F>, Vec<F>) {
+    assert!(air.selected_snapshot_height);
+    let mut statement = acc_stmt_confidential(w);
+    statement.extend_from_slice(&limbs(snapshot_height));
+    build(
+        air,
+        &w.slot,
+        Some(w),
+        statement,
+        None,
+        Some(snapshot_height),
+    )
 }
 
 fn acc_stmt(w: &AccWitness) -> Vec<F> {
@@ -93,6 +111,7 @@ pub(crate) fn generate_edited(
             }
         }),
         Some(edit),
+        None,
     )
 }
 
@@ -147,6 +166,7 @@ fn build(
     acc: Option<&AccWitness>,
     mut stmt: Vec<F>,
     edit: Option<Edit>,
+    snapshot_height: Option<u64>,
 ) -> (RowMajorMatrix<F>, Vec<F>) {
     let height = air.height;
     let h = Hasher::new();
@@ -221,7 +241,9 @@ fn build(
             );
         }
         // Real inputs: anchor height = unlock + δ.
-        let hl = limbs_at(&regs, ACC_REG + ACC_HB);
+        let hl = snapshot_height
+            .map(|height| limbs_u32(height).map(i64::from))
+            .unwrap_or_else(|| limbs_at(&regs, ACC_REG + ACC_HB));
         for i in 0..2 {
             if regs[input(i) + IN_D - REG] == F::ZERO {
                 let u = limbs_at(&regs, input(i) + IN_VU + LIMBS);
@@ -236,8 +258,8 @@ fn build(
         let zero = v.iter().all(|&x| x == 0);
         put(&mut regs, output(j) + OUT_Z, &[F::from_bool(zero)]);
         if !zero {
-            let is_si = (0..16).all(|k| regs[asset_col(output(j), false, k) - REG] == F::ZERO);
-            let minimum = if is_si { min } else { [1, 0, 0, 0] };
+            let is_sip = (0..16).all(|k| regs[asset_col(output(j), false, k) - REG] == F::ZERO);
+            let minimum = if is_sip { min } else { [1, 0, 0, 0] };
             put_difference(&mut regs, output(j) + OUT_MD, minimum, v);
         }
     }
@@ -271,14 +293,14 @@ fn build(
         }
     }
     for group in 0..3 {
-        let is_si = if group < 2 {
+        let is_sip = if group < 2 {
             regs[match_col(2, group) - REG] == F::ONE
         } else {
             true
         };
         let mut carry = 0i64;
         for limb in 0..LIMBS - 1 {
-            let mut balance = carry - if is_si { fl[limb] } else { 0 };
+            let mut balance = carry - if is_sip { fl[limb] } else { 0 };
             for note in 0..5 {
                 if regs[match_col(group, note) - REG] == F::ONE {
                     let value = i64::from(regs[note_value(note) + limb - REG].as_canonical_u32());

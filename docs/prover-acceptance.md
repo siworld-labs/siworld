@@ -2,9 +2,10 @@
 
 Status: engineering acceptance requirements for the independent native-proof
 testnet. The two-input/three-output transaction, fixed-576 settlement and
-three-initial-note issuance proof relations have a source-bound engineering
-freeze with reproduced public preprocessing keys and security reports.
-Qualified generation measurements are separate existing evidence.
+three-initial-note issuance proof relations have a pre-economic-revision
+source-bound baseline. The [selected monetary revision](v1-economics.md)
+reopens their freeze and requires new keys, actual-AIR reports and resource
+measurements. Earlier generation measurements are separate baseline evidence.
 The earlier single-asset freeze is an unchanged diagnostic baseline; node,
 wallet, transport, independent-verifier and recovery integration remain incomplete. A passed
 standalone benchmark is not testnet acceptance. Operating thresholds below
@@ -31,7 +32,9 @@ work. N=32 and retained-history verifier migration are excluded.
 
 ## Gate 1: proof identity and independent review
 
-Reproduce the [three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+Generate new source-bound keys and actual-AIR reports after implementing the
+economic revision; old artifact checks must reject changed sources. To inspect
+the unchanged baseline, reproduce the [three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
 using [the fixed profile procedure](native-proof-profiles.md). Its shapes are
 exactly two-input/three-output transaction, 576-position settlement and
 three-initial-note issuance. This does not adopt issuance policy or qualify
@@ -177,8 +180,8 @@ settings, process-tree limits, CPU quota/throttling, peak charged memory,
 individual values, medians and maxima. No OOM, restart or silent retry passes.
 
 The selected transaction-generation gate is at most two seconds in all three
-four-worker trials on the qualified reference. The frozen b7/q41/g20 profile
-passes that measured gate. Transaction proof bodies must fit 655,360 bytes;
+four-worker trials on the qualified reference. The earlier b7/q41/g20 profile
+passed only its pre-economic-revision gate; revised AIRs must pass anew. Transaction proof bodies must fit 655,360 bytes;
 settlement and issuance bodies retain separate 524,288-byte caps. The 640-KiB
 transaction cap gives at least 10% margin over the selected measured maximum;
 it is not a deterministic size theorem. Measure independent transaction and
@@ -276,20 +279,61 @@ automatic expansion beyond 576 positions is authorized by this plan.
 
 ## Multi-asset and supply-audit acceptance
 
-Add test-first rejection cases for cross-asset balance mixing, non-SI fees,
+Add test-first rejection cases for cross-asset balance mixing, non-SIP fees,
 forged IDs, unsigned/wrong-chain/invalid-signature issuance, duplicate issuer
 sequences, incorrect issuance-to-note linkage and minted supply above the
-public declaration. Cover SI-only, token-plus-SI-fee, asset change, two-asset
+public declaration. Cover SIP-only, token-plus-SIP-fee, asset change, two-asset
 inputs and zero-output padding with the same fixed public shape. Verify
 exactly-once supply and registry rollback across depth 23/24 reorganizations.
 Measure the new rows/columns and p3-security terms; no old proof size or timing
 can satisfy this gate.
 
-Run the total-SI-issuance audit over every height and reject tampered subsidy,
+Run the total-SIP-issuance audit over every height and reject tampered subsidy,
 fund credit, signature, fund counter and curve totals. Verify asset declarations
 and issuance relations separately without deriving private holdings. Restore
 a mnemonic-only wallet and rescan every historical ciphertext, including
-payments before the bootstrap checkpoint; reconstruct every unspent SI and
+payments before the bootstrap checkpoint; reconstruct every unspent SIP and
 asset note and reconcile spends against permanent nullifiers. Checkpoint
 bootstrap authenticates state but must not hide or omit the old ciphertext
 segments required by wallet recovery.
+
+## Monetary revision acceptance
+
+Write rejection cases before implementing each shared consensus transition.
+The following scope is required; this list does not claim tests have passed.
+
+- Recompute every atom of Voyager and Holder subsidy allocation, the one/five
+  reward-note count, reserved SIP asset IDs, indices, unlock heights and
+  note-zero fee sum. Reject any unrecognized mode or reward mutation.
+- Cover empty pool, current-block deposit before Holder draw, Voyager no-draw,
+  sub-4,032 balances, exact division and retained remainders. Track burn
+  independently and enforce the supply invariant at every accepted height.
+- In the real transaction AIR, reject a spend one block before its input
+  unlock; accept at the trusted snapshot height. Reject forged lock heights,
+  substituted snapshot heights and a newer tip with an old snapshot.
+- Verify exact tail entry and both adjacent rewards, never below one SIP per
+  300-second block. Distinct engineering genesis may compress lock timing
+  without substituting production parameters.
+- After the configured wallet count/ratios are adopted, test every wallet
+  allocation and independent budget. Cover 24-block maturity, per-credit
+  daily vesting over 1,461 days, integer remainders/final release, independent
+  counters, wrong/absent ML-DSA signatures, replay and overdraft rejection.
+  A payout may not consume another wallet's unlocked entitlement.
+- Across depth-23/24 reorganizations, atomically restore pool, claims, burn,
+  every reward schedule, fund unlocked/spent state and authenticated roots;
+  reject depth 25 without partial mutation.
+- Simulate 20 protocol years with deterministic pseudorandom mode choices,
+  conservation at every block, independent curve sums and reported pool,
+  reward, burn and fund counters. Do not present that simulation as elapsed
+  network observation.
+- Restore locked notes and unlock heights from seed-only ciphertext scans.
+  Check available/locked displays, next unlock and local randomized delayed
+  consolidation without changing consensus locks or exposing note timing.
+
+Re-screen every affected actual AIR for classical conjectured security at
+least 128 bits, quantum-halved Johnson/challenge terms at least 80 bits and
+selected BHT collision resistance at least 80 bits. Report all three measured
+four-worker generation trials, body bytes, standalone verification, charged
+peak memory and events. Retain a two-second transaction generation target,
+655,360-byte body cap and 576 positions. Reconcile complete network/storage
+bytes, preserving at least the agreed measurement margin before refreezing.

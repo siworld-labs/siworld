@@ -13,18 +13,18 @@ use siworld_core::{Block, Slot};
 use siworld_crypto::SecretSeed;
 use siworld_state::ChainState;
 
-const SI: u64 = 100_000_000;
+const SIP: u64 = 100_000_000;
 
 fn one_payment() -> (ChainState, PendingTx) {
     let p = params();
-    let (state, owned) = genesis(&p, &[(key(1), SI, 0)]);
+    let (state, owned) = genesis(&p, &[(key(1), SIP, 0)]);
     let fee = fee_now(&state);
     let tx = pay(
         &state,
         &p,
         [real(&state, &owned[0]), dummy(1)],
         &key(2),
-        [SI / 2, SI / 2 - fee],
+        [SIP / 2, SIP / 2 - fee],
         fee,
         7,
     )

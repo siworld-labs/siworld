@@ -29,7 +29,8 @@ use std::ops::Range;
 
 /// The public statement retains the accumulator's layout but replaces its
 /// per-transaction anchor entry with the shared recent-root tree root.
-pub const NUM_TRANSACTION_PUBLIC: usize = NUM_ACC_CONF_PUBLIC;
+pub const TRANSACTION_SNAPSHOT_HEIGHT: usize = NUM_ACC_CONF_PUBLIC;
+pub const NUM_TRANSACTION_PUBLIC: usize = NUM_ACC_CONF_PUBLIC + crate::multi_asset::LIMBS;
 pub const TRANSACTION_ROOT: usize = ACC_ENTRY_CONF;
 
 /// Recompute the proof statement from canonical decoded transaction fields.
@@ -42,6 +43,7 @@ pub fn statement_for(
     ciphertext_digest: &[u8; DCT_BYTES],
     fee_commit: &Digest,
     recent_roots_root: &Digest,
+    snapshot_height: u64,
 ) -> Vec<F> {
     let inputs = PublicInputs {
         nf: *nullifiers,
@@ -55,6 +57,7 @@ pub fn statement_for(
     statement.extend_from_slice(fee_commit);
     statement.push(F::ONE);
     statement.extend_from_slice(recent_roots_root);
+    statement.extend_from_slice(&crate::multi_asset::limbs(snapshot_height));
     statement
 }
 
@@ -76,7 +79,7 @@ impl Default for TransactionAir {
 impl TransactionAir {
     pub fn new() -> Self {
         Self {
-            slot: SlotAir::new_acc_confidential(),
+            slot: SlotAir::new_acc_confidential_for_snapshot(),
             path_p2: P2Air::new(p2_constants()),
         }
     }
@@ -95,7 +98,7 @@ impl TransactionAir {
     }
 
     fn path(&self) -> usize {
-        self.statement() + NUM_ACC_CONF_PUBLIC
+        self.statement() + NUM_TRANSACTION_PUBLIC
     }
 
     fn bit(&self) -> usize {
@@ -113,10 +116,20 @@ impl TransactionAir {
     /// Generate a trace without accepting or repairing an invalid witness.
     /// Constraint checking or proof verification remains the validity decision.
     pub fn generate(&self, w: &AccWitness) -> (RowMajorMatrix<F>, Vec<F>) {
+        self.generate_at_snapshot(w, w.anchor_height)
+    }
+
+    pub fn generate_at_snapshot(
+        &self,
+        w: &AccWitness,
+        snapshot_height: u64,
+    ) -> (RowMajorMatrix<F>, Vec<F>) {
         assert_eq!(w.anchor_path.len(), ANCHOR_DEPTH, "anchor path length");
-        let (leaf, private_statement) = trace::generate_acc_confidential(&self.slot, w);
+        let (leaf, private_statement) =
+            trace::generate_acc_confidential_at_snapshot(&self.slot, w, snapshot_height);
         let mut public = private_statement.clone();
-        public[TRANSACTION_ROOT..].copy_from_slice(&w.anchors_root(&Hasher::new()));
+        public[TRANSACTION_ROOT..TRANSACTION_ROOT + DIGEST]
+            .copy_from_slice(&w.anchors_root(&Hasher::new()));
         let h = Hasher::new();
         let mut current = w.anchor_entry(&h);
         let mut path_inputs = Vec::with_capacity(self.slot.height);
@@ -147,6 +160,9 @@ impl TransactionAir {
             values.extend_from_slice(path.row_slice(row).unwrap().as_ref());
             values.push(direction);
             values.extend_from_slice(&bits);
+            for limb in crate::multi_asset::limbs_u32(snapshot_height) {
+                values.extend((0..LIMB_BITS).map(|bit| F::from_u32((limb >> bit) & 1)));
+            }
         }
         (RowMajorMatrix::new(values, self.width()), public)
     }
@@ -154,7 +170,7 @@ impl TransactionAir {
 
 impl BaseAir<F> for TransactionAir {
     fn width(&self) -> usize {
-        self.height_bits() + HEIGHT_BITS
+        self.height_bits() + HEIGHT_BITS + crate::multi_asset::LIMBS * LIMB_BITS
     }
 
     fn preprocessed_width(&self) -> usize {
@@ -243,8 +259,9 @@ impl<AB: AirBuilder> AirBuilder for PrivateStatementBuilder<'_, AB> {
 impl<AB: AirBuilder<F = F>> Air<AB> for TransactionAir {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let private_statement =
-            main.current_slice()[self.statement()..self.statement() + NUM_ACC_CONF_PUBLIC].to_vec();
+        let private_statement = main.current_slice()
+            [self.statement()..self.statement() + NUM_TRANSACTION_PUBLIC]
+            .to_vec();
         let pre = builder.preprocessed().clone();
         let mut leaf_builder = PrivateStatementBuilder {
             main: Columns {
@@ -276,6 +293,12 @@ impl<AB: AirBuilder<F = F>> Air<AB> for TransactionAir {
         for i in 0..TRANSACTION_ROOT {
             builder.assert_eq(local[self.statement() + i], public[i]);
         }
+        for k in 0..crate::multi_asset::LIMBS {
+            builder.assert_eq(
+                local[self.statement() + TRANSACTION_SNAPSHOT_HEIGHT + k],
+                public[TRANSACTION_SNAPSHOT_HEIGHT + k],
+            );
+        }
         let mut height_low = AB::Expr::ZERO;
         for bit in 0..HEIGHT_BITS {
             let col = self.height_bits() + bit;
@@ -284,6 +307,15 @@ impl<AB: AirBuilder<F = F>> Air<AB> for TransactionAir {
             height_low += x(local[col]) * F::from_u32(1 << bit);
         }
         builder.assert_eq(height_low, local[ACC_REG + ACC_HB]);
+        for k in 0..crate::multi_asset::LIMBS {
+            let mut limb = AB::Expr::ZERO;
+            for bit in 0..LIMB_BITS {
+                let col = self.height_bits() + HEIGHT_BITS + k * LIMB_BITS + bit;
+                builder.assert_bool(local[col]);
+                limb += x(local[col]) * F::from_u32(1 << bit);
+            }
+            builder.assert_eq(limb, public[TRANSACTION_SNAPSHOT_HEIGHT + k]);
+        }
         builder.assert_bool(local[self.bit()]);
         for level in 0..ANCHOR_DEPTH {
             let selector = selectors[self.selector() + level];
@@ -341,8 +373,17 @@ impl TransactionProver {
             vk,
         }
     }
+    /// Fixture helper; production callers supply a trusted height to `prove_at_snapshot`.
     pub fn prove(&self, witness: &AccWitness) -> (Proof<Cfg>, Vec<F>) {
-        let (trace, public) = self.air.generate(witness);
+        self.prove_at_snapshot(witness, witness.anchor_height)
+    }
+    /// Prove against the canonical snapshot height selected by the verifier.
+    pub fn prove_at_snapshot(
+        &self,
+        witness: &AccWitness,
+        snapshot_height: u64,
+    ) -> (Proof<Cfg>, Vec<F>) {
+        let (trace, public) = self.air.generate_at_snapshot(witness, snapshot_height);
         let proof =
             prove_with_preprocessed(&self.cfg, &self.air, trace, &public, Some(&self.pdata))
                 .expect("transaction proof generation");
@@ -362,6 +403,7 @@ impl TransactionProver {
         ciphertext_digest: &[u8; DCT_BYTES],
         fee_commit: &Digest,
         recent_roots_root: &Digest,
+        snapshot_height: u64,
     ) -> Result<(), String> {
         self.verify(
             proof,
@@ -371,6 +413,7 @@ impl TransactionProver {
                 ciphertext_digest,
                 fee_commit,
                 recent_roots_root,
+                snapshot_height,
             ),
         )
     }
@@ -379,7 +422,7 @@ impl TransactionProver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::multi_asset::{self as m, AssetId, Hasher, SI_ASSET_ID};
+    use crate::multi_asset::{self as m, AssetId, Hasher, SIP_ASSET_ID};
     use crate::multi_asset_air::{self as a, output};
     use p3_air::{BaseAir, check_all_constraints};
     use p3_field::PrimeCharacteristicRing;
@@ -392,7 +435,7 @@ mod tests {
             .len()
     }
     #[test]
-    fn accepts_si_token_and_empty_with_identical_shapes() {
+    fn accepts_sip_token_and_empty_with_identical_shapes() {
         let air = TransactionAir::new();
         for w in [
             m::sample_witness(90),
@@ -405,7 +448,7 @@ mod tests {
             );
             assert_eq!(failures(&w), 0);
             let (trace, public) = air.generate(&w);
-            assert_eq!(public.len(), 97);
+            assert_eq!(public.len(), NUM_TRANSACTION_PUBLIC);
             assert_eq!(trace.width, air.width());
             assert_eq!(trace.height(), air.slot.height);
         }
@@ -480,7 +523,7 @@ mod tests {
         assert!(failures(&w) > 0);
     }
     #[test]
-    fn positive_token_amounts_are_atomic_units_and_si_keeps_minimum() {
+    fn positive_token_amounts_are_atomic_units_and_sip_keeps_minimum() {
         let mut w = m::sample_token_witness(103);
         let token_total = w.slot.inputs[0].value;
         w.slot.outputs[0].value = 1;
@@ -490,7 +533,7 @@ mod tests {
         w.slot.outputs[1].value += w.slot.outputs[0].value - 1;
         w.slot.outputs[0].value = 1;
         assert!(failures(&w) > 0);
-        assert_eq!(SI_ASSET_ID, AssetId([0; 32]));
+        assert_eq!(SIP_ASSET_ID, AssetId([0; 32]));
     }
     #[test]
     fn negative_carry_boundary_is_accepted_and_top_overflow_is_rejected() {
@@ -510,7 +553,7 @@ mod tests {
         assert!(failures(&over) > 0);
     }
     #[test]
-    fn rejects_zero_real_fee_nonzero_empty_fee_and_unfunded_si_fee() {
+    fn rejects_zero_real_fee_nonzero_empty_fee_and_unfunded_sip_fee() {
         let mut real = m::sample_token_witness(107);
         real.slot.outputs[2].value += real.slot.fee;
         real.slot.fee = 0;
@@ -540,6 +583,7 @@ mod tests {
                 &w.d_ct,
                 &fields.fee_commit,
                 &w.anchors_root(&Hasher::new()),
+                w.anchor_height,
             )
             .unwrap();
         for field in 0..NUM_TRANSACTION_PUBLIC {

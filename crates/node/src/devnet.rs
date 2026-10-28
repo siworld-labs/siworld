@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use siworld_circuits::{MockProver, ProofSystem};
 use siworld_consensus::{build_block, BlockError, BuildError, Chain, Miner, PendingTx};
-use siworld_core::params::{ChainParams, ATOMS_PER_SI};
+use siworld_core::params::{ChainParams, ATOMS_PER_SIP};
 use siworld_core::{Block, DevAccount, Digest, Height, Payout};
 use siworld_crypto::{expand, SecretSeed, SpendKey};
 use siworld_state::ChainState;
@@ -35,13 +35,13 @@ pub struct Config {
 }
 
 impl Default for Config {
-    /// alice, bob, and carol get two 50 SI packages each; dave gets none.
+    /// alice, bob, and carol get two 50 SIP packages each; dave gets none.
     ///
     /// # Panics
     ///
     /// If the operating system's random number generator fails.
     fn default() -> Self {
-        let fifty = 50 * ATOMS_PER_SI;
+        let fifty = 50 * ATOMS_PER_SIP;
         Self {
             seed: DEFAULT_SEED,
             randomness: SecretSeed::from_os_rng().expect("OS random number generator"),

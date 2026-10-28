@@ -7,27 +7,22 @@ fn main() {
 
 #[cfg(feature = "security-report")]
 mod scan {
-    use p3_field::PrimeCharacteristicRing;
     use serde_json::{Value, json};
     use sha2::{Digest as _, Sha256};
     use siworld_multi_asset_experiment::{
         FriParams,
         codec::{PUBLIC_TRANSACTION_BYTES, ProofContext, PublicTransaction},
-        confidential_fees::{FeeOpening, SettlementSlot},
         encryption::{
             EncryptionContext, RecipientViewKey, SenderChangeSecret, decrypt_change_at,
             encrypt_change_at, encrypt_payment,
         },
-        multi_asset::{F, Hasher, SI_ASSET_ID, sample_token_witness},
+        multi_asset::{Hasher, sample_token_witness},
         multi_asset_transaction::TransactionProver,
         security::{params_json, settlement_report, transaction_report},
-        settlement::{FixedSettlementWitness, SettlementProver},
+        settlement::SettlementProver,
     };
     use std::{path::Path, time::Instant};
 
-    fn digest(seed: u32) -> [F; 12] {
-        core::array::from_fn(|i| F::from_u32(seed + i as u32))
-    }
     pub fn params(b: u32, q: u32, g: u32) -> FriParams {
         FriParams {
             log_blowup: b,
@@ -124,7 +119,8 @@ mod scan {
             .bind_witness(&witness, &context)
             .map_err(|e| format!("witness: {e:?}"))?;
         let start = Instant::now();
-        let (proof, statement) = prover.prove(&witness);
+        let (proof, statement) =
+            prover.prove_at_snapshot(&witness, context.snapshot().expect("bound scan snapshot").0);
         let generation_ns = start.elapsed().as_nanos();
         let body = postcard::to_allocvec(&proof).map_err(|e| e.to_string())?;
         let start = Instant::now();
@@ -147,32 +143,10 @@ mod scan {
         let start = Instant::now();
         let prover = SettlementProver::new(576, p);
         let setup_ns = start.elapsed().as_nanos();
-        let h = Hasher::new();
-        let slots = (0..576)
-            .map(|i| {
-                let opening = FeeOpening {
-                    fee: 1000,
-                    dummy: false,
-                    priority: false,
-                    blind: core::array::from_fn(|j| F::from_usize(1 + i * 8 + j)),
-                };
-                SettlementSlot {
-                    commitment: h.fee_commit(opening.fee, &opening.blind),
-                    opening,
-                }
-            })
-            .collect();
-        let witness = FixedSettlementWitness {
-            issuance_reward: 10000,
-            miner_amount: 586000,
-            miner_asset_id: SI_ASSET_ID,
-            block_height: 1000,
-            network: [9; 32],
-            transaction_list_digest: [11; 32],
-            miner_owner: digest(8),
-            miner_rseed: digest(9),
-            slots,
-        };
+        let witness = siworld_multi_asset_experiment::settlement::sample_fixed_settlement_witness(
+            576,
+            siworld_multi_asset_experiment::settlement::RewardMode::Holder,
+        );
         let start = Instant::now();
         let (proof, public) = prover.prove(&witness);
         let generation_ns = start.elapsed().as_nanos();

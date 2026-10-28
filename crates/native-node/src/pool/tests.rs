@@ -27,11 +27,10 @@ impl BlockVerifier for Verifier {
     fn settlement(
         &self,
         _: &[Digest],
-        _: u64,
-        _: u64,
+        _: &native::settlement::RewardPlan,
         _: Hash,
         _: Hash,
-        _: &Digest,
+        _: &[Digest],
         _: &[u8],
     ) -> Result<(), String> {
         unreachable!()

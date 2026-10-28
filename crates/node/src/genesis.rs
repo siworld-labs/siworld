@@ -20,13 +20,13 @@ use siworld_core::{Condition, Digest, Note};
 use siworld_crypto::{domain_hash, expand, is_canonical, note_commitment};
 use siworld_state::{ChainState, RecentRoots};
 
-use crate::amount::{format_si, parse_si};
+use crate::amount::{format_sip, parse_sip};
 use crate::{hex, parse_hex, parse_hex32};
 
 /// Most allocations a genesis file may list.
 pub const MAX_ALLOCATIONS: usize = 10_000;
 
-/// The file as written: hexadecimal digests and decimal SI amounts.
+/// The file as written: hexadecimal digests and decimal SIP amounts.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GenesisFile {
@@ -108,7 +108,7 @@ pub struct DevFundFile {
 pub struct AllocationFile {
     /// The recipient's owner digest, 64 hexadecimal digits.
     pub owner: String,
-    /// In SI, for example `"1000"` or `"0.5"`.
+    /// In SIP, for example `"1000"` or `"0.5"`.
     pub amount: String,
 }
 
@@ -154,8 +154,8 @@ impl std::fmt::Display for GenesisError {
             Self::BadOwner(i) => write!(f, "allocation {i}: owner is not a valid owner digest"),
             Self::BadAmount(i) => write!(
                 f,
-                "allocation {i}: amount must be an SI amount of at least {}",
-                format_si(MIN_PACKAGE_DEPOSIT)
+                "allocation {i}: amount must be a SIP amount of at least {}",
+                format_sip(MIN_PACKAGE_DEPOSIT)
             ),
             Self::TotalOverflow => f.write_str("allocations overflow the supply"),
         }
@@ -216,7 +216,7 @@ impl Genesis {
                 let owner = parse_hex32(&a.owner)
                     .filter(is_canonical)
                     .ok_or(GenesisError::BadOwner(i))?;
-                let amount = parse_si(&a.amount)
+                let amount = parse_sip(&a.amount)
                     .filter(|v| *v >= MIN_PACKAGE_DEPOSIT)
                     .ok_or(GenesisError::BadAmount(i))?;
                 total = total
@@ -275,7 +275,7 @@ impl Genesis {
                 .iter()
                 .map(|(owner, amount)| AllocationFile {
                     owner: hex(owner),
-                    amount: format_si(*amount),
+                    amount: format_sip(*amount),
                 })
                 .collect(),
         }
@@ -487,7 +487,7 @@ mod tests {
         assert_eq!(state.tip, g.id);
         assert_eq!(state.commitments.len(), 2);
         let notes = g.notes();
-        assert_eq!(notes[0].value, 1000 * siworld_core::params::ATOMS_PER_SI);
+        assert_eq!(notes[0].value, 1000 * siworld_core::params::ATOMS_PER_SIP);
         assert_eq!(
             notes[1].owner,
             SpendKey::from_digest(Digest([2; 32])).owner()

@@ -214,6 +214,7 @@ impl PublicTransaction {
             &self.ciphertext_digest(context),
             fee_commit,
             accepted_root,
+            context.snapshot().map_or(0, |(height, _)| height),
         )
     }
 

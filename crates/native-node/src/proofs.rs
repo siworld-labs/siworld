@@ -7,7 +7,7 @@ use native::codec::{FORMAT_VERSION, ProofContext, PublicTransaction};
 use native::multi_asset::{AccWitness, Digest, F, Hasher};
 use native::multi_asset_transaction::{TransactionAir, TransactionProver};
 use native::settlement::{
-    FixedSettlementWitness, SettlementAir, SettlementProver, validate_settlement_public,
+    FixedSettlementWitness, RewardPlan, SettlementAir, SettlementProver, validate_settlement_public,
 };
 use native::{Cfg, FriParams};
 use p3_air::BaseAir;
@@ -173,31 +173,17 @@ fn check_context(context: &ProofContext) -> Result<(), String> {
 
 fn settlement_statement(
     fees: &[Digest],
-    subsidy: u64,
-    height: u64,
+    plan: &RewardPlan,
     network: [u8; 32],
     list_hash: [u8; 32],
-    reward: &Digest,
+    rewards: &[Digest],
 ) -> Result<Vec<F>, String> {
     if fees.len() != SETTLEMENT_CAPACITY {
         return Err(
             "native settlement requires exactly 576 locally derived fee commitments".into(),
         );
     }
-    let mut public = Vec::with_capacity(native::settlement::public_len(SETTLEMENT_CAPACITY));
-    for fee in fees {
-        public.extend_from_slice(fee);
-    }
-    public.extend_from_slice(&native::multi_asset::limbs(subsidy));
-    public.extend_from_slice(&native::multi_asset::limbs(height));
-    for bytes in [&network, &list_hash] {
-        for pair in bytes.as_chunks::<2>().0 {
-            public.push(F::from_u32(u16::from_le_bytes([pair[0], pair[1]]) as u32));
-        }
-    }
-    public.extend_from_slice(reward);
-    validate_settlement_public(SETTLEMENT_CAPACITY, &public)?;
-    Ok(public)
+    native::settlement::settlement_public(fees, plan, network, list_hash, rewards)
 }
 
 /// Verification-only resident data, authenticated against local fixed keys.
@@ -293,14 +279,13 @@ impl NativeVerifier {
     pub fn verify_settlement(
         &self,
         fees: &[Digest],
-        subsidy: u64,
-        height: u64,
+        plan: &RewardPlan,
         network: [u8; 32],
         list_hash: [u8; 32],
-        reward: &Digest,
+        rewards: &[Digest],
         proof: &[u8],
     ) -> Result<(), String> {
-        let public = settlement_statement(fees, subsidy, height, network, list_hash, reward)?;
+        let public = settlement_statement(fees, plan, network, list_hash, rewards)?;
         let proof = self
             .settlement_shape
             .decode(proof)
@@ -361,9 +346,13 @@ impl NativeProver {
             .map_err(|e| format!("transaction witness binding: {e:?}"))?;
         let hasher = Hasher::new();
         let root = bound.anchors_root(&hasher);
-        bound.check(&hasher, &root).map_err(str::to_owned)?;
+        let snapshot_height = context.snapshot().ok_or("missing canonical snapshot")?.0;
+        bound
+            .check_at_snapshot(&hasher, &root, snapshot_height)
+            .map_err(str::to_owned)?;
         let fee = hasher.fee_commit(bound.slot.fee, &bound.slot.fee_blind);
-        let (proof, generated_statement) = self.transaction.prove(&bound);
+        let (proof, generated_statement) =
+            self.transaction.prove_at_snapshot(&bound, snapshot_height);
         if generated_statement != public.statement(context, &fee, &root) {
             return Err("native prover statement reconstruction mismatch".into());
         }
@@ -384,16 +373,12 @@ impl NativeProver {
         validate_settlement_public(SETTLEMENT_CAPACITY, &public)?;
         let bytes = postcard::to_allocvec(&proof).map_err(|e| e.to_string())?;
         let fees: Vec<_> = witness.slots.iter().map(|slot| slot.commitment).collect();
-        let reward: Digest = public[public.len() - 12..]
-            .try_into()
-            .map_err(|_| "invalid locally generated miner reward commitment")?;
         self.verifier.verify_settlement(
             &fees,
-            witness.issuance_reward,
-            witness.block_height,
+            &witness.plan,
             witness.network,
             witness.transaction_list_digest,
-            &reward,
+            &witness.reward_commitments(),
             &bytes,
         )?;
         Ok(bytes)
@@ -464,13 +449,26 @@ mod tests {
     }
 
     #[test]
-    fn settlement_context_requires_the_fixed_capacity_and_nonoverflowing_height() {
-        use p3_field::PrimeCharacteristicRing;
+    fn settlement_context_requires_fixed_capacity_and_mode_bound_rewards() {
+        use native::settlement::{RewardAllocation, RewardMode, RewardPlan};
         let digest = [F::ZERO; 12];
-        assert!(settlement_statement(&[], 0, 1, [0; 32], [0; 32], &digest).is_err());
+        let plan = RewardPlan {
+            block_height: 1,
+            mode: RewardMode::Voyager,
+            allocations: vec![RewardAllocation {
+                amount: 1,
+                unlock_height: 25,
+            }],
+        };
+        assert!(settlement_statement(&[], &plan, [0; 32], [0; 32], &[digest]).is_err());
         let fees = vec![digest; 576];
-        assert!(settlement_statement(&fees, 0, u64::MAX, [0; 32], [0; 32], &digest).is_err());
-        assert!(settlement_statement(&fees, 0, 1, [0; 32], [0; 32], &digest).is_err());
+        assert!(settlement_statement(&fees, &plan, [0; 32], [0; 32], &[]).is_err());
+        let mut invalid = plan.clone();
+        invalid.mode = RewardMode::Holder;
+        assert!(settlement_statement(&fees, &invalid, [0; 32], [0; 32], &[digest]).is_err());
+        invalid = plan;
+        invalid.block_height = u64::MAX;
+        assert!(settlement_statement(&fees, &invalid, [0; 32], [0; 32], &[digest]).is_err());
     }
 
     #[test]
@@ -506,18 +504,22 @@ mod tests {
     }
 
     #[test]
-    fn reconstructed_settlement_statement_uses_the_native_limb_order() {
-        let fees: Vec<_> = (0..576).map(|i| [F::from_usize(i + 1); 12]).collect();
-        let reward = [F::from_u32(7); 12];
-        let public =
-            settlement_statement(&fees, 0x1234_5678, 10, [3; 32], [4; 32], &reward).unwrap();
-        assert_eq!(&public[..12], &fees[0]);
-        assert_eq!(&public[575 * 12..576 * 12], &fees[575]);
-        assert_eq!(
-            &public[576 * 12..576 * 12 + 4],
-            &native::multi_asset::limbs(0x1234_5678)
+    fn reconstructed_settlement_statement_matches_the_relation_codec() {
+        let witness = native::settlement::sample_fixed_settlement_witness(
+            576,
+            native::settlement::RewardMode::Holder,
         );
-        assert_eq!(&public[public.len() - 12..], &reward);
+        let fees: Vec<_> = witness.slots.iter().map(|s| s.commitment).collect();
+        let rewards = witness.reward_commitments();
+        let public = settlement_statement(
+            &fees,
+            &witness.plan,
+            witness.network,
+            witness.transaction_list_digest,
+            &rewards,
+        )
+        .unwrap();
+        assert_eq!(public, witness.public_inputs());
     }
 
     // This fixture tests the proof's complete byte binding. Ciphertext
@@ -568,91 +570,50 @@ mod tests {
                 .is_err()
         );
 
-        use native::confidential_fees::{FeeOpening, SettlementSlot};
-        let settlement = FixedSettlementWitness {
-            issuance_reward: 10_000,
-            miner_amount: 10_000,
-            miner_asset_id: native::multi_asset::SI_ASSET_ID,
-            block_height: 601,
-            network: context.network,
-            transaction_list_digest: [11; 32],
-            miner_owner: [F::ONE; 12],
-            miner_rseed: [F::from_u32(2); 12],
-            slots: (0..576)
-                .map(|i| {
-                    let opening = FeeOpening {
-                        fee: 0,
-                        dummy: true,
-                        priority: false,
-                        blind: core::array::from_fn(|j| F::from_usize(1 + i * 8 + j)),
-                    };
-                    SettlementSlot {
-                        commitment: h.fee_commit(0, &opening.blind),
-                        opening,
-                    }
-                })
-                .collect(),
-        };
+        let settlement = native::settlement::sample_fixed_settlement_witness(
+            576,
+            native::settlement::RewardMode::Holder,
+        );
         let fees: Vec<_> = settlement
             .slots
             .iter()
             .map(|slot| slot.commitment)
             .collect();
-        let generated_public = settlement.public_inputs();
-        let reward = generated_public[generated_public.len() - 12..]
-            .try_into()
-            .unwrap();
+        let rewards = settlement.reward_commitments();
         let settlement_proof = prover.settlement(&settlement).unwrap();
         assert!(settlement_proof.len() <= MAX_SETTLEMENT_PROOF_BODY_LEN);
         verifier
             .verify_settlement(
                 &fees,
-                10_000,
-                601,
-                context.network,
-                [11; 32],
-                &reward,
+                &settlement.plan,
+                settlement.network,
+                settlement.transaction_list_digest,
+                &rewards,
                 &settlement_proof,
             )
             .unwrap();
-        assert!(
-            verifier
-                .verify_settlement(
-                    &fees,
-                    10_001,
-                    601,
-                    context.network,
-                    [11; 32],
-                    &reward,
-                    &settlement_proof,
-                )
-                .is_err()
-        );
-        assert!(
-            verifier
-                .verify_settlement(
-                    &fees,
-                    10_000,
-                    602,
-                    context.network,
-                    [11; 32],
-                    &reward,
-                    &settlement_proof,
-                )
-                .is_err()
-        );
-        assert!(
-            verifier
-                .verify_settlement(
-                    &fees,
-                    10_000,
-                    601,
-                    context.network,
-                    [12; 32],
-                    &reward,
-                    &settlement_proof,
-                )
-                .is_err()
-        );
+        for mutation in 0..4 {
+            let mut plan = settlement.plan.clone();
+            let mut changed_rewards = rewards.clone();
+            let mut list = settlement.transaction_list_digest;
+            match mutation {
+                0 => plan.allocations[0].amount += 1,
+                1 => plan.allocations[1].unlock_height += 1,
+                2 => changed_rewards.swap(0, 1),
+                _ => list[0] ^= 1,
+            }
+            assert!(
+                verifier
+                    .verify_settlement(
+                        &fees,
+                        &plan,
+                        settlement.network,
+                        list,
+                        &changed_rewards,
+                        &settlement_proof,
+                    )
+                    .is_err()
+            );
+        }
     }
 }

@@ -2,7 +2,7 @@ use super::*;
 use libcrux_ml_kem::mlkem768::MlKem768PublicKey;
 use native::codec::encode_digest;
 use native::encryption::{PaymentEncryptionOpening, encrypt_payment_with_opening};
-use native::multi_asset::{F, SI_ASSET_ID};
+use native::multi_asset::{F, SIP_ASSET_ID};
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
 
 fn digest(value: u32) -> Digest {
@@ -15,7 +15,7 @@ fn note(owner: Digest) -> Note {
         unlock_height: 37,
         rho: digest(3),
         rseed: digest(4),
-        asset_id: SI_ASSET_ID,
+        asset_id: SIP_ASSET_ID,
     }
 }
 fn context() -> EncryptionContext {
@@ -197,4 +197,32 @@ fn canonical_plaintext_limits_match_the_unchanged_native_receipt_verifier() {
         assert!(local.is_some());
         assert_eq!(local, native);
     }
+}
+
+#[test]
+fn unlock_height_is_authenticated_and_bound_to_the_note_commitment() {
+    let key = RecoverableViewKey::from_seed(digest(1), Zeroizing::new([7; 64])).unwrap();
+    let expected = note(key.address().owner());
+    let commitment = Hasher::new().note_cm(&expected);
+    let (ciphertext, opening) =
+        encrypt_payment_with_opening(&key.address(), &expected, &context()).unwrap();
+    let mut changed_note = expected;
+    changed_note.unlock_height -= 1;
+    let changed_commitment = Hasher::new().note_cm(&changed_note);
+    assert_ne!(commitment, changed_commitment);
+    assert!(
+        key.decrypt_payment(&changed_commitment, &ciphertext, &context())
+            .is_err()
+    );
+    assert!(
+        opening
+            .verify_payment(&key.address(), &changed_commitment, &ciphertext, &context())
+            .is_err()
+    );
+    let mut changed_ciphertext = ciphertext;
+    changed_ciphertext.body[8] ^= 1;
+    assert!(
+        key.decrypt_payment(&commitment, &changed_ciphertext, &context())
+            .is_err()
+    );
 }

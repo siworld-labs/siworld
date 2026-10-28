@@ -1,6 +1,12 @@
 # Native Multi-Asset Proof Profile and Measurements
 
-Status: engineering-frozen native transaction profile with reproducible
+The measurements in this document predate the [monetary revision](v1-economics.md).
+They are retained reproducible baseline evidence only. Input lock constraints,
+mode-dependent reward notes and revised settlement context require fresh AIR
+security reports, source-bound keys and performance/memory measurements.
+No earlier sampled result qualifies the revised V1 relation.
+
+Status: pre-economic-revision native transaction baseline with reproducible
 instance-specific security and performance evidence. This is not independent
 cryptographic approval, network activation or whole-node acceptance. The
 D8/W24/12-element relations run natively without recursion.
@@ -167,7 +173,7 @@ The settlement and three-note issuance diagnostics use `log_blowup=8`,
 36 queries, 20-bit query/batch grinding, zero commitment grinding and binary
 folding. Their parameters and 512-KiB caps are independent of the selected
 transaction profile. Issuance verifies real ML-DSA-65 signatures and encrypted
-note fixtures, but its benchmark SI-payment callback is synthetic; real
+note fixtures, but its benchmark SIP-payment callback is synthetic; real
 fee consumption and registry/note insertion need one durable atomic node
 transition.
 

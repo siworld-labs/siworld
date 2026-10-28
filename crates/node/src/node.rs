@@ -712,7 +712,7 @@ impl Node {
 mod tests {
     use super::*;
     use siworld_circuits::MockProver;
-    use siworld_core::params::ATOMS_PER_SI;
+    use siworld_core::params::ATOMS_PER_SIP;
 
     use crate::genesis::{AllocationFile, GenesisFile, ProofsFile};
     use crate::hex;
@@ -856,7 +856,7 @@ mod tests {
         )
         .unwrap();
         let to = SpendKey::from_digest(Digest([2; 32])).address();
-        let tx = node.pay(&to, ATOMS_PER_SI, false).unwrap();
+        let tx = node.pay(&to, ATOMS_PER_SIP, false).unwrap();
         let before = node.balance().unwrap();
         let roots = node.chain.state.roots();
         assert!(matches!(

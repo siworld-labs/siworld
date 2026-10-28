@@ -1,7 +1,7 @@
 //! Versioned multi-asset slot AIR with fixed hash/path schedule.
 //! Every note commits to a 256-bit private asset identifier. Equality selectors
 //! compare all sixteen canonical limbs, and per-asset integer balance equations
-//! account for two inputs, three outputs and an SI-only fee. Membership and
+//! account for two inputs, three outputs and an SIP-only fee. Membership and
 //! unlock checks retain a witness-independent schedule for empty transactions.
 
 use crate::multi_asset::{
@@ -83,7 +83,7 @@ pub const FEE: usize = REG + 2 * IN_W + 3 * OUT_W;
 /// nf₀ ≠ nf₁: sixteen coefficients r with Σ rₑ·(nf₀ₑ − nf₁ₑ) = 1, unsatisfiable when the nullifiers
 /// are equal.
 pub const NEQ: usize = FEE + FEE_W;
-/// Exact equality witnesses: three group references (input 0, input 1, SI) and
+/// Exact equality witnesses: three group references (input 0, input 1, SIP) and
 /// five notes. Each cell has a boolean equality and sixteen inverse coefficients.
 pub const MATCH: usize = NEQ + DIGEST;
 pub const MATCH_CELL: usize = 1 + ASSET_LIMBS;
@@ -363,6 +363,8 @@ pub struct SlotAir {
     pub acc: bool,
     /// Accumulator mode with a private fee and a public fee commitment.
     pub confidential_fee: bool,
+    /// Native payments compare input locks to the trusted selected snapshot.
+    pub selected_snapshot_height: bool,
     /// Trace height (a power of two).
     pub height: usize,
     pub rows: Vec<RowSpec>,
@@ -394,6 +396,12 @@ impl SlotAir {
 
     pub fn new_acc_confidential() -> Self {
         Self::build(false, true, true)
+    }
+
+    pub fn new_acc_confidential_for_snapshot() -> Self {
+        let mut air = Self::new_acc_confidential();
+        air.selected_snapshot_height = true;
+        air
     }
 
     fn build(chain: bool, acc: bool, confidential_fee: bool) -> Self {
@@ -446,6 +454,7 @@ impl SlotAir {
             chain,
             acc,
             confidential_fee,
+            selected_snapshot_height: false,
             height,
             rows,
             absorb,
@@ -486,6 +495,11 @@ impl SlotAir {
         } else if self.acc {
             if self.confidential_fee {
                 NUM_ACC_CONF_PUBLIC
+                    + if self.selected_snapshot_height {
+                        LIMBS
+                    } else {
+                        0
+                    }
             } else {
                 NUM_ACC_PUBLIC
             }
@@ -760,6 +774,13 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
                 carry_prev = carry;
             }
         }
+        if self.selected_snapshot_height {
+            for j in 0..3 {
+                for k in 0..LIMBS {
+                    b.assert_zero(l[output(j) + OUT_VU + LIMBS + k]);
+                }
+            }
+        }
         // Accumulator mode: a real input's unlock height u is at most the anchor height h:
         // h = u + δ limb by limb with 1-bit carries and a top carry of 0; δ is range-checked.
         if self.acc {
@@ -777,7 +798,11 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
                     b.assert_zero(
                         real.clone()
                             * (x(l[input(i) + IN_VU + LIMBS + k]) + x(l[d + k]) + carry_prev
-                                - x(l[ACC_REG + ACC_HB + k])
+                                - if self.selected_snapshot_height {
+                                    pis[NUM_ACC_CONF_PUBLIC + k].into()
+                                } else {
+                                    x(l[ACC_REG + ACC_HB + k])
+                                }
                                 - carry.clone() * F::from_u32(1 << LIMB_BITS)),
                     );
                     carry_prev = carry;
@@ -806,7 +831,7 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
                 b.assert_eq(nonzero, one.clone() - eq);
             }
         }
-        // A nonzero output must use an input asset or SI. The sum is in 0..=3;
+        // A nonzero output must use an input asset or SIP. The sum is in 0..=3;
         // its inverse cannot certify an unknown asset, even when all group totals
         // would otherwise omit that output.
         for j in 0..3 {
@@ -818,13 +843,13 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
             );
         }
         // Independent integer conservation for input-0 asset, input-1 asset and
-        // SI. Repeated references give repeated consistent equations. Three-bit
+        // SIP. Repeated references give repeated consistent equations. Three-bit
         // signed carries are encoded as bits minus four, covering [-4,3]. The
         // minimum reachable valid carry is -3; the wider encoding is conservative. The final
         // carry is exactly zero, preventing u64 modular overflow.
         for group in 0..3 {
             let mut previous = AB::Expr::ZERO;
-            let is_si = if group < 2 {
+            let is_sip = if group < 2 {
                 x(l[match_col(2, group)])
             } else {
                 one.clone()
@@ -840,7 +865,7 @@ impl<AB: AirBuilder<F = F>> Air<AB> for SlotAir {
                 } else {
                     AB::Expr::ZERO
                 };
-                let mut balance = previous - is_si.clone() * x(l[FEE + FEE_VB + limb]);
+                let mut balance = previous - is_sip.clone() * x(l[FEE + FEE_VB + limb]);
                 for note in 0..5 {
                     let value = x(l[match_col(group, note)]) * x(l[note_value(note) + limb]);
                     if note < 2 {

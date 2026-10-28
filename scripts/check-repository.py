@@ -24,7 +24,7 @@ DOCUMENTS = {
     "route-a-v1.md", "fee-settlement.md", "fee-settlement-evaluation.md",
     "v1-multi-asset.md", "v1-multi-asset-evaluation.md", "v1-storage-and-sync.md", "v1-network-budget.md",
     "multi-asset-air-optimization.md", "v1-overview.md", "dependency-advisories.md",
-    "native-proof-profiles.md", "v1-native-runtime.md",
+    "native-proof-profiles.md", "v1-native-runtime.md", "v1-economics.md", "v1-wallet-protection.md",
 }
 PUBLIC_ARTIFACTS = {
     "crates/bench-d8/artifacts/v1-native-freeze.json",
@@ -58,7 +58,7 @@ def allowed(path):
                        "benchmarks.md", "security-model.md"},
             "v2": {"README.md", "proof-composition.md", "d8-w24-recursion.md",
                    "proof-security-review.md", "d8-parameter-screen.md", "d4-security-controls.md",
-                   "linux-recursive-measurement.md"},
+                   "linux-recursive-measurement.md", "multisignature.md"},
         }
         return len(path.parts) == 3 and path.name in scoped.get(path.parts[1], set())
     if name in {".cargo/config.toml", "scripts/prover-launcher.rs",

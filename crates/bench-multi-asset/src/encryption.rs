@@ -516,7 +516,7 @@ fn encrypt_dummy_outputs_to(
     context.check()?;
     let notes = [
         Note {
-            asset_id: crate::multi_asset::SI_ASSET_ID,
+            asset_id: crate::multi_asset::SIP_ASSET_ID,
             owner: address.owner,
             value: 0,
             unlock_height: 0,
@@ -524,7 +524,7 @@ fn encrypt_dummy_outputs_to(
             rseed: random_digest()?,
         },
         Note {
-            asset_id: crate::multi_asset::SI_ASSET_ID,
+            asset_id: crate::multi_asset::SIP_ASSET_ID,
             owner: change_owner,
             value: 0,
             unlock_height: 0,
@@ -714,7 +714,7 @@ mod tests {
 
     fn note(owner: Digest) -> Note {
         Note {
-            asset_id: crate::multi_asset::SI_ASSET_ID,
+            asset_id: crate::multi_asset::SIP_ASSET_ID,
             owner,
             value: 456_789,
             unlock_height: 37,

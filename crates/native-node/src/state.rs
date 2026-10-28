@@ -5,8 +5,14 @@ use crate::wire::{Block, DigestBytes, GROUP, Hash, MAX_SLOTS, MIN_SLOTS, Snapsho
 use native::codec::{ProofContext, PublicTransaction, decode_digest, encode_digest};
 use native::confidential_fees::{FeeOpening, SettlementSlot};
 use native::multi_asset::{Digest, F, Hasher, RecentRoots, TREE_DEPTH};
+use native::settlement::{RewardAllocation as PlanAllocation, RewardMode as PlanMode, RewardPlan};
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
 use siworld_core::pow::{self, Work};
+pub use siworld_core::v1_economics::RewardMode;
+use siworld_core::v1_economics::{
+    self as economics, EconomicsLedger, EconomicsParams, FundAccount, FundAllocation,
+    RewardAllocation,
+};
 use std::collections::{BTreeSet, VecDeque};
 
 pub const SNAPSHOT_WINDOW: usize = 4096;
@@ -14,6 +20,7 @@ pub const MAX_REORG_DEPTH: u64 = 24;
 
 pub const TARGET_INTERVAL: u64 = 300;
 pub const MAX_POW_ITERATIONS: u64 = 1_000_000;
+pub const CONFIG_RULE_BYTES: usize = 227;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {
@@ -25,6 +32,10 @@ pub struct Config {
     pub target_interval: u64,
     pub pow_iterations: u64,
     pub fixture: bool,
+    pub economics: EconomicsParams,
+    pub fund_allocation: Option<FundAllocation>,
+    /// Immutable ML-DSA verification-key fingerprints; zero disables spending.
+    pub fund_key_hashes: [Hash; 2],
 }
 impl Config {
     /// Deterministic cheap development fixture, never service qualification.
@@ -41,6 +52,11 @@ impl Config {
             target_interval: TARGET_INTERVAL,
             pow_iterations: 0,
             fixture: true,
+            economics: EconomicsParams::production(),
+            fund_allocation: Some(
+                FundAllocation::new(vec![1, 1]).expect("synthetic fixture weights"),
+            ),
+            fund_key_hashes: [[0; 32]; 2],
         })
     }
     /// Explicit disposable ASERT engineering network, not a public genesis.
@@ -65,10 +81,45 @@ impl Config {
             target_interval: TARGET_INTERVAL,
             pow_iterations,
             fixture: false,
+            economics: EconomicsParams::production(),
+            fund_allocation: None,
+            fund_key_hashes: [[0; 32]; 2],
         })
     }
+    /// Compressed timings are confined to explicit disposable fixture networks.
+    pub fn with_economics(mut self, params: EconomicsParams) -> Result<Self, String> {
+        params.validate().map_err(|e| e.to_string())?;
+        if !self.fixture && params != EconomicsParams::production() {
+            return Err("compressed economic timings require an engineering fixture".into());
+        }
+        self.economics = params;
+        self.validate()?;
+        Ok(self)
+    }
+    /// Allocation weights must be explicit before a service can issue blocks.
+    /// The current native key codec reserves two slots; other counts require
+    /// an explicit versioned configuration change before network activation.
+    pub fn with_fund_allocation(mut self, allocation: FundAllocation) -> Result<Self, String> {
+        if allocation.weights().len() != self.fund_key_hashes.len() {
+            return Err("fund wallet count is not supported by native key configuration".into());
+        }
+        self.fund_allocation = Some(allocation);
+        self.validate()?;
+        Ok(self)
+    }
     pub fn validate(&self) -> Result<(), String> {
-        let expected = if self.fixture {
+        self.economics.validate().map_err(|e| e.to_string())?;
+        if self
+            .fund_allocation
+            .as_ref()
+            .is_some_and(|allocation| allocation.weights().len() != self.fund_key_hashes.len())
+        {
+            return Err("fund wallet count is not supported by native key configuration".into());
+        }
+        if !self.fixture && self.economics != EconomicsParams::production() {
+            return Err("compressed economic timings require an engineering fixture".into());
+        }
+        let mut expected = if self.fixture {
             Self::development(self.network, self.work_bits)?
         } else {
             Self::asert_development(
@@ -78,14 +129,17 @@ impl Config {
                 self.pow_iterations,
             )?
         };
+        expected.economics = self.economics.clone();
+        expected.fund_allocation = self.fund_allocation.clone();
+        expected.fund_key_hashes = self.fund_key_hashes;
         if &expected != self {
             return Err("noncanonical engineering network rules".into());
         }
         Ok(())
     }
     /// Fixed-width canonical engineering rules, also used by local and DB metadata.
-    pub fn encode_rules(&self) -> [u8; 90] {
-        let mut bytes = [0; 90];
+    pub fn encode_rules(&self) -> [u8; CONFIG_RULE_BYTES] {
+        let mut bytes = [0; CONFIG_RULE_BYTES];
         bytes[..32].copy_from_slice(&self.network);
         bytes[32] = self.work_bits;
         bytes[33] = u8::from(self.fixture);
@@ -93,10 +147,23 @@ impl Config {
         bytes[42..74].copy_from_slice(&self.genesis_target);
         bytes[74..82].copy_from_slice(&self.target_interval.to_le_bytes());
         bytes[82..90].copy_from_slice(&self.pow_iterations.to_le_bytes());
+        bytes[90..146].copy_from_slice(&self.economics.canonical_bytes());
+        bytes[146..178].copy_from_slice(&self.fund_key_hashes[0]);
+        bytes[178..210].copy_from_slice(&self.fund_key_hashes[1]);
+        if let Some(allocation) = &self.fund_allocation {
+            bytes[210] = 1;
+            for (index, weight) in allocation.weights().iter().enumerate() {
+                bytes[211 + index * 8..219 + index * 8].copy_from_slice(&weight.to_le_bytes());
+            }
+        }
         bytes
     }
     pub fn decode_rules(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.len() != 90 || bytes[33] > 1 {
+        if bytes.len() != CONFIG_RULE_BYTES
+            || bytes[33] > 1
+            || bytes[210] > 1
+            || (bytes[210] == 0 && bytes[211..227].iter().any(|value| *value != 0))
+        {
             return Err("invalid engineering rule encoding".into());
         }
         let config = Self {
@@ -109,6 +176,43 @@ impl Config {
             genesis_target: bytes[42..74].try_into().expect("fixed target"),
             target_interval: u64::from_le_bytes(bytes[74..82].try_into().expect("fixed interval")),
             pow_iterations: u64::from_le_bytes(bytes[82..90].try_into().expect("fixed iterations")),
+            fund_allocation: if bytes[210] == 0 {
+                None
+            } else {
+                Some(
+                    FundAllocation::new(vec![
+                        u64::from_le_bytes(
+                            bytes[211..219].try_into().expect("fixed first fund weight"),
+                        ),
+                        u64::from_le_bytes(
+                            bytes[219..227]
+                                .try_into()
+                                .expect("fixed second fund weight"),
+                        ),
+                    ])
+                    .map_err(|e| e.to_string())?,
+                )
+            },
+            fund_key_hashes: [
+                bytes[146..178].try_into().expect("fixed first fund key"),
+                bytes[178..210].try_into().expect("fixed second fund key"),
+            ],
+            economics: EconomicsParams {
+                maturity: u64::from_le_bytes(bytes[90..98].try_into().expect("fixed maturity")),
+                holder_unlock_offsets: core::array::from_fn(|i| {
+                    u64::from_le_bytes(
+                        bytes[98 + i * 8..106 + i * 8]
+                            .try_into()
+                            .expect("fixed tranche offset"),
+                    )
+                }),
+                blocks_per_day: u64::from_le_bytes(
+                    bytes[130..138].try_into().expect("fixed protocol day"),
+                ),
+                fund_vesting_days: u64::from_le_bytes(
+                    bytes[138..146].try_into().expect("fixed vesting duration"),
+                ),
+            },
         };
         config.validate()?;
         Ok(config)
@@ -136,11 +240,10 @@ pub trait BlockVerifier {
     fn settlement(
         &self,
         fees: &[Digest],
-        subsidy: u64,
-        height: u64,
+        plan: &RewardPlan,
         network: Hash,
         list_hash: Hash,
-        reward: &Digest,
+        rewards: &[Digest],
         proof: &[u8],
     ) -> Result<(), String>;
 }
@@ -158,14 +261,13 @@ impl BlockVerifier for NativeVerifier {
     fn settlement(
         &self,
         fees: &[Digest],
-        subsidy: u64,
-        height: u64,
+        plan: &RewardPlan,
         network: Hash,
         list_hash: Hash,
-        reward: &Digest,
+        rewards: &[Digest],
         proof: &[u8],
     ) -> Result<(), String> {
-        self.verify_settlement(fees, subsidy, height, network, list_hash, reward, proof)
+        self.verify_settlement(fees, plan, network, list_hash, rewards, proof)
     }
 }
 
@@ -261,14 +363,19 @@ pub struct State {
     pub commitments: BTreeSet<DigestBytes>,
     pub leaves: Vec<Digest>,
     pub snapshots: VecDeque<CanonicalSnapshot>,
-    pub total_subsidy: u128,
-    pub fund_direct: u128,
-    pub fund_locked: u128,
+    pub economics: EconomicsLedger,
 }
 impl State {
     pub fn new(config: Config) -> Result<Self, String> {
         config.validate()?;
         let genesis_timestamp = config.genesis_timestamp;
+        let mut economics =
+            EconomicsLedger::new(config.economics.clone()).map_err(|e| e.to_string())?;
+        if let Some(allocation) = &config.fund_allocation {
+            economics = economics
+                .with_fund_allocation(allocation.clone())
+                .map_err(|e| e.to_string())?;
+        }
         let tree = CommitmentTree::new();
         let root = tree.root();
         let h = Hasher::new();
@@ -294,10 +401,20 @@ impl State {
                 commitment_root: encode_digest(&root),
                 recent_root,
             }]),
-            total_subsidy: 0,
-            fund_direct: 0,
-            fund_locked: 0,
+            economics,
         })
+    }
+    /// Compute the only reward allocation permitted by the accepted parent state.
+    pub fn reward_allocation(&self, mode: RewardMode) -> Result<RewardAllocation, String> {
+        let height = self
+            .height
+            .checked_add(1)
+            .ok_or("reward height exhausted")?;
+        let mut trial = self.economics.clone();
+        trial.advance(height, mode).map_err(|e| e.to_string())
+    }
+    pub fn reward_plan(&self, mode: RewardMode) -> Result<RewardPlan, String> {
+        Ok(plan_from_allocation(&self.reward_allocation(mode)?))
     }
     pub fn timestamp(&self) -> u64 {
         *self.timestamps.back().expect("genesis timestamp retained")
@@ -406,42 +523,58 @@ impl State {
             verifier.transaction(&public, &context, &fee, &root, &tx.proof)?;
             fees.push(fee);
         }
-        let reward =
-            decode_digest(&block.reward.commitment).map_err(|_| "noncanonical miner reward")?;
-        if self.commitments.contains(&block.reward.commitment)
-            || !outputs.insert(block.reward.commitment)
-        {
-            return Err("reward commitment already used".into());
+        let mut rewards = Vec::with_capacity(block.rewards.len());
+        for record in &block.rewards {
+            let reward =
+                decode_digest(&record.commitment).map_err(|_| "noncanonical miner reward")?;
+            if self.commitments.contains(&record.commitment) || !outputs.insert(record.commitment) {
+                return Err("reward commitment already used".into());
+            }
+            trial_tree.append(reward)?;
+            leaves.push(reward);
+            rewards.push(reward);
         }
-        trial_tree.append(reward)?;
-        leaves.push(reward);
         fees.extend(
             tail_slots(self.config.network, block.height, block.transactions.len())?
                 .iter()
                 .map(|s| s.commitment),
         );
-        let (miner, direct, locked) = subsidy_split(block.height);
+        let mut trial_economics = self.economics.clone();
+        let allocation = trial_economics
+            .advance(block.height, block.reward_mode)
+            .map_err(|e| e.to_string())?;
+        let plan = plan_from_allocation(&allocation);
         verifier.settlement(
             &fees,
-            miner,
-            block.height,
+            &plan,
             self.config.network,
             block.list_digest(),
-            &reward,
+            &rewards,
             &block.settlement_proof,
         )?;
-        let total = self
-            .total_subsidy
-            .checked_add(u128::from(miner) + u128::from(direct) + u128::from(locked))
-            .ok_or("issuance counter overflow")?;
-        let direct = self
-            .fund_direct
-            .checked_add(u128::from(direct))
-            .ok_or("fund counter overflow")?;
-        let locked = self
-            .fund_locked
-            .checked_add(u128::from(locked))
-            .ok_or("fund counter overflow")?;
+        for spend in &block.fund_spends {
+            let account = match spend.account {
+                0 => FundAccount::First,
+                1 => FundAccount::Second,
+                _ => return Err("invalid fund account".into()),
+            };
+            let note = spend.verify(
+                self.config.network,
+                &self.config.fund_key_hashes[account.index()],
+            )?;
+            trial_economics
+                .spend_fund(account, u128::from(spend.amount), spend.counter)
+                .map_err(|e| e.to_string())?;
+            let commitment = Hasher::new().note_cm(&note);
+            if self.commitments.contains(&spend.commitment) || !outputs.insert(spend.commitment) {
+                return Err("fund payout commitment already used".into());
+            }
+            trial_tree.append(commitment)?;
+            leaves.push(commitment);
+        }
+        trial_economics
+            .assert_supply_invariant()
+            .map_err(|e| e.to_string())?;
         let mut roots = RecentRoots::new();
         let h = Hasher::new();
         for s in &self.snapshots {
@@ -471,9 +604,7 @@ impl State {
             self.timestamps.pop_front();
         }
         self.cumulative_work = cumulative_work;
-        self.total_subsidy = total;
-        self.fund_direct = direct;
-        self.fund_locked = locked;
+        self.economics = trial_economics;
         self.spent.extend(spends);
         self.commitments.extend(outputs);
         self.leaves.extend(leaves);
@@ -502,9 +633,9 @@ impl State {
         for c in &self.commitments {
             h.update(c);
         }
-        h.update(&self.total_subsidy.to_le_bytes());
-        h.update(&self.fund_direct.to_le_bytes());
-        h.update(&self.fund_locked.to_le_bytes());
+        self.economics.visit_encoding(&mut |part| {
+            h.update(part);
+        });
         for s in &self.snapshots {
             h.update(&s.selector.height.to_le_bytes());
             h.update(&s.selector.block_id);
@@ -516,12 +647,32 @@ impl State {
 }
 
 pub fn base_fee(height: u64) -> u64 {
-    siworld_core::issuance::fee_base(siworld_core::issuance::epoch_of(height))
+    // The genesis snapshot has no subsidy but selects the first paid-block tier.
+    economics::fee_base(height.max(1)).expect("positive bounded subsidy schedule")
 }
-pub fn subsidy_split(height: u64) -> (u64, u64, u64) {
-    siworld_core::issuance::reward_split(siworld_core::issuance::block_reward(
-        siworld_core::issuance::epoch_of(height),
-    ))
+/// Top-level miner base and independently rounded wallet credits.
+pub fn subsidy_split(height: u64, funds: &FundAllocation) -> (u64, Vec<u64>) {
+    let reward = economics::subsidy(height.max(1)).expect("positive subsidy height");
+    let credits = funds.credits(reward);
+    let pool = (u128::from(reward) * 3 / 100) as u64;
+    (reward - credits.iter().sum::<u64>() - pool, credits)
+}
+fn plan_from_allocation(allocation: &RewardAllocation) -> RewardPlan {
+    RewardPlan {
+        block_height: allocation.height,
+        mode: match allocation.mode {
+            RewardMode::Voyager => PlanMode::Voyager,
+            RewardMode::Holder => PlanMode::Holder,
+        },
+        allocations: allocation
+            .reward_notes
+            .iter()
+            .map(|note| PlanAllocation {
+                amount: note.amount,
+                unlock_height: note.unlock_height,
+            })
+            .collect(),
+    }
 }
 pub fn satisfies_work(id: &Hash, bits: u8) -> bool {
     if bits > 24 {

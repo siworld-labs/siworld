@@ -3,10 +3,10 @@
 //! Issuance policy is supplied by the caller. This experimental module does
 //! not choose an issuance fee, its destination, metadata limits or note limits.
 //! A valid signature alone never authorizes minting: the native issuance proof
-//! and an independently verified SI fee payment are also required.
+//! and an independently verified SIP fee payment are also required.
 
 use crate::common::{Digest, F};
-use crate::multi_asset::{AssetId, Hasher, Note, SI_ASSET_ID};
+use crate::multi_asset::{AssetId, Hasher, Note, SIP_ASSET_ID};
 use libcrux_ml_dsa::ml_dsa_65::{self, MLDSA65Signature, MLDSA65VerificationKey};
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
 use std::collections::BTreeSet;
@@ -59,7 +59,7 @@ pub enum IssuanceError {
     WrongNetwork,
     WrongVersion,
     AssetIdMismatch,
-    ReservedSiAsset,
+    ReservedSipAsset,
     ZeroSupply,
     NoteLimit,
     MetadataLimit,
@@ -71,6 +71,7 @@ pub enum IssuanceError {
     CiphertextLimit,
     CiphertextBindingMismatch,
     NoteAssetMismatch,
+    LockedInitialNote,
     NoteCommitmentMismatch,
     DuplicateNoteCommitment,
     SupplyOverflow,
@@ -139,8 +140,8 @@ impl IssuanceDeclaration {
         if self.version != version {
             return Err(IssuanceError::WrongVersion);
         }
-        if self.asset_id == SI_ASSET_ID {
-            return Err(IssuanceError::ReservedSiAsset);
+        if self.asset_id == SIP_ASSET_ID {
+            return Err(IssuanceError::ReservedSipAsset);
         }
         if self.asset_id != derive_asset_id(network, &self.issuer_key, self.sequence) {
             return Err(IssuanceError::AssetIdMismatch);
@@ -248,6 +249,9 @@ impl IssuanceWitness {
         let hasher = Hasher::new();
         let mut sum = 0u64;
         for (note, commitment) in self.notes.iter().zip(&self.declaration.note_commitments) {
+            if note.unlock_height != 0 {
+                return Err(IssuanceError::LockedInitialNote);
+            }
             if note.asset_id != self.declaration.asset_id {
                 return Err(IssuanceError::NoteAssetMismatch);
             }
@@ -265,7 +269,7 @@ impl IssuanceWitness {
     }
 }
 
-/// Constructed only after declaration, signature, proof and SI fee checks.
+/// Constructed only after declaration, signature, proof and SIP fee checks.
 /// It does not itself mutate chain state.
 pub struct VerifiedIssuance(pub(crate) IssuanceDeclaration);
 

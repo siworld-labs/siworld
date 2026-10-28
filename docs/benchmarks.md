@@ -1,5 +1,10 @@
 # Proof Measurement Requirements
 
+The [monetary revision](v1-economics.md) reopens affected proof qualification.
+Earlier source-bound reports, keys and numeric profiles are baseline evidence
+only; revised lock/reward relations require new actual-AIR screening and
+resource measurements. Separate optimization work does not waive this gate.
+
 Status: reproducible isolated native proof measurements. Benchmark results
 are not full-node, wallet-latency, network or hardware acceptance.
 

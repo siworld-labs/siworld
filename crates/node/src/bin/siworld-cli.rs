@@ -19,7 +19,7 @@ Usage:
   siworld-cli [--rpc ADDR] --auth-file FILE paymentstatus PAYMENT_ID
   siworld-cli [--rpc ADDR] --auth-file FILE info                       chain height, tip, peers
   siworld-cli [--rpc ADDR] --auth-file FILE address                    this node's address
-  siworld-cli [--rpc ADDR] --auth-file FILE balance                    total, spendable and pending SI
+  siworld-cli [--rpc ADDR] --auth-file FILE balance                    total, spendable and pending SIP
   siworld-cli [--rpc ADDR] --auth-file FILE --order-ledger DIR --order-witness DIR
               [--ledger-password-file FILE] send PAYMENT_ID ADDRESS AMOUNT [--priority]
   siworld-cli [--rpc ADDR] --auth-file FILE --fund-order FILE devfund PAYOUT_ID direct|lock ADDRESS AMOUNT
@@ -39,7 +39,7 @@ Generate a fund PAYOUT_ID with new-payment-id and durably save the ID and comple
 order before requesting devfund. After a timeout retry identical parameters and ID;
 never substitute a new ID. Key-only backups exclude the fund journal.
 
-fundunlock requires a bounded SI grant file and the fund password; fund status,
+fundunlock requires a bounded SIP grant file and the fund password; fund status,
 lock and unlock use rpc-devfund.token. A new grant requires locking first.
 
 walletunlock uses a hidden password prompt or owner-only password file; SECONDS
@@ -50,7 +50,7 @@ independent of the wallet, with a separately retained current checkpoint.
 Ledger passwords use their own hidden prompt or --ledger-password-file.
 Save the 64-hex PAYMENT_ID before the first send. Retry the same ID, recipient,
 amount and priority after a timeout; a new ID is a new payment.
-ADDR defaults to 127.0.0.1:30334. AMOUNT is in SI, e.g. 12.5.
+ADDR defaults to 127.0.0.1:30334. AMOUNT is in SIP, e.g. 12.5.
 FILE holds a scoped credential from siworld-node init or rpc-keygen.
 Use rpc-read.token for reads, rpc-spend.token for send (requires the server's
 --enable-wallet-spend), rpc-devfund.token for devfund. Never pass the token itself.";
@@ -123,7 +123,7 @@ fn send_recorded(
     let to = siworld_node::address::parse_address(request["to"].as_str().ok_or("invalid address")?)
         .ok_or("invalid address")?;
     let amount =
-        siworld_node::amount::parse_si(request["amount"].as_str().ok_or("invalid amount")?)
+        siworld_node::amount::parse_sip(request["amount"].as_str().ok_or("invalid amount")?)
             .ok_or("invalid amount")?;
     let priority = request["priority"].as_bool().ok_or("invalid priority")?;
     let order = PaymentOrder::new(id, &to, amount, priority);
@@ -245,9 +245,10 @@ fn main() -> ExitCode {
                 request["to"].as_str().ok_or("invalid address")?,
             )
             .ok_or("invalid address")?;
-            let amount =
-                siworld_node::amount::parse_si(request["amount"].as_str().ok_or("invalid amount")?)
-                    .ok_or("invalid amount")?;
+            let amount = siworld_node::amount::parse_sip(
+                request["amount"].as_str().ok_or("invalid amount")?,
+            )
+            .ok_or("invalid amount")?;
             let account = match request["account"].as_str() {
                 Some("direct") => siworld_core::DevAccount::Direct,
                 Some("lock") => siworld_core::DevAccount::Lock,

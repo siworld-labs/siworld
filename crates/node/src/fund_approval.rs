@@ -354,10 +354,10 @@ mod tests {
         FundBudget {
             version: 1,
             id: "ab".repeat(32),
-            direct_si: "100000".into(),
-            lock_si: "100000".into(),
-            total_si: "200000".into(),
-            max_payout_si: "100000".into(),
+            direct_sip: "100000".into(),
+            lock_sip: "100000".into(),
+            total_sip: "200000".into(),
+            max_payout_sip: "100000".into(),
         }
     }
     fn request(key: &VerifyingKey) -> ChangeRequest {

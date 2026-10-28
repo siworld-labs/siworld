@@ -5,8 +5,9 @@ use crate::chain::{BranchOutcome, CandidatePolicy, ChainError};
 use crate::state::BlockVerifier;
 use crate::store::Store;
 use crate::wire::{
-    Block, GROUP, Hash, MAX_BLOCK_BYTES, MAX_SETTLEMENT_PROOF, MAX_SLOTS, MIN_SLOTS,
-    REWARD_CIPHERTEXT_BYTES, RewardRecord, Snapshot, Transaction,
+    Block, GROUP, Hash, MAX_BLOCK_BYTES, MAX_FUND_SPENDS, MAX_REWARDS, MAX_SETTLEMENT_PROOF,
+    MAX_SLOTS, MIN_SLOTS, REWARD_RECORD_BYTES, RewardMode, RewardRecord, Snapshot, Transaction,
+    reward_count, validate_fund_spends, validate_rewards,
 };
 use std::collections::BTreeSet;
 
@@ -330,7 +331,9 @@ pub struct CompactBlock {
     pub nonce: u64,
     pub expected_id: Hash,
     pub references: Vec<Reference>,
-    pub reward: RewardRecord,
+    pub reward_mode: RewardMode,
+    pub rewards: Vec<RewardRecord>,
+    pub fund_spends: Vec<crate::fund_spend::FundSpend>,
     pub settlement: Vec<u8>,
 }
 impl CompactBlock {
@@ -349,11 +352,15 @@ impl CompactBlock {
                 .iter()
                 .map(|t| reference(t, &block.network))
                 .collect(),
-            reward: block.reward.clone(),
+            reward_mode: block.reward_mode,
+            rewards: block.rewards.clone(),
+            fund_spends: block.fund_spends.clone(),
             settlement: block.settlement_proof.clone(),
         })
     }
     fn validate(&self) -> Result<(), String> {
+        validate_rewards(self.reward_mode, &self.rewards)?;
+        validate_fund_spends(&self.fund_spends)?;
         if !(MIN_SLOTS..=MAX_SLOTS).contains(&self.references.len())
             || !self.references.len().is_multiple_of(GROUP)
             || self.settlement.is_empty()
@@ -405,7 +412,9 @@ impl CompactBlock {
             target: self.target,
             nonce: self.nonce,
             transactions,
-            reward: self.reward.clone(),
+            reward_mode: self.reward_mode,
+            rewards: self.rewards.clone(),
+            fund_spends: self.fund_spends.clone(),
             settlement_proof: self.settlement.clone(),
         };
         block.validate_shape()?;
@@ -418,7 +427,7 @@ impl CompactBlock {
         self.validate()?;
         let mut out = Vec::new();
         out.extend_from_slice(b"SWCP");
-        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&2u16.to_le_bytes());
         out.extend_from_slice(&self.network);
         out.extend_from_slice(&self.height.to_le_bytes());
         out.extend_from_slice(&self.parent);
@@ -427,24 +436,38 @@ impl CompactBlock {
         out.extend_from_slice(&self.nonce.to_le_bytes());
         out.extend_from_slice(&self.expected_id);
         out.extend_from_slice(&(self.references.len() as u16).to_le_bytes());
+        out.push(self.reward_mode.to_byte());
+        out.push(self.fund_spends.len() as u8);
         for r in &self.references {
             out.extend_from_slice(&r.statement);
             out.extend_from_slice(&r.proof);
         }
-        out.extend_from_slice(&self.reward.commitment);
-        out.extend_from_slice(&self.reward.ciphertext);
+        for reward in &self.rewards {
+            out.extend_from_slice(&reward.commitment);
+            out.extend_from_slice(&reward.ciphertext);
+        }
+        for spend in &self.fund_spends {
+            out.extend_from_slice(&spend.encode());
+        }
         out.extend_from_slice(&(self.settlement.len() as u32).to_le_bytes());
         out.extend_from_slice(&self.settlement);
         Ok(out)
     }
     pub fn decode(bytes: &[u8], network: &Hash) -> Result<Self, String> {
         const FIXED: usize =
-            4 + 2 + 32 + 8 + 32 + 8 + 32 + 8 + 32 + 2 + 48 + REWARD_CIPHERTEXT_BYTES + 4;
-        if bytes.len() < FIXED || bytes.len() > FIXED + MAX_SLOTS * 64 + MAX_SETTLEMENT_PROOF {
+            4 + 2 + 32 + 8 + 32 + 8 + 32 + 8 + 32 + 2 + 1 + 1 + REWARD_RECORD_BYTES + 4;
+        if bytes.len() < FIXED
+            || bytes.len()
+                > FIXED
+                    + (MAX_REWARDS - 1) * REWARD_RECORD_BYTES
+                    + MAX_FUND_SPENDS * crate::fund_spend::ENCODED_BYTES
+                    + MAX_SLOTS * 64
+                    + MAX_SETTLEMENT_PROOF
+        {
             return Err("compact byte limit".into());
         }
         let mut r = Cursor { bytes, position: 0 };
-        if r.take(4)? != b"SWCP" || r.array::<2>()? != 1u16.to_le_bytes() {
+        if r.take(4)? != b"SWCP" || r.array::<2>()? != 2u16.to_le_bytes() {
             return Err("compact version".into());
         }
         let n = r.array()?;
@@ -458,6 +481,11 @@ impl CompactBlock {
         let nonce = r.u64()?;
         let expected_id = r.array()?;
         let count = u16::from_le_bytes(r.array()?) as usize;
+        let reward_mode = RewardMode::from_byte(r.array::<1>()?[0]).map_err(|e| e.to_string())?;
+        let fund_count = usize::from(r.array::<1>()?[0]);
+        if fund_count > MAX_FUND_SPENDS {
+            return Err("compact fund expenditure count limit".into());
+        }
         if !(MIN_SLOTS..=MAX_SLOTS).contains(&count)
             || !count.is_multiple_of(GROUP)
             || bytes.len() < FIXED + count * 64 + 1
@@ -471,10 +499,19 @@ impl CompactBlock {
                 proof: r.array()?,
             });
         }
-        let reward = RewardRecord {
-            commitment: r.array()?,
-            ciphertext: r.array()?,
-        };
+        let mut rewards = Vec::with_capacity(reward_count(reward_mode));
+        for _ in 0..reward_count(reward_mode) {
+            rewards.push(RewardRecord {
+                commitment: r.array()?,
+                ciphertext: r.array()?,
+            });
+        }
+        let mut fund_spends = Vec::with_capacity(fund_count);
+        for _ in 0..fund_count {
+            fund_spends.push(crate::fund_spend::FundSpend::decode(
+                r.take(crate::fund_spend::ENCODED_BYTES)?,
+            )?);
+        }
         let length = u32::from_le_bytes(r.array()?) as usize;
         if length == 0 || length > MAX_SETTLEMENT_PROOF || length != bytes.len() - r.position {
             return Err("compact settlement length".into());
@@ -488,7 +525,9 @@ impl CompactBlock {
             nonce,
             expected_id,
             references,
-            reward,
+            reward_mode,
+            rewards,
+            fund_spends,
             settlement: r.take(length)?.to_vec(),
         };
         value.validate()?;

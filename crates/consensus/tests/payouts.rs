@@ -1,5 +1,5 @@
 //! Development-fund payouts (docs/protocol.md, Economics): public, signed entries of a
-//! block body that move SI from a fund account into a shielded package whose
+//! block body that move SIP from a fund account into a shielded package whose
 //! plaintext is public, bounded by the account's balance.
 
 mod common;
@@ -11,7 +11,7 @@ use siworld_core::{DevAccount, Digest};
 use siworld_crypto::{note_commitment, payout_note, SpendKey};
 use siworld_state::{deposit, ChainState};
 
-const SI: u64 = 100_000_000;
+const SIP: u64 = 100_000_000;
 
 /// A chain of `blocks` empty blocks on the dev-fund parameters, with alice's
 /// genesis package, and its state.
@@ -22,7 +22,7 @@ fn chain_of(
     Owned,
 ) {
     let p = params_with_dev_fund();
-    let (state, owned) = genesis(&p, &[(key(1), SI, 0)]);
+    let (state, owned) = genesis(&p, &[(key(1), SIP, 0)]);
     let mut node = chain(&p, state);
     for h in 1..=blocks {
         let block = build(&node.state, &p, &[], h).unwrap();

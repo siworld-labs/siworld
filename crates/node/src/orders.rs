@@ -138,7 +138,7 @@ fn bounded_orders<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<PaymentO
 fn canonical(order: &PaymentOrder) -> Result<PaymentOrder, String> {
     let id = PaymentId::parse(&order.payment_id).map_err(|e| e.to_string())?;
     let to = crate::address::parse_address(&order.to).ok_or("invalid order address")?;
-    let amount = crate::amount::parse_si(&order.amount)
+    let amount = crate::amount::parse_sip(&order.amount)
         .filter(|a| *a > 0)
         .ok_or("invalid order amount")?;
     Ok(PaymentOrder::new(id, &to, amount, order.priority))
@@ -153,7 +153,7 @@ fn canonical_bytes(order: &PaymentOrder) -> Zeroizing<Vec<u8>> {
     b.extend_from_slice(&(order.to.len() as u32).to_le_bytes());
     b.extend_from_slice(order.to.as_bytes());
     b.extend_from_slice(
-        &crate::amount::parse_si(&order.amount)
+        &crate::amount::parse_sip(&order.amount)
             .expect("validated amount")
             .to_le_bytes(),
     );

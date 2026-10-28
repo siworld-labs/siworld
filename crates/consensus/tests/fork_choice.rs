@@ -7,12 +7,12 @@ use common::*;
 use siworld_consensus::{
     asert_target, block_work, meets_target, next_target, pow_hash, BlockError, PendingTx, TipChange,
 };
-use siworld_core::params::{ChainParams, ATOMS_PER_SI, MAX_REORG_DEPTH};
+use siworld_core::params::{ChainParams, ATOMS_PER_SIP, MAX_REORG_DEPTH};
 use siworld_core::{Block, Digest};
 use siworld_crypto::SpendKey;
 use siworld_state::ChainState;
 
-const SI: u64 = ATOMS_PER_SI;
+const SIP: u64 = ATOMS_PER_SIP;
 
 fn alice() -> SpendKey {
     key(1)
@@ -22,10 +22,10 @@ fn bob() -> SpendKey {
     key(2)
 }
 
-/// One 1 SI package for alice at genesis.
+/// One 1 SIP package for alice at genesis.
 fn funded() -> (ChainParams, ChainState, Vec<Owned>) {
     let p = params();
-    let (state, owned) = genesis(&p, &[(alice(), SI, 0)]);
+    let (state, owned) = genesis(&p, &[(alice(), SIP, 0)]);
     (p, state, owned)
 }
 
@@ -36,7 +36,7 @@ fn spend(state: &ChainState, p: &ChainParams, o: &Owned, tag: u64) -> PendingTx 
         p,
         [real(state, o), dummy(tag)],
         &bob(),
-        [SI / 2, SI - SI / 2 - fee],
+        [SIP / 2, SIP - SIP / 2 - fee],
         fee,
         tag,
     )
@@ -242,7 +242,7 @@ fn future_timestamp_branch_with_more_blocks_but_less_work_loses() {
 }
 
 fn honest_genesis(p: &ChainParams) -> ChainState {
-    genesis(p, &[(alice(), SI, 0)]).0
+    genesis(p, &[(alice(), SIP, 0)]).0
 }
 
 /// Devnet parameters with hour-long blocks, so a fork that starts a hundred
@@ -277,7 +277,7 @@ fn states(
 #[test]
 fn fork_deeper_than_max_reorg_depth_is_rejected_before_its_work() {
     let p = hourly();
-    let (state, _) = genesis(&p, &[(alice(), SI, 0)]);
+    let (state, _) = genesis(&p, &[(alice(), SIP, 0)]);
     let mut a = chain(&p, state);
     let at = states(&mut a, MAX_REORG_DEPTH + 5, 1);
     let tip = a.state.height;

@@ -2,12 +2,12 @@
 //! the recipient spending the received package.
 
 use siworld_core::issuance::{epoch_of, fee_base, fee_priority};
-use siworld_core::params::ATOMS_PER_SI;
+use siworld_core::params::ATOMS_PER_SIP;
 use siworld_crypto::SecretSeed;
 use siworld_node::wallet::Owned;
 use siworld_node::{Config, Devnet, MempoolError, PayError};
 
-const SI: u64 = ATOMS_PER_SI;
+const SIP: u64 = ATOMS_PER_SIP;
 
 fn fee(net: &Devnet) -> u64 {
     fee_base(epoch_of(net.height()))
@@ -43,7 +43,7 @@ fn twenty_blocks_with_respends() {
         match h {
             3 => {
                 fees += fee(&net);
-                net.pay("alice", "dave", 10 * SI, false).unwrap();
+                net.pay("alice", "dave", 10 * SIP, false).unwrap();
             }
             // dave has no genesis funds and can only spend received packages.
             6 => {
@@ -52,17 +52,17 @@ fn twenty_blocks_with_respends() {
                 dave_received = Some(notes[0]);
                 fees += fee(&net);
                 let paid = fee(&net);
-                net.pay("dave", "bob", 4 * SI, false).unwrap();
+                net.pay("dave", "bob", 4 * SIP, false).unwrap();
                 // The only package is already reserved by a pending transaction,
                 // whose change will cover the next payment.
                 assert_eq!(
-                    net.pay("dave", "carol", SI, false),
+                    net.pay("dave", "carol", SIP, false),
                     Err(PayError::FundsPending {
-                        pending: 6 * SI - paid
+                        pending: 6 * SIP - paid
                     })
                 );
             }
-            // dave spends the change; bob spends the received 4 SI at the priority
+            // dave spends the change; bob spends the received 4 SIP at the priority
             // tier (it is the smallest package that suffices).
             10 => {
                 let notes = owned(&net, "dave");
@@ -70,12 +70,12 @@ fn twenty_blocks_with_respends() {
                 dave_change = Some(notes[0]);
                 bob_received = owned(&net, "bob")
                     .into_iter()
-                    .find(|o| o.note.value == 4 * SI);
+                    .find(|o| o.note.value == 4 * SIP);
                 assert!(bob_received.is_some(), "bob received dave's payment");
                 fees += fee(&net);
-                net.pay("dave", "carol", SI, false).unwrap();
+                net.pay("dave", "carol", SIP, false).unwrap();
                 fees += fee_priority(epoch_of(net.height()));
-                net.pay("bob", "carol", 3 * SI, true).unwrap();
+                net.pay("bob", "carol", 3 * SIP, true).unwrap();
             }
             _ => {}
         }
@@ -84,7 +84,7 @@ fn twenty_blocks_with_respends() {
         assert_eq!(info.hash, net.state().tip);
         assert_eq!(info.state_root, net.state().roots().state_root);
         if h == 3 {
-            assert_eq!(net.balance("dave"), Some(10 * SI));
+            assert_eq!(net.balance("dave"), Some(10 * SIP));
         }
     }
     assert_eq!(net.height(), 20);
@@ -94,11 +94,14 @@ fn twenty_blocks_with_respends() {
     assert!(spent(&net, "bob", &bob_received.unwrap()));
 
     let base = fee_base(0);
-    assert_eq!(net.balance("dave"), Some(10 * SI - 4 * SI - SI - 2 * base));
-    assert_eq!(net.balance("carol"), Some(100 * SI + SI + 3 * SI));
+    assert_eq!(
+        net.balance("dave"),
+        Some(10 * SIP - 4 * SIP - SIP - 2 * base)
+    );
+    assert_eq!(net.balance("carol"), Some(100 * SIP + SIP + 3 * SIP));
     assert_eq!(
         net.balance("bob"),
-        Some(100 * SI + 4 * SI - 3 * SI - fee_priority(0))
+        Some(100 * SIP + 4 * SIP - 3 * SIP - fee_priority(0))
     );
     // Fees went into the miner's fee package, not into any test wallet.
     assert_eq!(total_before - total(&net), fees);
@@ -108,24 +111,24 @@ fn twenty_blocks_with_respends() {
 fn several_payments_fill_one_block() {
     let mut net = Devnet::new(Config::default());
     net.mine(1).unwrap();
-    net.pay("alice", "dave", 3 * SI, false).unwrap();
-    net.pay("bob", "dave", 2 * SI, true).unwrap();
-    net.pay("carol", "dave", SI, false).unwrap();
+    net.pay("alice", "dave", 3 * SIP, false).unwrap();
+    net.pay("bob", "dave", 2 * SIP, true).unwrap();
+    net.pay("carol", "dave", SIP, false).unwrap();
     net.mine(2).unwrap();
-    assert_eq!(net.balance("dave"), Some(6 * SI));
+    assert_eq!(net.balance("dave"), Some(6 * SIP));
     assert_eq!(owned(&net, "dave").len(), 3);
 
-    // Two inputs spent together: dave pays out the 3 SI and 2 SI packages at once.
-    net.pay("dave", "alice", 4 * SI, false).unwrap();
+    // Two inputs spent together: dave pays out the 3 SIP and 2 SIP packages at once.
+    net.pay("dave", "alice", 4 * SIP, false).unwrap();
     net.mine(3).unwrap();
-    assert_eq!(net.balance("dave"), Some(6 * SI - 4 * SI - fee_base(0)));
+    assert_eq!(net.balance("dave"), Some(6 * SIP - 4 * SIP - fee_base(0)));
 }
 
 #[test]
 fn rejects_bad_payments_without_side_effects() {
     let mut net = Devnet::new(Config::default());
     assert_eq!(
-        net.pay("alice", "mallory", SI, false),
+        net.pay("alice", "mallory", SIP, false),
         Err(PayError::UnknownWallet)
     );
     assert_eq!(
@@ -133,16 +136,16 @@ fn rejects_bad_payments_without_side_effects() {
         Err(PayError::AmountTooSmall)
     );
     assert_eq!(
-        net.pay("dave", "bob", SI, false),
+        net.pay("dave", "bob", SIP, false),
         Err(PayError::InsufficientFunds)
     );
     assert_eq!(
-        net.pay("alice", "bob", 1_000 * SI, false),
+        net.pay("alice", "bob", 1_000 * SIP, false),
         Err(PayError::InsufficientFunds)
     );
     let info = net.mine(1).unwrap();
     assert_eq!(info.height, 1);
-    assert_eq!(net.balance("alice"), Some(100 * SI));
+    assert_eq!(net.balance("alice"), Some(100 * SIP));
 }
 
 #[test]
@@ -157,7 +160,16 @@ fn mempool_rejects_double_spend() {
     let (pow, system) = (net.tx_pow(), net.system());
     let tx = net
         .wallets
-        .build_payment(&state, &params, &pow, system.as_ref(), from, &to, SI, false)
+        .build_payment(
+            &state,
+            &params,
+            &pow,
+            system.as_ref(),
+            from,
+            &to,
+            SIP,
+            false,
+        )
         .unwrap();
     let mut pool = Mempool::new(16, 16, pow, system);
     pool.submit(&state, tx.clone(), None).unwrap();
@@ -198,7 +210,16 @@ fn os_randomness_is_not_derived_from_the_public_seed() {
         );
         let (pow, system) = (net.tx_pow(), net.system());
         net.wallets
-            .build_payment(&state, &params, &pow, system.as_ref(), from, &to, SI, false)
+            .build_payment(
+                &state,
+                &params,
+                &pow,
+                system.as_ref(),
+                from,
+                &to,
+                SIP,
+                false,
+            )
             .unwrap()
     };
     let (ta, tb) = (pay(&mut a), pay(&mut b));
@@ -219,7 +240,7 @@ fn insecure_deterministic_randomness_reproduces_the_chain() {
             ..Config::default()
         });
         net.mine(1).unwrap();
-        net.pay("alice", "dave", SI, false).unwrap();
+        net.pay("alice", "dave", SIP, false).unwrap();
         net.mine(2).unwrap();
         net.state().tip
     };
@@ -270,5 +291,5 @@ fn the_development_fund_pays_a_wallet() {
     net.pay("dave", "alice", deposit(1) - paid, false).unwrap();
     net.mine(COINBASE_MATURITY + 3).unwrap();
     assert_eq!(net.balance("dave"), Some(0));
-    assert_eq!(net.balance("alice"), Some(100 * SI + deposit(1) - paid));
+    assert_eq!(net.balance("alice"), Some(100 * SIP + deposit(1) - paid));
 }

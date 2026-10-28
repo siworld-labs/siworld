@@ -52,7 +52,7 @@ use zeroize::{Zeroize, Zeroizing};
 use crate::rpc_auth::{Permission, RpcAuth, RpcToken};
 
 use crate::address::{encode_address, parse_address};
-use crate::amount::{format_si, parse_si};
+use crate::amount::{format_sip, parse_sip};
 use crate::gate::{Gate, INVALID_TX_SCORE};
 use crate::hex;
 use crate::mempool::MempoolError;
@@ -817,8 +817,8 @@ impl Service {
                 "synced": self.may_mine(),
                 "mempool": self.node.mempool.len(),
                 "dev_fund": {
-                    "direct": format_si(self.node.dev_fund().spendable(DevAccount::Direct)),
-                    "lock": format_si(self.node.dev_fund().spendable(DevAccount::Lock)),
+                    "direct": format_sip(self.node.dev_fund().spendable(DevAccount::Direct)),
+                    "lock": format_sip(self.node.dev_fund().spendable(DevAccount::Lock)),
                     "payouts": self.node.dev_fund().payouts(DevAccount::Direct)
                         + self.node.dev_fund().payouts(DevAccount::Lock),
                 },
@@ -855,16 +855,16 @@ impl Service {
                     Err(e) => return json!({"error": e.to_string()}),
                 };
                 json!({
-                    "total": format_si(b.total),
-                    "spendable": format_si(b.spendable),
-                    "pending": format_si(b.pending),
+                    "total": format_sip(b.total),
+                    "spendable": format_sip(b.spendable),
+                    "pending": format_sip(b.pending),
                 })
             }
             "send" => {
                 let Some(to) = request["to"].as_str().and_then(parse_address) else {
                     return json!({ "error": "invalid address" });
                 };
-                let Some(amount) = request["amount"].as_str().and_then(parse_si) else {
+                let Some(amount) = request["amount"].as_str().and_then(parse_sip) else {
                     return json!({ "error": "invalid amount" });
                 };
                 let priority = request["priority"].as_bool().unwrap_or(false);
@@ -887,7 +887,7 @@ impl Service {
                         let mut reply = payment_receipt(&outcome.receipt);
                         // Retain the legacy amount response only for a live pending payment.
                         if relayed {
-                            reply["sent"] = json!(format_si(amount));
+                            reply["sent"] = json!(format_sip(amount));
                         }
                         reply["relayed"] = json!(relayed);
                         reply["relay_error"] = outcome
@@ -897,7 +897,7 @@ impl Service {
                         reply
                     }
                     Err(PaymentError::Build(e @ PayError::FundsPending { pending })) => {
-                        json!({"error":e.to_string(),"code":"payment_build_failed","pending":format_si(pending)})
+                        json!({"error":e.to_string(),"code":"payment_build_failed","pending":format_sip(pending)})
                     }
                     Err(e) => json!({"error":e.to_string(),"code":e.code()}),
                 }
@@ -962,9 +962,9 @@ impl Service {
                 let status = self.node.fund_status();
                 json!({"configured":status.configured,"locked":status.locked,
                     "genesis":hex(&self.node.genesis.id),
-                    "direct_remaining":format_si(status.direct_remaining),
-                    "lock_remaining":format_si(status.lock_remaining),
-                    "max_payout":format_si(status.max_payout),
+                    "direct_remaining":format_sip(status.direct_remaining),
+                    "lock_remaining":format_sip(status.lock_remaining),
+                    "max_payout":format_sip(status.max_payout),
                     "unlock_seconds_remaining":self.node.fund_unlock_deadline().map(|d|d.saturating_duration_since(Instant::now()).as_secs())})
             }
             "fundlock" => {
@@ -1012,7 +1012,7 @@ impl Service {
                 let Some(to) = request["to"].as_str().and_then(parse_address) else {
                     return json!({ "error": "invalid address" });
                 };
-                let Some(amount) = request["amount"].as_str().and_then(parse_si) else {
+                let Some(amount) = request["amount"].as_str().and_then(parse_sip) else {
                     return json!({ "error": "invalid amount" });
                 };
                 let before = self.node.payouts.pending().to_vec();

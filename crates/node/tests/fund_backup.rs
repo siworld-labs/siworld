@@ -115,16 +115,16 @@ impl Fixture {
                 budget: siworld_node::fund_keys::FundBudget {
                     version: 1,
                     id: "ab".repeat(32),
-                    direct_si: "1000000000".into(),
-                    lock_si: "1000000000".into(),
-                    total_si: "2000000000".into(),
-                    max_payout_si: "1000000".into(),
+                    direct_sip: "1000000000".into(),
+                    lock_sip: "1000000000".into(),
+                    total_sip: "2000000000".into(),
+                    max_payout_sip: "1000000".into(),
                 },
                 genesis: siworld_node::hex(&self.genesis.id),
                 seconds: 3600,
-                direct_si: "0.0004".into(),
-                lock_si: "0".into(),
-                max_payout_si: "0.0002".into(),
+                direct_sip: "0.0004".into(),
+                lock_sip: "0".into(),
+                max_payout_sip: "0.0002".into(),
                 recipients: vec![encode_address(&recipient())],
                 approval: None,
             },
@@ -222,10 +222,10 @@ fn independent_approval_and_budget_revision_preserve_spending_and_reject_stale_a
         checkpoint: &pin,
     };
     let mut revised = policy.clone();
-    revised.direct_si = "0.0004".into();
-    revised.lock_si = "0".into();
-    revised.total_si = "0.0004".into();
-    revised.max_payout_si = "0.0002".into();
+    revised.direct_sip = "0.0004".into();
+    revised.lock_sip = "0".into();
+    revised.total_sip = "0.0004".into();
+    revised.max_payout_sip = "0.0002".into();
     let proposal = files
         .propose(
             PASSWORD,
@@ -311,16 +311,16 @@ fn stale_snapshot_recovers_latest_original_artifacts_but_never_signs_before_revi
                 budget: siworld_node::fund_keys::FundBudget {
                     version: 1,
                     id: "ab".repeat(32),
-                    direct_si: "1000000000".into(),
-                    lock_si: "1000000000".into(),
-                    total_si: "2000000000".into(),
-                    max_payout_si: "1000000".into(),
+                    direct_sip: "1000000000".into(),
+                    lock_sip: "1000000000".into(),
+                    total_sip: "2000000000".into(),
+                    max_payout_sip: "1000000".into(),
                 },
                 genesis: siworld_node::hex(&f.genesis.id),
                 seconds: 3600,
-                direct_si: "0.0004".into(),
-                lock_si: "0".into(),
-                max_payout_si: "0.0002".into(),
+                direct_sip: "0.0004".into(),
+                lock_sip: "0".into(),
+                max_payout_sip: "0.0002".into(),
                 recipients: vec![encode_address(&recipient())],
                 approval: None,
             }

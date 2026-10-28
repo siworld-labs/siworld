@@ -1,11 +1,17 @@
 # Confidential Fee Settlement Evaluation
 
+The measurements in this document predate the [monetary revision](v1-economics.md).
+They are retained reproducible baseline evidence only. Input lock constraints,
+mode-dependent reward notes and revised settlement context require fresh AIR
+security reports, source-bound keys and performance/memory measurements.
+No earlier sampled result qualifies the revised V1 relation.
+
 Status: selected Route A V1 settlement design with an isolated native AIR and
 measured proof implementation. It is not an activated consensus rule. Native
 block integration, resource qualification and independent review remain gates.
 The [source-bound manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-engineering-freezes the fixed-576 native settlement shape, parameters and
-public preprocessing key. Smaller-capacity keys require separate identities.
+records the pre-revision fixed-576 settlement shape, parameters and
+public preprocessing key; it does not qualify revised reward settlement. Smaller-capacity keys require separate identities.
 The transaction profile and earlier diagnostic tables remain separate evidence.
 
 ## Fixed requirements
@@ -38,7 +44,7 @@ position it checks the commitment opening and adds fees with checked integer
 carries. The transaction proof enforces the private anchor's fee schedule and
 zero-fee padding rule; settlement must not impose the current fee schedule on
 an older anchored transaction. It binds the resulting private sum to the
-SI miner reward note. The proof binds the ordered compact references and the
+SIP miner reward note. The proof binds the ordered compact references and the
 capacity, so an omitted, duplicated, or reordered transaction cannot be
 settled by reusing a valid proof.
 
@@ -91,7 +97,7 @@ planning quantities only; they are not AIR row or proof-size measurements.
 ## Two-output diagnostic baseline
 
 This section preserves measurements of the earlier two-output diagnostic
-relation. The current three-output SI-reward relation and its measured profile
+relation. The current three-output SIP-reward relation and its measured profile
 are described in the [multi-asset evaluation](v1-multi-asset-evaluation.md).
 These baseline samples do not replace source-bound current-profile evidence.
 

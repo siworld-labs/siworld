@@ -1,5 +1,10 @@
 # Multi-asset transaction AIR layout optimization
 
+The [monetary revision](v1-economics.md) reopens affected proof qualification.
+Earlier source-bound reports, keys and numeric profiles are baseline evidence
+only; revised lock/reward relations require new actual-AIR screening and
+resource measurements. Separate optimization work does not waive this gate.
+
 Status: isolated structural prototype. The production parameter scan and its
 source remain independent. No smaller proof, lower peak memory or faster
 proving time is established by this prototype. It does not implement an AIR,
@@ -102,9 +107,9 @@ candidate AIR passes the same security screen.
   a different anchor position.
 - Run the existing per-field mutation and counterexample tests unchanged.
   In particular, retain per-asset integer conservation, final zero carries,
-  SI-only fees, unique nullifiers and canonical asset limbs.
+  SIP-only fees, unique nullifiers and canonical asset limbs.
 - Differentially check reference and candidate public statements and native
-  witness validity, including duplicate input assets, SI inputs, zero-valued
+  witness validity, including duplicate input assets, SIP inputs, zero-valued
   outputs and all single-limb asset differences. Proof/verifier artifacts
   change and require their own identifiers and hashes.
 - Extract the actual symbolic instance and repeat the pinned `p3-security`

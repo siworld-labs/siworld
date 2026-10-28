@@ -1,5 +1,13 @@
 # Native V1 Node and Network Integration
 
+Integrate [the monetary rules](v1-economics.md) through the same block
+transition for production, validation, replay, forks and audit. Bind the
+explicit reward mode at template creation; reconstruct every reward note,
+Holder pool/burn/fund update and trusted snapshot-height lock check. Reorg
+rollback must restore all economic counters and schedules atomically.
+[Wallet protection](v1-wallet-protection.md) and [V2 authorization](v2/multisignature.md)
+are separate work; threshold seed backup does not add V1 on-chain multisignature.
+
 Status: implementation inventory and remaining activation plan for the
 independent native-proof engineering network. The native library contains
 bounded admission, authenticated-stream protocol interfaces, full-proof sync,
@@ -7,8 +15,9 @@ verified-work fork choice, atomic reorganization, seed-derived wallet
 primitives and a public subsidy audit. A production hybrid provider and
 listening network service are not implemented. Remote CI covers compilation,
 protocol rejection and separately selected native-proof integration tests; no
-network acceptance is implied. The frozen proof profiles and retained
-seven-node legacy network remain unchanged.
+network acceptance is implied. The prior profiles remain baseline evidence;
+the monetary revision reopens proof qualification. The retained seven-node
+legacy network remains unchanged.
 
 ## Proof parameters and activation
 
@@ -183,12 +192,13 @@ issuance admission is still disabled pending its dedicated fund destination,
 atomic fee collection and resource rules; the isolated issuance relation does
 not activate this path.
 The settlement proof is verified independently of all transaction proofs.
-Its statement must bind every position exactly once and the single miner
-reward output; compact references cannot substitute for this binding.
+Its statement must bind every position exactly once and every one/five
+mode-dependent SIP reward output; compact references cannot substitute for
+this binding.
 For a block below 576 positions, the fixed settlement AIR's remaining rows
 use canonical zero-fee commitments derived from network, height, declared
 block-position count and row index. The verifier reconstructs this tail; it does not add
-transactions to the block. The public reward value is a note commitment, with
+transactions to the block. The public reward values are complete note commitments, with
 the amount and fee total private. Each transaction proof authorizes its own
 private anchored fee schedule; settlement opens and sums those fees without
 imposing a single current block schedule on all positions.
@@ -339,16 +349,17 @@ The engineering wallet library already derives network/account-separated spend,
 ML-KEM view and 256-bit change keys from a supplied seed. It independently
 replays complete supplied canonical history, authenticates ciphertexts and
 note commitments, reconciles orphan receipts/spends, and prepares two-input/
-three-output SI or asset payments with SI-only standard/priority fees. It
+three-output SIP or asset payments with SIP-only standard/priority fees. It
 returns a matching private sidecar and payment opening after native proving.
 Mnemonic creation/backup, protected key/opening storage, seed-wallet funding,
 issuance admission, network relay and pruned-public-history rescan are not yet
 integrated. A native-proof test with synthetic funding does not complete M2.
 
-The offline `audit` command and library verify canonical transaction/settlement
-proofs, per-height integer subsidy and direct/locked fund credits, and bind the
-report to the exact accepted head. Asset issuance and fund spending are
-explicitly marked unsupported; reward-recovery receipts are outside this
+The offline `audit` command and library bind replay to the exact accepted
+head. The revised audit must recompute modes, all reward notes, pool/burn,
+per-credit fund unlock/spend state and conservation using the shared transition.
+Earlier audit output cannot qualify this expanded scope. Asset issuance
+admission still requires its dedicated payment and resource integration; reward-recovery receipts are outside this
 report's scope. The complete public issuance audit remains dependent on those
 unimplemented transitions.
 
@@ -413,7 +424,7 @@ recovery, without a production provider/listening service or qualified wire
 measurements. Verified-work forks and atomic depth-24 reorganization are
 implemented with local replay limits. N8 has seed-derived scanning/transfer
 primitives without protected durability or full valid-chain M2 acceptance.
-The offline audit covers SI subsidy/fund credits only. The dedicated native
+The offline audit covers SIP subsidy/fund credits only. The dedicated native
 runtime CI job covers compilation, rejection tests and separately selected
 native-proof integration tests. The frozen service observation is not replaced
 or restarted by this library work.

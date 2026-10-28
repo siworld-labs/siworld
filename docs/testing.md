@@ -1,5 +1,10 @@
 # Validation and Regression Coverage
 
+The [monetary revision](v1-economics.md) reopens affected proof qualification.
+Earlier source-bound reports, keys and numeric profiles are baseline evidence
+only; revised lock/reward relations require new actual-AIR screening and
+resource measurements. Separate optimization work does not waive this gate.
+
 ## Proof and runtime boundaries
 
 The root workspace tests the legacy recursive runtime. Native V1 transaction,
@@ -33,12 +38,13 @@ All-features tests intentionally enable development helpers. Release artifacts u
 
 | Area | Location |
 |---|---|
-| Native multi-asset conservation, issuance signatures and SI-reward settlement | `crates/bench-multi-asset/src` and its native proof tests |
+| Native multi-asset conservation, issuance signatures and SIP-reward settlement | `crates/bench-multi-asset/src` and its native proof tests |
 | Every-input validation, nullifiers and atomic rollback (legacy runtime) | `crates/consensus/tests/counterexamples.rs` |
 | Canonical encodings | `crates/consensus/tests/encoding.rs` |
 | Producer/validator agreement | `producer_seed.rs`, `state_delta.rs` in consensus tests |
 | Statement binding and miner notes | `container_statement.rs`, `miner_package.rs`, `crates/prover/tests` |
-| Integer issuance and fund accounting | `issuance.rs`, `payouts.rs` in consensus tests |
+| Native monetary allocation, pool/burn, per-wallet fund vesting and conservation | `crates/core/src/v1_economics_tests.rs`; native state/audit tests |
+| Legacy integer issuance and fund accounting | `issuance.rs`, `payouts.rs` in consensus tests |
 | Difficulty and fork choice | `pow.rs`, `fork_choice.rs`, `main_chain.rs` in consensus tests |
 | Native/circuit equivalence | `crates/poseidon2`, `crates/bench-stark/common`, `crates/bench-stark/plonky3` |
 | Peers, payments and RPC | `crates/node/tests/network.rs`, `payments.rs`, `rpc.rs` |

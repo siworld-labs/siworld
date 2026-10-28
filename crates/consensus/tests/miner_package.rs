@@ -11,7 +11,7 @@ use siworld_core::params::COINBASE_MATURITY;
 use siworld_core::{Commitment, Digest, Note};
 use siworld_crypto::{miner_rho, note_commitment};
 
-const SI: u64 = 100_000_000;
+const SIP: u64 = 100_000_000;
 
 /// Decrypts the miner package of a block body with the test miner's view key.
 fn miner_note(body: &siworld_core::BlockBody) -> Note {
@@ -25,14 +25,14 @@ fn miner_note(body: &siworld_core::BlockBody) -> Note {
 #[test]
 fn miner_package_holds_the_reward_share_plus_the_fees() {
     let p = params();
-    let (state, owned) = genesis(&p, &[(key(1), SI, 0)]);
+    let (state, owned) = genesis(&p, &[(key(1), SIP, 0)]);
     let fee = fee_now(&state);
     let tx = pay(
         &state,
         &p,
         [real(&state, &owned[0]), dummy(1)],
         &key(2),
-        [SI / 2, SI / 2 - fee],
+        [SIP / 2, SIP / 2 - fee],
         fee,
         7,
     )
@@ -56,7 +56,7 @@ fn miner_package_holds_the_reward_share_plus_the_fees() {
 fn miner_package_enters_the_tree_one_hundred_blocks_later_and_is_then_spendable() {
     let p = params();
     let n = u64::from(p.container_size);
-    let (state, _) = genesis(&p, &[(key(1), SI, 0)]);
+    let (state, _) = genesis(&p, &[(key(1), SIP, 0)]);
     let mut node = chain(&p, state);
     let first = build(&node.state, &p, &[], 1).unwrap();
     let cm_first = first.body.coinbase.miner_note_cm;
@@ -118,7 +118,7 @@ fn a_block_whose_miner_package_does_not_match_its_proof_is_rejected() {
     use siworld_consensus::{check_proof, BlockError};
 
     let p = params();
-    let (state, _) = genesis(&p, &[(key(1), SI, 0)]);
+    let (state, _) = genesis(&p, &[(key(1), SIP, 0)]);
     let block = build(&state, &p, &[], 1).unwrap();
     // Another package in place of the one the proof derived.
     let mut body = block.body.clone();

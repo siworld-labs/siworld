@@ -26,8 +26,13 @@ fn encrypted_record(
     let h = Hasher::new();
     let notes = [
         note(target.keys.address().owner(), amount, asset, tag),
-        note(target.keys.address().owner(), 20_000, SI_ASSET_ID, tag + 10),
-        note(target.keys.address().owner(), 0, SI_ASSET_ID, tag + 20),
+        note(
+            target.keys.address().owner(),
+            20_000,
+            SIP_ASSET_ID,
+            tag + 10,
+        ),
+        note(target.keys.address().owner(), 0, SIP_ASSET_ID, tag + 20),
     ];
     let ec = EncryptionContext::new(state.config.network);
     let (payment, opening) =
@@ -94,7 +99,7 @@ fn authenticated_rescan_recovers_all_three_outputs_without_a_sidecar() {
         .unwrap();
     assert_eq!(restored.receipts().len(), 3);
     assert_eq!(restored.balances(1).unwrap()[&asset], 123_456);
-    assert_eq!(restored.balances(1).unwrap()[&SI_ASSET_ID], 20_000);
+    assert_eq!(restored.balances(1).unwrap()[&SIP_ASSET_ID], 20_000);
     for expected in &notes {
         assert!(
             restored
@@ -110,44 +115,265 @@ fn authenticated_rescan_recovers_all_three_outputs_without_a_sidecar() {
     assert!(wrong_seed.receipts().is_empty());
 }
 
+fn reward_block(
+    state: &State,
+    target: &Wallet,
+    mode: crate::state::RewardMode,
+    seed: u32,
+) -> Block {
+    let h = Hasher::new();
+    let plan = state.reward_plan(mode).unwrap();
+    let mut block = candidate(state, seed);
+    block.reward_mode = mode;
+    block.rewards = plan
+        .allocations
+        .iter()
+        .enumerate()
+        .map(|(index, allocation)| {
+            let reward_note = Note {
+                asset_id: SIP_ASSET_ID,
+                owner: target.address().owner(),
+                value: allocation.amount,
+                unlock_height: allocation.unlock_height,
+                rho: h.reward_rho(plan.block_height, index),
+                rseed: [F::from_u32(seed + index as u32); 12],
+            };
+            let (ciphertext, _) = encrypt_payment_with_opening(
+                &target.address(),
+                &reward_note,
+                &EncryptionContext::new(state.config.network),
+            )
+            .unwrap();
+            crate::wire::RewardRecord {
+                commitment: encode_digest(&h.note_cm(&reward_note)),
+                ciphertext: encode_payment(&ciphertext),
+            }
+        })
+        .collect();
+    block
+}
+
 #[test]
-fn reward_scanning_uses_the_same_recipient_key_and_preserves_maturity() {
+fn reward_scanning_recovers_five_holder_batches_and_unique_nullifiers_from_seed() {
     let network = [8; 32];
     let config = Config::development(network, 0).unwrap();
-    let state = State::new(config.clone()).unwrap();
-    let mut target = wallet(network, 9);
-    let mut reward_note = note(target.keys.address().owner(), 611_014_413, SI_ASSET_ID, 700);
-    reward_note.unlock_height = 101;
-    let (ciphertext, _) = encrypt_payment_with_opening(
-        &target.keys.address(),
-        &reward_note,
-        &EncryptionContext::new(network),
-    )
-    .unwrap();
-    let mut block = candidate(&state, 100_000);
-    block.reward.commitment = encode_digest(&Hasher::new().note_cm(&reward_note));
-    block.reward.ciphertext = encode_payment(&ciphertext);
-    assert_eq!(block.reward.ciphertext.len(), REWARD_CIPHERTEXT_BYTES);
-    target.reconcile(config, &[block], &TestVerifier).unwrap();
-    assert_eq!(target.receipts().len(), 1);
-    assert!(target.balances(100).unwrap().is_empty());
-    assert_eq!(target.balances(101).unwrap()[&SI_ASSET_ID], 611_014_413);
-    let mut accepted = state;
-    let mut block = candidate(&accepted, 100_000);
-    block.reward.commitment = encode_digest(&Hasher::new().note_cm(&reward_note));
-    block.reward.ciphertext = encode_payment(&ciphertext);
-    accepted.apply(&block, &TestVerifier).unwrap();
+    let mut state = State::new(config.clone()).unwrap();
+    let original = wallet(network, 9);
+    let plan = state.reward_plan(crate::state::RewardMode::Holder).unwrap();
+    let block = reward_block(&state, &original, crate::state::RewardMode::Holder, 100_000);
+    assert_eq!(block.rewards.len(), 5);
+    for reward in &block.rewards {
+        assert_eq!(reward.ciphertext.len(), REWARD_CIPHERTEXT_BYTES);
+    }
+    state.apply(&block, &TestVerifier).unwrap();
+    let mut restored = wallet(network, 9);
+    restored.reconcile(config, &[block], &TestVerifier).unwrap();
+    assert_eq!(restored.receipts().len(), 5);
+    let nullifiers = restored
+        .receipts()
+        .iter()
+        .map(|r| r.nullifier)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(nullifiers.len(), 5);
+    let details = restored.balance_details(&state).unwrap();
+    assert!(details.available.is_empty());
+    assert_eq!(
+        details.locked[&SIP_ASSET_ID],
+        plan.allocations
+            .iter()
+            .map(|a| u128::from(a.amount))
+            .sum::<u128>()
+    );
+    assert_eq!(
+        details.next_unlock_height,
+        Some(plan.allocations[0].unlock_height)
+    );
+    assert_eq!(details.tranches.len(), 5);
+    for (index, allocation) in plan.allocations.iter().enumerate() {
+        let receipt = &restored.receipts()[index];
+        assert_eq!(receipt.note.unlock_height, allocation.unlock_height);
+        assert_eq!(receipt.note.value, allocation.amount);
+        assert_eq!(receipt.output_index, 3 + index as u8);
+        assert_eq!(
+            details.tranches[index].unlock_height,
+            allocation.unlock_height
+        );
+        assert_eq!(
+            details.tranches[index].estimated_timestamp,
+            state.timestamp().checked_add(
+                (allocation.unlock_height - state.height) * state.config.target_interval
+            )
+        );
+        let before = restored
+            .balances(allocation.unlock_height - 1)
+            .unwrap()
+            .get(&SIP_ASSET_ID)
+            .copied()
+            .unwrap_or(0);
+        let after = restored.balances(allocation.unlock_height).unwrap()[&SIP_ASSET_ID];
+        assert_eq!(after - before, u128::from(allocation.amount));
+        assert_eq!(
+            restored
+                .automatic_ready_timestamp(&receipt.commitment)
+                .unwrap(),
+            None
+        );
+    }
     assert!(
-        target
+        restored
             .prepare_transfer(
-                &accepted,
-                [Some(target.receipts()[0].commitment), None],
-                &target.address(),
-                SI_ASSET_ID,
+                &state,
+                [Some(restored.receipts()[0].commitment), None],
+                &restored.address(),
+                SIP_ASSET_ID,
                 100_000,
-                FeeTier::Standard,
+                FeeTier::Standard
             )
             .is_err()
+    );
+}
+
+#[test]
+fn voyager_reward_recovers_as_one_maturing_note() {
+    let network = [43; 32];
+    let config = Config::development(network, 0).unwrap();
+    let state = State::new(config.clone()).unwrap();
+    let mut target = wallet(network, 44);
+    let block = reward_block(&state, &target, crate::state::RewardMode::Voyager, 100_000);
+    target.reconcile(config, &[block], &TestVerifier).unwrap();
+    assert_eq!(target.receipts().len(), 1);
+    assert_eq!(target.receipts()[0].note.unlock_height, 25);
+    assert!(target.balances(24).unwrap().is_empty());
+    assert!(target.balances(25).unwrap()[&SIP_ASSET_ID] > 0);
+}
+
+#[test]
+fn automatic_consolidation_is_delayed_seed_recoverable_and_sip_only() {
+    let network = [45; 32];
+    let config = Config::development(network, 0).unwrap();
+    let mut state = State::new(config.clone()).unwrap();
+    let mut sender = wallet(network, 46);
+    let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, 5_000_000, 5000);
+    let mut block = candidate(&state, 100_000);
+    insert_record(&mut block, record);
+    state.apply(&block, &TestVerifier).unwrap();
+    sender
+        .reconcile(config.clone(), &[block.clone()], &TestVerifier)
+        .unwrap();
+    let owned = sender
+        .receipts()
+        .iter()
+        .filter(|r| r.note.value > 0)
+        .collect::<Vec<_>>();
+    assert_eq!(owned.len(), 2);
+    let ready = owned
+        .iter()
+        .map(|r| {
+            sender
+                .automatic_ready_timestamp(&r.commitment)
+                .unwrap()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    for at in &ready {
+        assert!(
+            (block.timestamp + AUTO_DELAY_MIN_SECONDS..=block.timestamp + AUTO_DELAY_MAX_SECONDS)
+                .contains(at)
+        );
+    }
+    let mut recovered = wallet(network, 46);
+    recovered
+        .reconcile(config, &[block.clone()], &TestVerifier)
+        .unwrap();
+    for (receipt, at) in owned.iter().zip(&ready) {
+        assert_eq!(
+            recovered
+                .automatic_ready_timestamp(&receipt.commitment)
+                .unwrap(),
+            Some(*at)
+        );
+    }
+    let first_ready = *ready.iter().min().unwrap();
+    assert!(
+        sender
+            .prepare_small_sip_consolidation(&state, 5_000_000, FeeTier::Standard, first_ready - 1)
+            .unwrap()
+            .is_none()
+    );
+    let all_ready = *ready.iter().max().unwrap();
+    let consolidation = sender
+        .prepare_small_sip_consolidation(&state, 5_000_000, FeeTier::Standard, all_ready)
+        .unwrap()
+        .unwrap();
+    let expected = 5_020_000 - base_fee(state.height);
+    assert_eq!(consolidation.witness().slot.outputs[0].value, expected);
+    assert_eq!(
+        consolidation.witness().slot.outputs[0].asset_id,
+        SIP_ASSET_ID
+    );
+    assert_eq!(
+        consolidation.witness().slot.outputs[0].owner,
+        sender.address().owner()
+    );
+    assert!(consolidation.witness().slot.inputs.iter().all(|i| !i.dummy));
+    assert!(
+        sender
+            .prepare_small_sip_consolidation(&state, 19_999, FeeTier::Standard, all_ready)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        sender
+            .prepare_small_sip_consolidation(&state, 0, FeeTier::Standard, all_ready)
+            .is_err()
+    );
+    let mut stale = state.clone();
+    stale.height += 1;
+    assert!(
+        sender
+            .prepare_small_sip_consolidation(&stale, 5_000_000, FeeTier::Standard, all_ready)
+            .is_err()
+    );
+    // Explicit transfers use consensus maturity and do not wait for local automation.
+    assert!(
+        sender
+            .prepare_transfer(
+                &state,
+                [Some(owned[0].commitment), None],
+                &sender.address(),
+                SIP_ASSET_ID,
+                1_000,
+                FeeTier::Standard
+            )
+            .is_ok()
+    );
+}
+
+#[test]
+fn automatic_consolidation_rejects_immature_or_token_only_candidates() {
+    let network = [47; 32];
+    let config = Config::development(network, 0).unwrap();
+    let mut state = State::new(config.clone()).unwrap();
+    let mut target = wallet(network, 48);
+    let block = reward_block(&state, &target, crate::state::RewardMode::Holder, 100_000);
+    state.apply(&block, &TestVerifier).unwrap();
+    target.reconcile(config, &[block], &TestVerifier).unwrap();
+    assert!(
+        target
+            .prepare_small_sip_consolidation(&state, u64::MAX, FeeTier::Standard, u64::MAX)
+            .unwrap()
+            .is_none()
+    );
+    for receipt in &mut target.receipts {
+        receipt.note.asset_id = AssetId([49; 32]);
+        receipt.note.unlock_height = 0;
+        receipt.eligible_timestamp = Some(1);
+    }
+    assert!(
+        target
+            .prepare_small_sip_consolidation(&state, u64::MAX, FeeTier::Standard, u64::MAX)
+            .unwrap()
+            .is_none()
     );
 }
 
@@ -157,7 +383,7 @@ fn reorg_rescan_removes_orphans_and_reverses_orphan_spends_atomically() {
     let config = Config::development(network, 0).unwrap();
     let mut state = State::new(config.clone()).unwrap();
     let mut target = wallet(network, 11);
-    let (record, _, _) = encrypted_record(&state, &target, SI_ASSET_ID, 4_000_000, 800);
+    let (record, _, _) = encrypted_record(&state, &target, SIP_ASSET_ID, 4_000_000, 800);
     let mut first = candidate(&state, 100_000);
     insert_record(&mut first, record);
     state.apply(&first, &TestVerifier).unwrap();
@@ -201,7 +427,7 @@ fn prebroadcast_check_rejects_every_ciphertext_commitment_and_context_change() {
     let network = [12; 32];
     let state = State::new(Config::development(network, 0).unwrap()).unwrap();
     let sender = wallet(network, 13);
-    let (record, notes, opening) = encrypted_record(&state, &sender, SI_ASSET_ID, 50_000, 900);
+    let (record, notes, opening) = encrypted_record(&state, &sender, SIP_ASSET_ID, 50_000, 900);
     let public = PublicTransaction::decode(&record.body).unwrap();
     sender
         .keys
@@ -241,7 +467,7 @@ fn prebroadcast_check_rejects_every_ciphertext_commitment_and_context_change() {
 }
 
 #[test]
-fn transfer_witness_balances_si_fees_and_token_change_with_two_or_one_inputs() {
+fn transfer_witness_balances_sip_fees_and_token_change_with_two_or_one_inputs() {
     let network = [15; 32];
     let config = Config::development(network, 0).unwrap();
     let mut state = State::new(config.clone()).unwrap();
@@ -251,8 +477,8 @@ fn transfer_witness_balances_si_fees_and_token_change_with_two_or_one_inputs() {
     let (record, _, _) = encrypted_record(&state, &sender, asset, 500_000, 1000);
     let mut block = candidate(&state, 100_000);
     insert_record(&mut block, record);
-    // A second owned SI payment funds the private fee.
-    let (record, _, _) = encrypted_record(&state, &sender, SI_ASSET_ID, 5_000_000, 2000);
+    // A second owned SIP payment funds the private fee.
+    let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, 5_000_000, 2000);
     block.transactions[1].record = record;
     block
         .transactions
@@ -265,17 +491,17 @@ fn transfer_witness_balances_si_fees_and_token_change_with_two_or_one_inputs() {
         .find(|r| r.note.asset_id == asset && r.note.value > 0)
         .unwrap()
         .commitment;
-    let si = sender
+    let sip = sender
         .receipts()
         .iter()
-        .find(|r| r.note.asset_id == SI_ASSET_ID && r.note.value == 5_000_000)
+        .find(|r| r.note.asset_id == SIP_ASSET_ID && r.note.value == 5_000_000)
         .unwrap()
         .commitment;
     for tier in [FeeTier::Standard, FeeTier::Priority] {
         let prepared = sender
             .prepare_transfer(
                 &state,
-                [Some(token), Some(si)],
+                [Some(token), Some(sip)],
                 &receiver.keys.address(),
                 asset,
                 100_000,
@@ -284,9 +510,10 @@ fn transfer_witness_balances_si_fees_and_token_change_with_two_or_one_inputs() {
             .unwrap();
         let witness = prepared.witness();
         witness
-            .check(
+            .check_at_snapshot(
                 &Hasher::new(),
                 &decode_digest(&state.tip_snapshot().recent_root).unwrap(),
+                state.tip_snapshot().selector.height,
             )
             .unwrap();
         assert_eq!(witness.slot.outputs[0].asset_id, asset);
@@ -303,9 +530,9 @@ fn transfer_witness_balances_si_fees_and_token_change_with_two_or_one_inputs() {
     let one_input = sender
         .prepare_transfer(
             &state,
-            [Some(si), None],
+            [Some(sip), None],
             &receiver.keys.address(),
-            SI_ASSET_ID,
+            SIP_ASSET_ID,
             100_000,
             FeeTier::Standard,
         )
@@ -327,9 +554,9 @@ fn transfer_witness_balances_si_fees_and_token_change_with_two_or_one_inputs() {
         sender
             .prepare_transfer(
                 &state,
-                [Some(si), Some(si)],
+                [Some(sip), Some(sip)],
                 &receiver.keys.address(),
-                SI_ASSET_ID,
+                SIP_ASSET_ID,
                 100_000,
                 FeeTier::Standard
             )
@@ -341,7 +568,7 @@ fn transfer_witness_balances_si_fees_and_token_change_with_two_or_one_inputs() {
                 &state,
                 [None, None],
                 &receiver.keys.address(),
-                SI_ASSET_ID,
+                SIP_ASSET_ID,
                 100_000,
                 FeeTier::Standard
             )
@@ -351,9 +578,9 @@ fn transfer_witness_balances_si_fees_and_token_change_with_two_or_one_inputs() {
         sender
             .prepare_transfer(
                 &state,
-                [Some(si), None],
+                [Some(sip), None],
                 &receiver.keys.address(),
-                SI_ASSET_ID,
+                SIP_ASSET_ID,
                 10_000_000,
                 FeeTier::Standard
             )
@@ -374,7 +601,7 @@ fn actual_native_wallet_proof_passes_admission_and_recipient_authentication() {
     let mut state = State::new(config.clone()).unwrap();
     let mut sender = wallet(network, 20);
     let receiver = wallet(network, 21);
-    let (record, _, _) = encrypted_record(&state, &sender, SI_ASSET_ID, 5_000_000, 3000);
+    let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, 5_000_000, 3000);
     let mut funding = candidate(&state, 100_000);
     insert_record(&mut funding, record);
     state.apply(&funding, &TestVerifier).unwrap();
@@ -393,7 +620,7 @@ fn actual_native_wallet_proof_passes_admission_and_recipient_authentication() {
                 &state,
                 [Some(commitment), None],
                 &receiver.address(),
-                SI_ASSET_ID,
+                SIP_ASSET_ID,
                 100_000,
                 tier,
             )
@@ -440,4 +667,70 @@ fn actual_native_wallet_proof_passes_admission_and_recipient_authentication() {
         assert!(same_note(&receipt, &expected));
         assert_eq!(pool.len(), 1);
     }
+}
+
+#[test]
+fn permanent_fund_ciphertext_recovers_after_seed_restore_without_private_sidecars() {
+    use crate::fund_spend::{FundSpend, SIGNATURE_BYTES, canonical_rho};
+    use libcrux_ml_dsa::ml_dsa_65;
+    let network = [50; 32];
+    let mut config = Config::development(network, 0).unwrap();
+    let pair = ml_dsa_65::generate_key_pair([51; 32]);
+    config.fund_key_hashes[0] = *blake3::hash(pair.verification_key.as_ref()).as_bytes();
+    let mut state = State::new(config.clone()).unwrap();
+    let original = wallet(network, 52);
+    let mut blocks = Vec::new();
+    for height in 1..=24u32 {
+        let block = candidate(&state, 100_000 + height * 20_000);
+        state.apply(&block, &TestVerifier).unwrap();
+        blocks.push(block);
+    }
+    let mut block = candidate(&state, 1_000_000);
+    let expected = Note {
+        asset_id: SIP_ASSET_ID,
+        owner: original.address().owner(),
+        value: 12_345,
+        unlock_height: 0,
+        rho: canonical_rho(network, 0, 0),
+        rseed: [F::from_u32(54); 12],
+    };
+    let commitment = Hasher::new().note_cm(&expected);
+    let (ciphertext, _) = encrypt_payment_with_opening(
+        &original.address(),
+        &expected,
+        &EncryptionContext::new(network),
+    )
+    .unwrap();
+    let mut spend = FundSpend {
+        account: 0,
+        counter: 0,
+        amount: expected.value,
+        owner: encode_digest(&expected.owner),
+        rho: encode_digest(&expected.rho),
+        rseed: encode_digest(&expected.rseed),
+        commitment: encode_digest(&commitment),
+        ciphertext: encode_payment(&ciphertext),
+        verifying_key: *pair.verification_key.as_ref(),
+        signature: [0; SIGNATURE_BYTES],
+    };
+    spend.signature = *ml_dsa_65::sign(
+        &pair.signing_key,
+        &spend.message(network),
+        b"siworld v0",
+        [53; 32],
+    )
+    .unwrap()
+    .as_ref();
+    block.fund_spends.push(spend);
+    state.apply(&block, &TestVerifier).unwrap();
+    blocks.push(block);
+    let mut restored = wallet(network, 52);
+    restored.reconcile(config, &blocks, &TestVerifier).unwrap();
+    assert_eq!(restored.receipts().len(), 1);
+    assert!(same_note(restored.receipts()[0].note(), &expected));
+    assert_eq!(restored.receipts()[0].output_index, 8);
+    assert_eq!(
+        restored.balance_details(&state).unwrap().available[&SIP_ASSET_ID],
+        12_345
+    );
 }

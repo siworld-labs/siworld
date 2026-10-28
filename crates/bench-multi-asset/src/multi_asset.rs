@@ -1,7 +1,7 @@
 //! Native oracle for the isolated two-input, three-output multi-asset relation.
 //! Asset identifiers remain private and use sixteen range-checked u16 limbs.
 //! Integer conservation is enforced independently for every participating asset;
-//! only the all-zero SI identifier can fund the private standard/priority fee.
+//! only the all-zero SIP identifier can fund the private standard/priority fee.
 //! This encoding and its versioned hash domains do not activate a network.
 
 extern crate alloc;
@@ -183,11 +183,20 @@ impl Hasher {
         self.sponge(TAG_MINER_RHO, &[padded_block(&l)])
     }
 
+    /// Index-separated rho for the one or five economic reward notes. The existing
+    /// numeric domain is preserved; the index occupies a previously zero rate limb.
+    pub fn reward_rho(&self, height: u64, index: usize) -> Digest {
+        assert!(index < 5);
+        let mut block = padded_block(&limbs(height));
+        block[LIMBS] = F::from_usize(index);
+        self.sponge(TAG_MINER_RHO, &[block])
+    }
+
     /// Commitment of the miner package of block `height`: an ordinary note carrying the fee
     /// total plus the miner's share of the block reward.
     pub fn miner_note_cm(&self, value: u64, height: u64, owner: &Digest, rseed: &Digest) -> Digest {
         self.note_cm(&Note {
-            asset_id: SI_ASSET_ID,
+            asset_id: SIP_ASSET_ID,
             owner: *owner,
             value,
             unlock_height: height + COINBASE_MATURITY,
@@ -251,7 +260,7 @@ pub fn fee_block(fee: u64, blind: &[F; FEE_BLIND_LEN]) -> Block {
 /// A private 256-bit asset identifier, encoded injectively as sixteen u16 limbs.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AssetId(pub [u8; 32]);
-pub const SI_ASSET_ID: AssetId = AssetId([0; 32]);
+pub const SIP_ASSET_ID: AssetId = AssetId([0; 32]);
 pub const ASSET_LIMBS: usize = 16;
 impl AssetId {
     pub fn limbs(self) -> [F; ASSET_LIMBS] {
@@ -264,6 +273,8 @@ impl AssetId {
 #[derive(Clone, Debug)]
 pub struct Note {
     pub asset_id: AssetId,
+    /// Opaque authorization commitment. V1 requires owner = H_owner(nk).
+    /// Future versioned authorization policies can retain this fixed width.
     pub owner: Digest,
     pub value: u64,
     pub unlock_height: u64,
@@ -475,7 +486,7 @@ impl SlotWitness {
         if self
             .outputs
             .iter()
-            .any(|o| o.asset_id == SI_ASSET_ID && o.value != 0 && o.value < MIN_PACKAGE_DEPOSIT)
+            .any(|o| o.asset_id == SIP_ASSET_ID && o.value != 0 && o.value < MIN_PACKAGE_DEPOSIT)
         {
             return Err("below minimum deposit");
         }
@@ -488,7 +499,7 @@ impl SlotWitness {
         if self.fee != if all_dummy { 0 } else { tier } {
             return Err("fee tier");
         }
-        let mut assets = vec![SI_ASSET_ID];
+        let mut assets = vec![SIP_ASSET_ID];
         assets.extend(self.inputs.iter().map(|i| i.asset_id));
         assets.extend(self.outputs.iter().map(|o| o.asset_id));
         for asset in assets {
@@ -504,7 +515,7 @@ impl SlotWitness {
                 .filter(|o| o.asset_id == asset)
                 .map(|o| u128::from(o.value))
                 .sum::<u128>()
-                + if asset == SI_ASSET_ID {
+                + if asset == SIP_ASSET_ID {
                     u128::from(self.fee)
                 } else {
                     0
@@ -616,9 +627,33 @@ impl AccWitness {
 
     /// Native check against the 𝒜 root the block uses.
     pub fn check(&self, h: &Hasher, anchors_root: &Digest) -> Result<AccLeaf, &'static str> {
+        self.check_with_height(h, anchors_root, self.anchor_height, false)
+    }
+
+    /// Native host oracle with the same selected snapshot boundary as the AIR.
+    pub fn check_at_snapshot(
+        &self,
+        h: &Hasher,
+        anchors_root: &Digest,
+        snapshot_height: u64,
+    ) -> Result<AccLeaf, &'static str> {
+        self.check_with_height(h, anchors_root, snapshot_height, true)
+    }
+
+    fn check_with_height(
+        &self,
+        h: &Hasher,
+        anchors_root: &Digest,
+        snapshot_height: u64,
+        ordinary_outputs: bool,
+    ) -> Result<AccLeaf, &'static str> {
         if self.anchor_path.len() != ANCHOR_DEPTH {
             return Err("anchor path length");
         }
+        if ordinary_outputs && self.slot.outputs.iter().any(|note| note.unlock_height != 0) {
+            return Err("ordinary output must be unlocked");
+        }
+
         if self.anchors_root(h) != *anchors_root {
             return Err("anchor not in accumulator");
         }
@@ -626,7 +661,7 @@ impl AccWitness {
             .slot
             .inputs
             .iter()
-            .any(|i| !i.dummy && i.unlock_height > self.anchor_height)
+            .any(|i| !i.dummy && i.unlock_height > snapshot_height)
         {
             return Err("unlock height");
         }
@@ -743,7 +778,7 @@ pub fn sample_slot(seed: u64, dummy_second: bool) -> SlotWitness {
         3_000_000 + (rng.next_u64() % 1_000_000)
     };
     let mut in0 = InputWitness {
-        asset_id: SI_ASSET_ID,
+        asset_id: SIP_ASSET_ID,
         nk: rng.digest(),
         rho: rng.digest(),
         rseed: rng.digest(),
@@ -753,7 +788,7 @@ pub fn sample_slot(seed: u64, dummy_second: bool) -> SlotWitness {
         path: Vec::new(),
     };
     let mut in1 = InputWitness {
-        asset_id: SI_ASSET_ID,
+        asset_id: SIP_ASSET_ID,
         nk: rng.digest(),
         rho: rng.digest(),
         rseed: rng.digest(),
@@ -783,21 +818,21 @@ pub fn sample_slot(seed: u64, dummy_second: bool) -> SlotWitness {
     let o1 = v0 + v1 - fee - o0;
     let outputs = [
         OutputWitness {
-            asset_id: SI_ASSET_ID,
+            asset_id: SIP_ASSET_ID,
             owner: rng.digest(),
             value: o0,
             unlock_height: 0,
             rseed: rng.digest(),
         },
         OutputWitness {
-            asset_id: SI_ASSET_ID,
+            asset_id: SIP_ASSET_ID,
             owner: rng.digest(),
             value: o1,
             unlock_height: 0,
             rseed: rng.digest(),
         },
         OutputWitness {
-            asset_id: SI_ASSET_ID,
+            asset_id: SIP_ASSET_ID,
             owner: rng.digest(),
             value: 0,
             unlock_height: 0,
@@ -836,7 +871,7 @@ pub fn sample_priority_slot(seed: u64) -> SlotWitness {
     w
 }
 
-/// Fixed-shape SI witness and depth-12 anchor path for isolated measurements.
+/// Fixed-shape SIP witness and depth-12 anchor path for isolated measurements.
 pub fn sample_witness(seed: u64) -> AccWitness {
     acc_witnesses(
         vec![sample_slot(seed, false)],
@@ -857,7 +892,7 @@ pub fn sample_empty_witness(seed: u64) -> AccWitness {
     .0
     .remove(0)
 }
-/// Token spend plus SI fee funding, with token recipient/change and SI change.
+/// Token spend plus SIP fee funding, with token recipient/change and SIP change.
 pub fn sample_token_witness(seed: u64) -> AccWitness {
     let mut slot = sample_slot(seed, false);
     let token = AssetId([7; 32]);

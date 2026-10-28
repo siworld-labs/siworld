@@ -27,6 +27,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 MEMORY_MAX = 5368709120
 PROOF_MAX = 524288
+ECONOMICS_PROOF_MAX = 655_360
 GENERATION_MAX_NS = 2_000_000_000
 SUITE = 'KoalaBear-D8-Poseidon2-W24-digest12'
 GRID = tuple((b, g) for b in range(4, 9) for g in (16, 20, 24))
@@ -372,6 +373,74 @@ def choose_wallet_fast(profile_results):
         row['parameters']['query_pow_bits'])) if eligible else None
 
 
+def choose_economics_candidate(profile_results):
+    """Apply the revised body limit to every valid four-worker trial."""
+    eligible = []
+    for row in profile_results:
+        trials = row['trials']
+        summary = medians(trials)
+        if (summary.get('complete') is True
+                and all(trial.get('workers') == 4 for trial in trials)
+                and summary['generation_max_ns'] <= GENERATION_MAX_NS
+                and summary['proof_bytes_max'] <= ECONOMICS_PROOF_MAX):
+            eligible.append((row, summary))
+    return min(eligible, key=lambda entry: (entry[1]['proof_bytes_max'],
+        entry[1]['generation_median_ns'], entry[0]['parameters']['log_blowup'],
+        entry[0]['parameters']['query_pow_bits']))[0] if eligible else None
+
+
+def economics_candidate_measurements(grids, trial):
+    """Measure pending revised relations without changing the prior wallet scan."""
+    profile_results = []
+    for coordinate in WALLET_FAST_GRID:
+        profile = grids['transaction'][coordinate]
+        if profile is None:
+            profile_results.append({'coordinate': {'log_blowup': coordinate[0],
+                'grinding': coordinate[1]}, 'parameters': None, 'security': None,
+                'trials': [], 'summary': {'complete': False, 'trial_count': 0},
+                'reason': 'no-security-passing-profile'})
+            continue
+        rows = [trial('transaction', profile, 4, index) for index in range(1, 4)]
+        profile_results.append({'coordinate': {'log_blowup': coordinate[0],
+            'grinding': coordinate[1]}, 'parameters': profile['parameters'],
+            'security': profile['security'], 'trials': rows, 'summary': medians(rows)})
+    selected = choose_economics_candidate(profile_results)
+    repeats = {}
+    if selected is None:
+        repeats['transaction'] = {'measured': False, 'reason': 'no-qualifying-profile'}
+    else:
+        rows = [trial('transaction', selected, 1, index) for index in range(1, 4)]
+        repeats['transaction'] = {'measured': True, 'parameters': selected['parameters'],
+            'security': selected['security'], 'workers': {
+                '4': {'trials': selected['trials'], 'summary': selected['summary'],
+                      'source': 'selected-grid-trials'},
+                '1': {'trials': rows, 'summary': medians(rows)}}}
+    for kind in ('settlement', 'issuance'):
+        profile = grids[kind][(8, 20)]
+        if profile is None:
+            repeats[kind] = {'measured': False, 'reason': 'no-security-passing-profile'}
+            continue
+        groups = {}
+        for workers in (4, 1):
+            rows = [trial(kind, profile, workers, index) for index in range(1, 4)]
+            groups[str(workers)] = {'trials': rows, 'summary': medians(rows)}
+        repeats[kind] = {'measured': True, 'parameters': profile['parameters'],
+            'security': profile['security'], 'workers': groups}
+    return {'profile_results': profile_results, 'candidate_selected': selected is not None,
+        'candidate_parameters': selected['parameters'] if selected else None,
+        'candidate_security': selected['security'] if selected else None,
+        'candidate_summary': selected['summary'] if selected else None,
+        'candidate_rejected': selected is None, 'three_trial_target_met': selected is not None,
+        'measurement_grid_complete': all(row['summary'].get('complete') for row in profile_results),
+        'selected_transaction_single_worker_complete': selected is not None
+            and repeats['transaction']['workers']['1']['summary'].get('complete') is True,
+        'related_relation_measurements_complete': all(repeats[kind]['measured']
+            and all(group['summary'].get('complete') is True
+                    for group in repeats[kind]['workers'].values())
+            for kind in ('settlement', 'issuance')),
+        'repeated_measurements': repeats}
+
+
 def collect(args):
     if args.output.exists():
         raise ValueError('Refusing to overwrite diagnostic evidence')
@@ -382,6 +451,8 @@ def collect(args):
     hardware_profile = getattr(args, 'hardware_profile', 'diagnostic')
     if scan_mode == 'wallet-fast' and hardware_profile != 'epyc7763-baseline':
         raise ValueError('Wallet-fast scan requires the EPYC 7763 baseline profile')
+    if scan_mode == 'economics-candidate' and hardware_profile != 'epyc7763-baseline':
+        raise ValueError('Economic-relation scan requires the EPYC 7763 baseline profile')
     hardware_record = qualify_and_record(args.output, hardware_profile)
     if hardware_record is None:
         return 1
@@ -469,6 +540,36 @@ def collect(args):
             write_json(args.output / 'summary.json', summary)
             return 0 if scopes_valid and summary['measurement_grid_complete'] else 1
 
+        if scan_mode == 'economics-candidate':
+            measured = economics_candidate_measurements(grids, trial)
+            complete = (scopes_valid and measured['measurement_grid_complete']
+                and measured['selected_transaction_single_worker_complete']
+                and measured['related_relation_measurements_complete'])
+            summary = {'schema': 3, 'status': 'candidate-pending-review',
+                'suite': SUITE, 'source_commit': commit,
+                'diagnostic_binary': 'native-scan', 'local_guard_alias': 'v1-transaction-scan',
+                'launcher_sha256': sha(executable), **identity,
+                'hardware': hardware_record, 'hardware_profile': hardware_profile,
+                'memory_max_bytes': MEMORY_MAX, 'memory_swap_max_bytes': 0,
+                'memory_boundary_is_miner_requirement': False,
+                'scan_mode': scan_mode, 'trial_count_per_profile': 3,
+                'grid_rayon_workers': 4, 'grid_hiding_workers': 2,
+                'single_worker_hiding_workers': 1,
+                'selection_scope': 'all three four-worker generation trials at or below two seconds and 655360 bytes; smallest maximum measured proof body',
+                'proof_body_limit_bytes': ECONOMICS_PROOF_MAX,
+                'generation_limit_ns': GENERATION_MAX_NS,
+                'legacy_524288_byte_cap_applied': False,
+                'related_relation_coordinate': {'log_blowup': 8, 'grinding': 20},
+                **measured, 'scope_startup_complete': scopes_valid,
+                'all_measurements_complete': complete,
+                'proof_size_scope': 'observed serialized proof bodies; no deterministic maximum-length claim',
+                'memory_scope': 'whole fresh setup/prove/verify process tree plus recorder',
+                'verification_only_process': False,
+                'verification_measurement': 'single-worker verifier timing inside a one-worker setup/prove/verify process; memory includes all three phases; not an independent verifier memory measurement',
+                'cryptographic_approval': False, 'network_activation': False, 'acceptance': False}
+            write_json(args.output / 'summary.json', summary)
+            return 0 if complete else 1
+
         coordinates = GRID if args.grid_mode == 'full' else tuple((8, g) for g in (16, 20, 24))
         grid = []
         for coordinate in coordinates:
@@ -537,7 +638,7 @@ def main():
     parser.add_argument('--screen', type=Path)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--private-parent', type=Path)
-    parser.add_argument('--scan-mode', choices=('legacy', 'wallet-fast'), default='legacy')
+    parser.add_argument('--scan-mode', choices=('legacy', 'wallet-fast', 'economics-candidate'), default='legacy')
     parser.add_argument('--hardware-profile', choices=HARDWARE_PROFILES, default='diagnostic')
     parser.add_argument('--qualify-only', action='store_true')
     parser.add_argument('--grid-mode', choices=('full', 'b8-only'), default='full')

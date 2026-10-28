@@ -1,7 +1,9 @@
 //! Native V1 engineering chain and network interfaces, separate from the retained node.
 #![forbid(unsafe_code)]
 
+pub mod fund_spend;
 pub mod local;
+pub mod mining;
 pub mod pool;
 pub mod producer;
 pub mod proof_codec;

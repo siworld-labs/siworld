@@ -9,7 +9,7 @@ use siworld_circuits::{
     AggregateError, ContainerPublic, FeeOpening, Leaf, ProofSystem, ProveError, RelationContext,
     SlotProof, SlotWitness,
 };
-use siworld_core::params::ATOMS_PER_SI;
+use siworld_core::params::ATOMS_PER_SIP;
 use siworld_core::{ContainerProof, Digest, Height, Note, Slot};
 use siworld_crypto::{SecretSeed, SpendKey};
 use siworld_node::genesis::{hex_bytes, AllocationFile, Genesis, GenesisFile, ProofsFile};
@@ -299,7 +299,7 @@ fn measure() -> Result<(), String> {
     drop(snapshot_state);
     let wallet = Instant::now();
     miner
-        .pay(&receiver.address(), ATOMS_PER_SI, false)
+        .pay(&receiver.address(), ATOMS_PER_SIP, false)
         .map_err(|e| e.to_string())?;
     let wallet_ms = milliseconds(wallet.elapsed());
     let peer_p2p = socket()?;

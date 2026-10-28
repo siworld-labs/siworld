@@ -9,6 +9,7 @@ use native::multi_asset::{F, Hasher};
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
 
 pub use native::codec::{FORMAT_VERSION, SUITE_ID};
+pub use siworld_core::v1_economics::RewardMode;
 
 pub type Hash = [u8; 32];
 pub type DigestBytes = [u8; 48];
@@ -23,11 +24,17 @@ pub const REWARD_CIPHERTEXT_BYTES: usize = 1313;
 pub const SIDECAR_BYTES: usize = 78;
 pub const TX_PREFIX_BYTES: usize = 4 + 2 + 27 + 32 + 40 + PUBLIC_BYTES + 48 + 4;
 pub const MAX_ENVELOPE_BYTES: usize = TX_PREFIX_BYTES + MAX_TX_PROOF;
-pub const BLOCK_VERSION: u16 = 2;
-pub const BLOCK_HEADER_BYTES: usize = 4 + 2 + 27 + 32 + 8 + 32 + 8 + 32 + 8 + 2;
-pub const BLOCK_FIXED_BYTES: usize = BLOCK_HEADER_BYTES + 48 + REWARD_CIPHERTEXT_BYTES + 4;
-pub const MAX_BLOCK_BYTES: usize =
-    BLOCK_FIXED_BYTES + MAX_SLOTS * (4 + MAX_ENVELOPE_BYTES) + MAX_SETTLEMENT_PROOF;
+pub const BLOCK_VERSION: u16 = 3;
+pub const BLOCK_HEADER_BYTES: usize = 4 + 2 + 27 + 32 + 8 + 32 + 8 + 32 + 8 + 2 + 1 + 1;
+pub const MAX_FUND_SPENDS: usize = 2;
+pub const REWARD_RECORD_BYTES: usize = 48 + REWARD_CIPHERTEXT_BYTES;
+pub const MAX_REWARDS: usize = 5;
+pub const BLOCK_FIXED_BYTES: usize = BLOCK_HEADER_BYTES + REWARD_RECORD_BYTES + 4;
+pub const MAX_BLOCK_BYTES: usize = BLOCK_FIXED_BYTES
+    + (MAX_REWARDS - 1) * REWARD_RECORD_BYTES
+    + MAX_FUND_SPENDS * crate::fund_spend::ENCODED_BYTES
+    + MAX_SLOTS * (4 + MAX_ENVELOPE_BYTES)
+    + MAX_SETTLEMENT_PROOF;
 
 const TX_MAGIC: &[u8; 4] = b"SWTX";
 const BLOCK_MAGIC: &[u8; 4] = b"SWNB";
@@ -196,7 +203,9 @@ pub struct Block {
     pub target: Hash,
     pub nonce: u64,
     pub transactions: Vec<Transaction>,
-    pub reward: RewardRecord,
+    pub reward_mode: RewardMode,
+    pub rewards: Vec<RewardRecord>,
+    pub fund_spends: Vec<crate::fund_spend::FundSpend>,
     pub settlement_proof: Vec<u8>,
 }
 
@@ -211,8 +220,8 @@ impl Block {
             MAX_SETTLEMENT_PROOF,
             "settlement",
         )?;
-        let _ = decode_digest(&self.reward.commitment)
-            .map_err(|_| "noncanonical reward commitment".to_owned())?;
+        validate_rewards(self.reward_mode, &self.rewards)?;
+        validate_fund_spends(&self.fund_spends)?;
         let mut previous = None;
         for tx in &self.transactions {
             tx.record.validate()?;
@@ -226,8 +235,21 @@ impl Block {
     }
 
     pub fn encoded_len(&self) -> Result<usize, String> {
-        let mut length = BLOCK_FIXED_BYTES
-            .checked_add(self.settlement_proof.len())
+        let mut length = BLOCK_HEADER_BYTES
+            .checked_add(
+                self.rewards
+                    .len()
+                    .checked_mul(REWARD_RECORD_BYTES)
+                    .ok_or("reward byte length overflow")?,
+            )
+            .and_then(|n| {
+                self.fund_spends
+                    .len()
+                    .checked_mul(crate::fund_spend::ENCODED_BYTES)
+                    .and_then(|size| n.checked_add(size))
+            })
+            .and_then(|n| n.checked_add(4))
+            .and_then(|n| n.checked_add(self.settlement_proof.len()))
             .ok_or("block byte length overflow")?;
         for tx in &self.transactions {
             length = length
@@ -291,6 +313,12 @@ impl Block {
         let target = r.array().map_err(invalid_stream)?;
         let nonce = r.u64().map_err(invalid_stream)?;
         let count = usize::from(r.u16().map_err(invalid_stream)?);
+        let reward_mode = RewardMode::from_byte(r.array::<1>().map_err(invalid_stream)?[0])
+            .map_err(invalid_stream)?;
+        let fund_count = usize::from(r.array::<1>().map_err(invalid_stream)?[0]);
+        if fund_count > MAX_FUND_SPENDS {
+            return Err(invalid_stream("fund expenditure count limit"));
+        }
         validate_slots(count).map_err(invalid_stream)?;
         if timestamp == 0
             || target == [0; 32]
@@ -315,12 +343,22 @@ impl Block {
             check_order(&mut previous, tx.record.statement_id(network)).map_err(invalid_stream)?;
             transactions.push(tx);
         }
-        let mut reward = RewardRecord {
-            commitment: [0; 48],
-            ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
-        };
-        input.read_exact(&mut reward.commitment)?;
-        input.read_exact(&mut reward.ciphertext)?;
+        let mut rewards = Vec::with_capacity(reward_count(reward_mode));
+        for _ in 0..reward_count(reward_mode) {
+            let mut reward = RewardRecord {
+                commitment: [0; 48],
+                ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
+            };
+            input.read_exact(&mut reward.commitment)?;
+            input.read_exact(&mut reward.ciphertext)?;
+            rewards.push(reward);
+        }
+        let mut fund_spends = Vec::with_capacity(fund_count);
+        for _ in 0..fund_count {
+            let mut bytes = [0; crate::fund_spend::ENCODED_BYTES];
+            input.read_exact(&mut bytes)?;
+            fund_spends.push(crate::fund_spend::FundSpend::decode(&bytes).map_err(invalid_stream)?);
+        }
         let mut size = [0; 4];
         input.read_exact(&mut size)?;
         let size = u32::from_le_bytes(size) as usize;
@@ -338,7 +376,9 @@ impl Block {
             target,
             nonce,
             transactions,
-            reward,
+            reward_mode,
+            rewards,
+            fund_spends,
             settlement_proof,
         };
         block.validate_shape().map_err(invalid_stream)?;
@@ -358,12 +398,19 @@ impl Block {
             emit(&self.nonce.to_le_bytes());
         }
         emit(&(self.transactions.len() as u16).to_le_bytes());
+        emit(&[self.reward_mode.to_byte()]);
+        emit(&[self.fund_spends.len() as u8]);
         for tx in &self.transactions {
             emit(&((TX_PREFIX_BYTES + tx.proof.len()) as u32).to_le_bytes());
             emit_envelope(tx, &self.network, emit);
         }
-        emit(&self.reward.commitment);
-        emit(&self.reward.ciphertext);
+        for reward in &self.rewards {
+            emit(&reward.commitment);
+            emit(&reward.ciphertext);
+        }
+        for spend in &self.fund_spends {
+            emit(&spend.encode());
+        }
         emit(&(self.settlement_proof.len() as u32).to_le_bytes());
         emit(&self.settlement_proof);
     }
@@ -395,6 +442,12 @@ impl Block {
         }
         let nonce = reader.u64()?;
         let count = usize::from(reader.u16()?);
+        let reward_mode =
+            RewardMode::from_byte(reader.array::<1>()?[0]).map_err(|e| e.to_string())?;
+        let fund_count = usize::from(reader.array::<1>()?[0]);
+        if fund_count > MAX_FUND_SPENDS {
+            return Err("fund expenditure count limit".into());
+        }
         validate_slots(count)?;
         // This lower bound and every declared length are checked before any
         // transaction vector or proof body is allocated. The first pass also
@@ -409,12 +462,21 @@ impl Block {
             let (record, _) = borrowed_envelope(reader.transaction()?, network)?;
             check_order(&mut previous, record.statement_id(network))?;
         }
-        let reward = RewardRecord {
-            commitment: reader.array()?,
-            ciphertext: reader.array()?,
-        };
-        let _ = decode_digest(&reward.commitment)
-            .map_err(|_| "noncanonical reward commitment".to_owned())?;
+        let mut rewards = Vec::with_capacity(reward_count(reward_mode));
+        for _ in 0..reward_count(reward_mode) {
+            rewards.push(RewardRecord {
+                commitment: reader.array()?,
+                ciphertext: reader.array()?,
+            });
+        }
+        validate_rewards(reward_mode, &rewards)?;
+        let mut fund_spends = Vec::with_capacity(fund_count);
+        for _ in 0..fund_count {
+            fund_spends.push(crate::fund_spend::FundSpend::decode(
+                reader.take(crate::fund_spend::ENCODED_BYTES)?,
+            )?);
+        }
+        validate_fund_spends(&fund_spends)?;
         let settlement_len = reader.u32()? as usize;
         validate_proof_len(settlement_len, MAX_SETTLEMENT_PROOF, "settlement")?;
         let settlement = reader.take(settlement_len)?;
@@ -440,7 +502,9 @@ impl Block {
             target,
             nonce,
             transactions,
-            reward,
+            reward_mode,
+            rewards,
+            fund_spends,
             settlement_proof: settlement.to_vec(),
         })
     }
@@ -630,6 +694,40 @@ impl<'a> Reader<'a> {
     }
 }
 
+pub fn validate_fund_spends(spends: &[crate::fund_spend::FundSpend]) -> Result<(), String> {
+    if spends.len() > MAX_FUND_SPENDS
+        || spends.iter().any(|s| s.account > 1)
+        || spends
+            .windows(2)
+            .any(|pair| pair[0].account >= pair[1].account)
+    {
+        return Err("noncanonical fund expenditure list".into());
+    }
+    for spend in spends {
+        crate::fund_spend::FundSpend::decode(&spend.encode())?;
+    }
+    Ok(())
+}
+pub const fn reward_count(mode: RewardMode) -> usize {
+    match mode {
+        RewardMode::Voyager => 1,
+        RewardMode::Holder => 5,
+    }
+}
+pub fn validate_rewards(mode: RewardMode, rewards: &[RewardRecord]) -> Result<(), String> {
+    if rewards.len() != reward_count(mode) {
+        return Err("reward count does not match mode".into());
+    }
+    let mut commitments = std::collections::BTreeSet::new();
+    for reward in rewards {
+        decode_digest(&reward.commitment).map_err(|_| "noncanonical reward commitment")?;
+        if !commitments.insert(reward.commitment) {
+            return Err("duplicate reward commitment".into());
+        }
+    }
+    Ok(())
+}
+
 fn invalid_stream(message: impl ToString) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, message.to_string())
 }
@@ -675,10 +773,12 @@ mod tests {
             target: [0xff; 32],
             nonce: 21,
             transactions,
-            reward: RewardRecord {
+            reward_mode: RewardMode::Voyager,
+            rewards: vec![RewardRecord {
                 commitment: [0; 48],
                 ciphertext: [4; REWARD_CIPHERTEXT_BYTES],
-            },
+            }],
+            fund_spends: Vec::new(),
             settlement_proof: vec![4, 5, 6],
         }
     }
@@ -877,7 +977,8 @@ mod tests {
         assert!(Block::decode(&bytes, &[8; 32]).is_err());
         for count in [0u16, 63, 65, 577, u16::MAX] {
             let mut bad = bytes.clone();
-            bad[BLOCK_HEADER_BYTES - 2..BLOCK_HEADER_BYTES].copy_from_slice(&count.to_le_bytes());
+            bad[BLOCK_HEADER_BYTES - 4..BLOCK_HEADER_BYTES - 2]
+                .copy_from_slice(&count.to_le_bytes());
             assert!(Block::decode(&bad, &[9; 32]).is_err());
         }
         let mut bad = bytes.clone();
@@ -1005,8 +1106,8 @@ mod tests {
             match change {
                 0 => changed.transactions[0].proof[0] ^= 1,
                 1 => changed.settlement_proof[0] ^= 1,
-                2 => changed.reward.ciphertext[0] ^= 1,
-                3 => changed.reward.commitment[0] ^= 1,
+                2 => changed.rewards[0].ciphertext[0] ^= 1,
+                3 => changed.rewards[0].commitment[0] ^= 1,
                 4 => changed.nonce += 1,
                 _ => changed.parent[0] ^= 1,
             }
@@ -1088,7 +1189,7 @@ mod tests {
                 1 => changed.target[31] ^= 1,
                 2 => changed.parent[0] ^= 1,
                 3 => changed.transactions[0].proof[0] ^= 1,
-                4 => changed.reward.ciphertext[0] ^= 1,
+                4 => changed.rewards[0].ciphertext[0] ^= 1,
                 _ => changed.settlement_proof[0] ^= 1,
             }
             assert_ne!(changed.pow_seed().unwrap(), seed, "binding {kind}");
@@ -1104,5 +1205,39 @@ mod tests {
             invalid.timestamp = 0;
             assert!(invalid.encode().is_err());
         }
+    }
+    #[test]
+    fn reward_mode_and_all_five_records_round_trip_and_reject_wrong_shapes() {
+        let mut holder = block();
+        holder.reward_mode = RewardMode::Holder;
+        holder.rewards = (0..5)
+            .map(|index| {
+                let mut commitment = [0; 48];
+                commitment[..4].copy_from_slice(&(index as u32 + 1).to_le_bytes());
+                RewardRecord {
+                    commitment,
+                    ciphertext: [index; REWARD_CIPHERTEXT_BYTES],
+                }
+            })
+            .collect();
+        let encoded = holder.encode().unwrap();
+        assert_eq!(Block::decode(&encoded, &holder.network).unwrap(), holder);
+        let mut stream = std::io::Cursor::new(&encoded);
+        assert_eq!(
+            Block::read_from(&mut stream, encoded.len(), &holder.network).unwrap(),
+            holder
+        );
+        let mut unknown = encoded.clone();
+        unknown[BLOCK_HEADER_BYTES - 2] = 2;
+        assert!(Block::decode(&unknown, &holder.network).is_err());
+        let mut truncated = holder.clone();
+        truncated.rewards.pop();
+        assert!(truncated.encode().is_err());
+        let mut duplicate = holder.clone();
+        duplicate.rewards[4] = duplicate.rewards[0].clone();
+        assert!(duplicate.encode().is_err());
+        let mut swapped_mode = holder;
+        swapped_mode.reward_mode = RewardMode::Voyager;
+        assert!(swapped_mode.encode().is_err());
     }
 }

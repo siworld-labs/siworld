@@ -134,6 +134,7 @@ impl<V: BlockVerifier> Node<V> {
         prover: &NativeProver,
         slots: usize,
         timestamp: u64,
+        settings: &producer::MiningSettings,
     ) -> Result<ProducedBlock, Error> {
         if !(MIN_SLOTS..=MAX_SLOTS).contains(&slots) || !slots.is_multiple_of(GROUP) {
             return Err(invalid());
@@ -147,6 +148,7 @@ impl<V: BlockVerifier> Node<V> {
             prover,
             values,
             timestamp,
+            settings,
         )?)
     }
     fn session<S>(&self, session: &Session<S>) -> Result<(), Error>

@@ -1,5 +1,10 @@
 # Memory Measurement Budgets
 
+The [monetary revision](v1-economics.md) reopens affected proof qualification.
+Earlier source-bound reports, keys and numeric profiles are baseline evidence
+only; revised lock/reward relations require new actual-AIR screening and
+resource measurements. Separate optimization work does not waive this gate.
+
 Status: regression acceptance schema and checker. A declared ceiling does not
 implement an allocation bound or establish a limit on historical state growth.
 

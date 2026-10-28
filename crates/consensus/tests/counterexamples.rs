@@ -13,7 +13,7 @@ use siworld_core::{Block, ContainerProof, Digest, Header, Nullifier};
 use siworld_crypto::SpendKey;
 use siworld_state::{ChainState, RecentRoots};
 
-const SI: u64 = 100_000_000;
+const SIP: u64 = 100_000_000;
 
 fn alice() -> SpendKey {
     key(1)
@@ -23,10 +23,13 @@ fn bob() -> SpendKey {
     key(2)
 }
 
-/// Three 1 SI packages for alice; the second unlocks only at height 2.
+/// Three 1 SIP packages for alice; the second unlocks only at height 2.
 fn funded() -> (ChainParams, ChainState, Vec<Owned>) {
     let p = params();
-    let (state, owned) = genesis(&p, &[(alice(), SI, 0), (alice(), SI, 2), (alice(), SI, 0)]);
+    let (state, owned) = genesis(
+        &p,
+        &[(alice(), SIP, 0), (alice(), SIP, 2), (alice(), SIP, 0)],
+    );
     (p, state, owned)
 }
 
@@ -43,7 +46,7 @@ fn spend_one(
         p,
         [real(state, o), dummy(tag)],
         &bob(),
-        [SI / 2, SI - SI / 2 - fee],
+        [SIP / 2, SIP - SIP / 2 - fee],
         fee,
         tag,
     )
@@ -161,7 +164,7 @@ fn ce1_failed_block_leaves_state_unchanged() {
         &p,
         [real(&state, &owned[0]), dummy(11)],
         &bob(),
-        [SI - fee_now(&state), 0],
+        [SIP - fee_now(&state), 0],
         fee_now(&state),
         11,
     )
@@ -296,7 +299,7 @@ fn ce2_tampered_body_is_rejected() {
 fn ce3_second_input_condition_is_checked() {
     let (p, state, owned) = funded();
     let fee = fee_now(&state);
-    let outs = [SI, SI - fee];
+    let outs = [SIP, SIP - fee];
     let err = pay(
         &state,
         &p,
@@ -337,7 +340,7 @@ fn ce3_condition_passes_once_anchor_reaches_unlock_height() {
         &p,
         [real(&s, &owned[0]), real(&s, &owned[1])],
         &bob(),
-        [SI, SI - fee],
+        [SIP, SIP - fee],
         fee,
         10,
     )
@@ -351,7 +354,7 @@ fn ce3_second_input_membership_is_checked() {
     let (p, state, owned) = funded();
     let fee = fee_now(&state);
     // A package not in the tree, impersonated using the path of position 0.
-    let fake = note_for(&alice(), SI, 0, 4242);
+    let fake = note_for(&alice(), SIP, 0, 4242);
     let forged = InputWitness::Real {
         note: fake,
         sk: alice(),
@@ -362,7 +365,7 @@ fn ce3_second_input_membership_is_checked() {
         &p,
         [real(&state, &owned[0]), forged],
         &bob(),
-        [SI, SI - fee],
+        [SIP, SIP - fee],
         fee,
         10,
     )
@@ -381,7 +384,7 @@ fn ce3_second_input_spend_key_is_checked() {
         &p,
         [real(&state, &owned[0]), real(&state, &stolen)],
         &bob(),
-        [SI, SI - fee],
+        [SIP, SIP - fee],
         fee,
         10,
     )
@@ -405,7 +408,7 @@ fn ce3_second_input_nullifier_is_checked_against_spent_set() {
         &p,
         [real(&s, &owned[0]), real(&s, &owned[2])],
         &bob(),
-        [SI, SI - fee],
+        [SIP, SIP - fee],
         fee,
         11,
     )

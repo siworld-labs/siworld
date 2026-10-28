@@ -1,12 +1,12 @@
-//! Text representation of SI amounts. Integer arithmetic only: 1 SI = 10^8 atom.
+//! Text representation of SIP amounts. Integer arithmetic only: 1 SIP = 10^8 atom.
 
-use siworld_core::params::ATOMS_PER_SI;
+use siworld_core::params::ATOMS_PER_SIP;
 
 const DECIMALS: usize = 8;
 
-/// Parses decimal SI amounts such as `"12"`, `"0.5"`, or `"1.00000001"` into atoms.
+/// Parses decimal SIP amounts such as `"12"`, `"0.5"`, or `"1.00000001"` into atoms.
 /// Returns `None` for more than 8 decimal places, an empty string, or overflow.
-pub fn parse_si(s: &str) -> Option<u64> {
+pub fn parse_sip(s: &str) -> Option<u64> {
     let (int, frac) = match s.split_once('.') {
         Some((i, f)) => (i, f),
         None => (s, ""),
@@ -26,13 +26,13 @@ pub fn parse_si(s: &str) -> Option<u64> {
     for _ in frac.len()..DECIMALS {
         frac_atoms *= 10;
     }
-    whole.checked_mul(ATOMS_PER_SI)?.checked_add(frac_atoms)
+    whole.checked_mul(ATOMS_PER_SIP)?.checked_add(frac_atoms)
 }
 
 /// atom → `"<integer>.<up to 8 decimals>"`, with trailing zeros removed.
-pub fn format_si(atoms: u64) -> String {
-    let whole = atoms / ATOMS_PER_SI;
-    let frac = atoms % ATOMS_PER_SI;
+pub fn format_sip(atoms: u64) -> String {
+    let whole = atoms / ATOMS_PER_SIP;
+    let frac = atoms % ATOMS_PER_SIP;
     if frac == 0 {
         return whole.to_string();
     }
@@ -45,26 +45,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_decimal_si() {
-        assert_eq!(parse_si("1"), Some(ATOMS_PER_SI));
-        assert_eq!(parse_si("0.5"), Some(ATOMS_PER_SI / 2));
-        assert_eq!(parse_si(".25"), Some(ATOMS_PER_SI / 4));
-        assert_eq!(parse_si("1.00000001"), Some(ATOMS_PER_SI + 1));
-        assert_eq!(parse_si("3."), Some(3 * ATOMS_PER_SI));
+    fn parses_decimal_sip() {
+        assert_eq!(parse_sip("1"), Some(ATOMS_PER_SIP));
+        assert_eq!(parse_sip("0.5"), Some(ATOMS_PER_SIP / 2));
+        assert_eq!(parse_sip(".25"), Some(ATOMS_PER_SIP / 4));
+        assert_eq!(parse_sip("1.00000001"), Some(ATOMS_PER_SIP + 1));
+        assert_eq!(parse_sip("3."), Some(3 * ATOMS_PER_SIP));
     }
 
     #[test]
     fn rejects_bad_amounts() {
         for s in ["", ".", "1.000000001", "-1", "1e3", "abc", "184467440738"] {
-            assert_eq!(parse_si(s), None, "{s}");
+            assert_eq!(parse_sip(s), None, "{s}");
         }
     }
 
     #[test]
     fn formats_round_trip() {
-        for a in [0, 1, 10_000, ATOMS_PER_SI, ATOMS_PER_SI * 7 / 4, u64::MAX] {
-            assert_eq!(parse_si(&format_si(a)), Some(a));
+        for a in [0, 1, 10_000, ATOMS_PER_SIP, ATOMS_PER_SIP * 7 / 4, u64::MAX] {
+            assert_eq!(parse_sip(&format_sip(a)), Some(a));
         }
-        assert_eq!(format_si(ATOMS_PER_SI * 3 / 2), "1.5");
+        assert_eq!(format_sip(ATOMS_PER_SIP * 3 / 2), "1.5");
     }
 }

@@ -338,7 +338,7 @@ mod tests {
                 1 => c.approvals.push(c.approvals[0].clone()),
                 2 => c.approvals[0].sequence = 0,
                 3 => c.approvals[0].sequence = bad.sequence + 1,
-                4 => c.approvals[0].grant.direct_si = "0.00001".into(),
+                4 => c.approvals[0].grant.direct_sip = "0.00001".into(),
                 5 => c.approvals[0].grant.recipients.clear(),
                 6 => c.approvals[0].grant.approval_id = "AA".repeat(32),
                 7 => c.legacy_ids.push("ff".repeat(32)),
@@ -348,7 +348,7 @@ mod tests {
                     bad.records[0].approvals.push(id);
                 }
                 10 => bad.records[0].approvals[0] = "ff".repeat(32),
-                11 => c.policy.total_si = "0.00001".into(),
+                11 => c.policy.total_sip = "0.00001".into(),
                 12 => {
                     bad.version = 1;
                     bad.custody = None;
@@ -365,7 +365,7 @@ mod tests {
         truncated.custody.as_mut().unwrap().approvals.clear();
         assert!(!preserves(&truncated, &data));
         let mut raised = data.clone();
-        raised.custody.as_mut().unwrap().policy.total_si = "3000000000".into();
+        raised.custody.as_mut().unwrap().policy.total_sip = "3000000000".into();
         assert!(!preserves(&raised, &data));
         let mut lowered = data.clone();
         lowered.version = 1;
@@ -399,7 +399,7 @@ mod tests {
         );
         grant.approval_id = "fe".repeat(32);
         let mut insufficient = grant.clone();
-        insufficient.budget.total_si = "0.00005".into();
+        insufficient.budget.total_sip = "0.00005".into();
         assert!(n.unlock_fund(PASSWORD, &insufficient).is_err());
         assert!(n.fund_status().locked);
         assert!(n.fund_approvals(0, 16).unwrap().policy.is_none());

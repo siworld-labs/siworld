@@ -17,7 +17,7 @@ use native::encryption::{
     SenderChangeSecret, decrypt_change_at, encrypt_change_at, encrypt_payment_with_opening,
 };
 use native::multi_asset::{
-    AccWitness, AssetId, Digest, F, Hasher, InputWitness, Note, OutputWitness, SI_ASSET_ID,
+    AccWitness, AssetId, Digest, F, Hasher, InputWitness, Note, OutputWitness, SIP_ASSET_ID,
     SlotWitness, TREE_DEPTH,
 };
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
@@ -31,6 +31,7 @@ pub struct WalletKeys {
     nullifier_key: Zeroizing<DigestBytes>,
     recipient: RecoverableViewKey,
     change: SenderChangeSecret,
+    automatic_selection_key: Zeroizing<[u8; 32]>,
 }
 impl WalletKeys {
     /// Consume the seed buffer; the caller must erase any preexisting source
@@ -63,8 +64,12 @@ impl WalletKeys {
                 .map_err(|_| "wallet view-key derivation failed")?;
         let mut change_seed = Zeroizing::new([0; 32]);
         derive("siworld native wallet sender change key v1").fill(change_seed.as_mut());
+        let mut automatic_selection_key = Zeroizing::new([0; 32]);
+        derive("siworld native wallet automatic note scheduling v1")
+            .fill(automatic_selection_key.as_mut());
         Ok(Self {
             network,
+            automatic_selection_key,
             nullifier_key: Zeroizing::new(encode_digest(&nullifier_key)),
             recipient,
             change: SenderChangeSecret::new(*change_seed),
@@ -134,6 +139,9 @@ pub struct OwnedNote {
     pub block_id: Hash,
     pub output_index: u8,
     pub spent: bool,
+    // Canonical timestamp when this note first becomes consensus-spendable.
+    // This remains private and is reconstructed from canonical history.
+    eligible_timestamp: Option<u64>,
     note: Note,
 }
 impl OwnedNote {
@@ -150,8 +158,27 @@ impl Drop for OwnedNote {
         self.note.unlock_height.zeroize();
         self.note.rho.fill(F::ZERO);
         self.note.rseed.fill(F::ZERO);
+        self.eligible_timestamp.zeroize();
     }
 }
+
+/// Private wallet-display data. Dates estimate target-time progress only;
+/// consensus spendability is determined exclusively by accepted block height.
+pub struct LockedTranche {
+    pub asset: AssetId,
+    pub amount: u128,
+    pub unlock_height: u64,
+    pub estimated_timestamp: Option<u64>,
+}
+pub struct BalanceDetails {
+    pub available: BTreeMap<AssetId, u128>,
+    pub locked: BTreeMap<AssetId, u128>,
+    pub tranches: Vec<LockedTranche>,
+    pub next_unlock_height: Option<u64>,
+}
+
+pub const AUTO_DELAY_MIN_SECONDS: u64 = 6 * 60 * 60;
+pub const AUTO_DELAY_MAX_SECONDS: u64 = 3 * 24 * 60 * 60;
 
 pub struct Wallet {
     keys: WalletKeys,
@@ -226,18 +253,60 @@ impl Wallet {
                     }
                 }
             }
-            let commitment = decode_digest(&block.reward.commitment)
-                .map_err(|_| "wallet replay contains invalid reward commitment")?;
-            if let Ok(note) = self.keys.recipient.decrypt_payment(
-                &commitment,
-                &decode_payment(&block.reward.ciphertext),
-                &ec,
-            ) {
-                receipts.push(self.receipt(note, commitment, block.height, block_id, 3));
+            for (index, reward) in block.rewards.iter().enumerate() {
+                let commitment = decode_digest(&reward.commitment)
+                    .map_err(|_| "wallet replay contains invalid reward commitment")?;
+                if let Ok(note) = self.keys.recipient.decrypt_payment(
+                    &commitment,
+                    &decode_payment(&reward.ciphertext),
+                    &ec,
+                ) {
+                    receipts.push(self.receipt(
+                        note,
+                        commitment,
+                        block.height,
+                        block_id,
+                        3 + index as u8,
+                    ));
+                }
+            }
+            for (index, spend) in block.fund_spends.iter().enumerate() {
+                let commitment = decode_digest(&spend.commitment)
+                    .map_err(|_| "wallet replay contains invalid fund commitment")?;
+                if let Ok(note) = self.keys.recipient.decrypt_payment(
+                    &commitment,
+                    &decode_payment(&spend.ciphertext),
+                    &ec,
+                ) {
+                    let output_index = u8::try_from(8 + index)
+                        .map_err(|_| "fund receipt index exceeds wallet width")?;
+                    receipts.push(self.receipt(
+                        note,
+                        commitment,
+                        block.height,
+                        block_id,
+                        output_index,
+                    ));
+                }
+            }
+        }
+        // Keep timestamps only for relevant unlock heights, rather than a
+        // second full permanent copy of canonical block headers.
+        let mut eligibility = receipts
+            .iter()
+            .map(|r| (r.height.max(r.note.unlock_height), None))
+            .collect::<BTreeMap<u64, Option<u64>>>();
+        for block in blocks {
+            if let Some(timestamp) = eligibility.get_mut(&block.height) {
+                *timestamp = Some(block.timestamp);
             }
         }
         for receipt in &mut receipts {
             receipt.spent = state.spent.contains(&receipt.nullifier);
+            receipt.eligible_timestamp = eligibility
+                .get(&receipt.height.max(receipt.note.unlock_height))
+                .copied()
+                .flatten();
         }
         self.head = Some((state.height, state.tip, state.fingerprint()));
         self.receipts = receipts;
@@ -258,6 +327,7 @@ impl Wallet {
             block_id,
             output_index,
             spent: false,
+            eligible_timestamp: None,
             note,
         }
     }
@@ -277,9 +347,166 @@ impl Wallet {
         }
         Ok(balances)
     }
+    fn require_state(&self, state: &State) -> Result<(), String> {
+        if self.keys.network != state.config.network
+            || self.head != Some((state.height, state.tip, state.fingerprint()))
+        {
+            return Err("wallet must reconcile the exact accepted state before spending".into());
+        }
+        Ok(())
+    }
+    /// Authenticated private balances and lock batches at the exact replayed
+    /// head. Do not export these values as node metrics or public statistics.
+    pub fn balance_details(&self, state: &State) -> Result<BalanceDetails, String> {
+        self.require_state(state)?;
+        let available = self.balances(state.height)?;
+        let mut locked = BTreeMap::<AssetId, u128>::new();
+        let mut batches = BTreeMap::<(u64, AssetId), u128>::new();
+        for receipt in &self.receipts {
+            if receipt.spent
+                || receipt.note.value == 0
+                || receipt.note.unlock_height <= state.height
+            {
+                continue;
+            }
+            let value = u128::from(receipt.note.value);
+            let total = locked.entry(receipt.note.asset_id).or_default();
+            *total = total
+                .checked_add(value)
+                .ok_or("wallet locked balance overflow")?;
+            let batch = batches
+                .entry((receipt.note.unlock_height, receipt.note.asset_id))
+                .or_default();
+            *batch = batch
+                .checked_add(value)
+                .ok_or("wallet lock batch overflow")?;
+        }
+        let next_unlock_height = batches.keys().next().map(|(height, _)| *height);
+        let tranches = batches
+            .into_iter()
+            .map(|((unlock_height, asset), amount)| LockedTranche {
+                asset,
+                amount,
+                unlock_height,
+                estimated_timestamp: unlock_height
+                    .checked_sub(state.height)
+                    .and_then(|blocks| blocks.checked_mul(state.config.target_interval))
+                    .and_then(|seconds| state.timestamp().checked_add(seconds)),
+            })
+            .collect();
+        Ok(BalanceDetails {
+            available,
+            locked,
+            tranches,
+            next_unlock_height,
+        })
+    }
+    /// Private default automation eligibility, independent of manual consensus
+    /// spendability. Reconstruct the same per-note schedule after seed recovery.
+    /// Unreached unlocks and spent/zero notes return None. Wall-clock inputs to
+    /// automation never change whether a transaction is valid in consensus.
+    pub fn automatic_ready_timestamp(
+        &self,
+        commitment: &DigestBytes,
+    ) -> Result<Option<u64>, String> {
+        let receipt = self
+            .receipts
+            .iter()
+            .find(|r| &r.commitment == commitment)
+            .ok_or("automatic selection requires an authenticated owned note")?;
+        self.ready_timestamp(receipt)
+    }
+    fn ready_timestamp(&self, receipt: &OwnedNote) -> Result<Option<u64>, String> {
+        if receipt.spent || receipt.note.value == 0 {
+            return Ok(None);
+        }
+        let Some(eligible) = receipt.eligible_timestamp else {
+            return Ok(None);
+        };
+        let mut hash = blake3::Hasher::new_keyed(&self.keys.automatic_selection_key);
+        hash.update(&receipt.commitment);
+        let mut reader = hash.finalize_xof();
+        let span = AUTO_DELAY_MAX_SECONDS - AUTO_DELAY_MIN_SECONDS + 1;
+        let ceiling = u64::MAX - u64::MAX % span;
+        let sampled = loop {
+            let mut bytes = [0; 8];
+            reader.fill(&mut bytes);
+            let value = u64::from_le_bytes(bytes);
+            if value < ceiling {
+                break value % span;
+            }
+        };
+        eligible
+            .checked_add(AUTO_DELAY_MIN_SECONDS + sampled)
+            .map(Some)
+            .ok_or_else(|| "wallet automation timestamp overflow".into())
+    }
+    /// Opt-in preparation only: the caller must privately reserve selected
+    /// inputs and protect the payment opening before proof or submission.
+    /// Retains at most two candidates. Token consolidation would also require
+    /// a SIP fee input, so two token notes cannot use this two-input operation.
+    pub fn prepare_small_sip_consolidation(
+        &self,
+        state: &State,
+        max_note_value: u64,
+        tier: FeeTier,
+        now: u64,
+    ) -> Result<Option<PreparedTransfer>, String> {
+        self.require_state(state)?;
+        if max_note_value == 0 {
+            return Err("small-note threshold must be positive".into());
+        }
+        let mut candidates: [Option<&OwnedNote>; 2] = [None, None];
+        for receipt in &self.receipts {
+            if receipt.spent
+                || receipt.note.asset_id != SIP_ASSET_ID
+                || receipt.note.value == 0
+                || receipt.note.value > max_note_value
+                || receipt.note.unlock_height > state.height
+                || state.spent.contains(&receipt.nullifier)
+                || self
+                    .ready_timestamp(receipt)?
+                    .is_none_or(|ready| now < ready)
+            {
+                continue;
+            }
+            let key = (receipt.note.value, receipt.commitment);
+            if candidates[0].is_none_or(|first| key < (first.note.value, first.commitment)) {
+                candidates[1] = candidates[0];
+                candidates[0] = Some(receipt);
+            } else if candidates[1]
+                .is_none_or(|second| key < (second.note.value, second.commitment))
+            {
+                candidates[1] = Some(receipt);
+            }
+        }
+        let [Some(first), Some(second)] = candidates else {
+            return Ok(None);
+        };
+        let total = first
+            .note
+            .value
+            .checked_add(second.note.value)
+            .ok_or("consolidation amount overflow")?;
+        let fee = base_fee(state.height)
+            .checked_mul(if tier == FeeTier::Priority { 4 } else { 1 })
+            .ok_or("consolidation fee overflow")?;
+        let Some(amount) = total.checked_sub(fee).filter(|amount| *amount > 0) else {
+            return Ok(None);
+        };
+        self.prepare_transfer(
+            state,
+            [Some(first.commitment), Some(second.commitment)],
+            &self.address(),
+            SIP_ASSET_ID,
+            amount,
+            tier,
+        )
+        .map(Some)
+    }
     /// Construct a private transfer witness with one recipient and up to two
     /// asset-specific change outputs. `None` supplies a fresh zero-value input.
-    /// SI alone pays the selected canonical-snapshot standard/priority fee.
+    /// SIP alone pays the selected canonical-snapshot standard/priority fee.
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_transfer(
         &self,
@@ -290,11 +517,7 @@ impl Wallet {
         amount: u64,
         tier: FeeTier,
     ) -> Result<PreparedTransfer, String> {
-        if self.keys.network != state.config.network
-            || self.head != Some((state.height, state.tip, state.fingerprint()))
-        {
-            return Err("wallet must reconcile the exact accepted state before spending".into());
-        }
+        self.require_state(state)?;
         if amount == 0 || selected == [None, None] {
             return Err("wallet transfer requires a nonzero payment and an owned input".into());
         }
@@ -306,7 +529,7 @@ impl Wallet {
         let mut make_input = |selected: Option<DigestBytes>| -> Result<InputWitness, String> {
             let Some(commitment) = selected else {
                 return Ok(InputWitness {
-                    asset_id: SI_ASSET_ID,
+                    asset_id: SIP_ASSET_ID,
                     nk: random_fields()?,
                     rho: random_fields()?,
                     rseed: random_fields()?,
@@ -354,7 +577,7 @@ impl Wallet {
             .checked_mul(if tier == FeeTier::Priority { 4 } else { 1 })
             .ok_or("wallet fee overflow")?;
         debit(&mut totals, asset, amount)?;
-        debit(&mut totals, SI_ASSET_ID, fee)?;
+        debit(&mut totals, SIP_ASSET_ID, fee)?;
         let mut change = totals
             .into_iter()
             .filter(|(_, amount)| *amount > 0)
@@ -363,7 +586,7 @@ impl Wallet {
             return Err("wallet transfer exceeds two change assets".into());
         }
         while change.len() < 2 {
-            change.push((SI_ASSET_ID, 0));
+            change.push((SIP_ASSET_ID, 0));
         }
         let mut witness = AccWitness {
             slot: SlotWitness {
@@ -438,10 +661,11 @@ impl Wallet {
             .bind_witness(&witness, &context)
             .map_err(|_| "wallet statement binding failed")?;
         witness
-            .check(
+            .check_at_snapshot(
                 &h,
                 &decode_digest(&snapshot.recent_root)
                     .map_err(|_| "invalid canonical recent root")?,
+                snapshot.selector.height,
             )
             .map_err(str::to_owned)?;
         let record = PublicRecord::new(
@@ -546,6 +770,7 @@ impl Drop for PrivateWitness {
             output.asset_id.0.zeroize();
             output.owner.fill(F::ZERO);
             output.value.zeroize();
+            output.unlock_height.zeroize();
             output.rseed.fill(F::ZERO);
         }
         self.0.slot.fee_blind.fill(F::ZERO);

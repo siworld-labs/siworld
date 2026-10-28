@@ -1,9 +1,9 @@
 //! Protocol constants; see docs/protocol.md.
 
-/// 1 SI = 10^8 atom.
-pub const ATOMS_PER_SI: u64 = 100_000_000;
+/// 1 SIP = 10^8 atom.
+pub const ATOMS_PER_SIP: u64 = 100_000_000;
 
-/// Minimum SI held by every non-zero package (0.0001 SI).
+/// Minimum SIP held by every non-zero package (0.0001 SIP).
 pub const MIN_PACKAGE_DEPOSIT: u64 = 10_000;
 
 /// One epoch (two weeks at 60-second blocks).

@@ -9,7 +9,7 @@ use siworld_native_node::{
 use std::path::Path;
 fn help() {
     println!(
-        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, peer networking, issuance admission, or public-network activation is provided."
+        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\nconfigure-miner DIRECTORY MODE ADDRESS_FILE  Select voyager/holder and a backed-up wallet address\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, peer networking, issuance admission, or public-network activation is provided."
     );
 }
 fn cpu_admission() -> Result<(), String> {
@@ -36,11 +36,26 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
     cpu_admission()?;
-    if args.len() < 2 || args.len() > 3 {
+    if args.len() < 2 || args.len() > 4 {
         return Err("expected command and explicit engineering directory; use --help".into());
     }
     let path = Path::new(&args[1]);
     match args[0].as_str() {
+        "configure-miner" => {
+            if args.len() != 4 {
+                return Err("expected DIRECTORY voyager|holder ADDRESS_FILE".into());
+            }
+            let chain = config(path)?;
+            let mode = siworld_native_node::state::RewardMode::from_name(&args[2])
+                .map_err(|e| e.to_string())?;
+            let recipient = siworld_native_node::mining::read_address(Path::new(&args[3]))?;
+            siworld_native_node::mining::save(
+                path,
+                chain.network,
+                &producer::MiningSettings { mode, recipient },
+            )?;
+            println!("mining preference saved for the next block template");
+        }
         "run" => {
             exact(&args)?;
             service::run(path)?;
@@ -99,7 +114,9 @@ fn run() -> Result<(), String> {
                             "kind": "height", "height": row.height,
                             "block_id": local::hex(&row.block_id), "subsidy_atoms": row.subsidy,
                             "miner_subsidy_atoms": row.miner_subsidy,
-                            "fund_direct_atoms": row.fund_direct, "fund_locked_atoms": row.fund_locked,
+                            "reward_mode": row.mode.name(), "fund_credit_atoms": row.fund_credit,
+                            "holder_pool_atoms": row.pool_balance.to_string(),
+                            "holder_pool_payout_atoms": row.pool_payout.to_string(), "burn_atoms": row.burn,
                         })
                     );
                 }
@@ -133,7 +150,8 @@ fn run() -> Result<(), String> {
             let mut store =
                 Store::open_existing(path.join("chain.redb"), config(path)?, &verifier)?;
             let prover = NativeProver::new()?;
-            let produced = producer::produce(store.state(), &prover, slots)?;
+            let settings = siworld_native_node::mining::load(path, store.state().config.network)?;
+            let produced = producer::produce(store.state(), &prover, slots, &settings)?;
             let id = produced.block.id()?;
             producer::validate_reward_secret(&produced.block, &produced.reward_secret)?;
             local::save_reward(path, &id, &produced.reward_secret)?;
@@ -158,13 +176,21 @@ fn check_audit_head(
 }
 fn audit_summary(report: &audit::AuditReport) -> serde_json::Value {
     serde_json::json!({
-        "kind": "summary", "scope": "subsidy-and-fund-credits-only",
+        "kind": "summary", "scope": "subsidy-pool-burn-and-signed-fund-spending",
         "network": local::hex(&report.network), "height": report.height,
         "tip": local::hex(&report.tip), "state": local::hex(&report.fingerprint),
         "total_subsidy_atoms": report.total_subsidy.to_string(),
         "miner_subsidy_atoms": report.miner_subsidy.to_string(),
-        "fund_direct_atoms": report.fund_direct.to_string(),
-        "fund_locked_atoms": report.fund_locked.to_string(),
+        "funds": report.funds.iter().map(|fund| serde_json::json!({
+            "entitlement_atoms":fund.entitlement.to_string(),
+            "direct_unlocked_atoms":fund.direct_unlocked.to_string(),
+            "vesting_unlocked_atoms":fund.vesting_unlocked.to_string(),
+            "spent_atoms":fund.spent.to_string(), "spend_count":fund.spend_count,
+        })).collect::<Vec<_>>(),
+        "holder_pool_atoms":report.holder_pool.to_string(),
+        "burned_atoms":report.burned.to_string(),
+        "scheduled_locked_subsidy_atoms":report.locked_subsidy.to_string(),
+        "scheduled_circulating_atoms":report.scheduled_circulating.to_string(),
         "asset_issuance_supported": report.asset_issuance_supported,
         "fund_spending_supported": report.fund_spending_supported,
         "wallet_reward_recovery_checked": false,
@@ -192,11 +218,14 @@ mod tests {
             fingerprint: state.fingerprint(),
             total_subsidy: 0,
             miner_subsidy: 0,
-            fund_direct: 0,
-            fund_locked: 0,
+            funds: [siworld_core::v1_economics::FundBalance::default(); 2],
+            holder_pool: 0,
+            burned: 0,
+            locked_subsidy: 0,
+            scheduled_circulating: 0,
             heights: Vec::new(),
             asset_issuance_supported: false,
-            fund_spending_supported: false,
+            fund_spending_supported: true,
         };
         (state, report)
     }
@@ -204,11 +233,14 @@ mod tests {
     fn audit_summary_states_its_scope_without_implying_wallet_or_asset_checks() {
         let (_, report) = empty_report();
         let summary = audit_summary(&report);
-        assert_eq!(summary["scope"], "subsidy-and-fund-credits-only");
+        assert_eq!(
+            summary["scope"],
+            "subsidy-pool-burn-and-signed-fund-spending"
+        );
         assert_eq!(summary["total_subsidy_atoms"], "0");
         assert_eq!(summary["wallet_reward_recovery_checked"], false);
         assert_eq!(summary["asset_issuance_supported"], false);
-        assert_eq!(summary["fund_spending_supported"], false);
+        assert_eq!(summary["fund_spending_supported"], true);
     }
     #[test]
     fn audit_requires_the_exact_verified_height_tip_and_fingerprint() {

@@ -29,7 +29,7 @@ use siworld_crypto::{
 };
 use siworld_state::ChainState;
 
-use crate::amount::format_si;
+use crate::amount::format_sip;
 use crate::mempool::{MempoolError, TxPow};
 
 /// An on-chain package, its position in the commitment tree, and the height
@@ -162,8 +162,8 @@ impl std::fmt::Display for PayError {
             Self::Randomness => write!(f, "OS randomness unavailable; no payment was built"),
             Self::AmountTooSmall => write!(
                 f,
-                "the amount is below the minimum package of {} SI",
-                format_si(MIN_PACKAGE_DEPOSIT)
+                "the amount is below the minimum package of {} SIP",
+                format_sip(MIN_PACKAGE_DEPOSIT)
             ),
             Self::InsufficientFunds => write!(
                 f,
@@ -171,13 +171,13 @@ impl std::fmt::Display for PayError {
             ),
             Self::FundsPending { pending } => write!(
                 f,
-                "{} SI is not spendable yet; wait for the previous payment to confirm, then send again",
-                format_si(*pending)
+                "{} SIP is not spendable yet; wait for the previous payment to confirm, then send again",
+                format_sip(*pending)
             ),
             Self::ChangeTooSmall => write!(
                 f,
-                "the change would be below the minimum package of {} SI; send a slightly different amount",
-                format_si(MIN_PACKAGE_DEPOSIT)
+                "the change would be below the minimum package of {} SIP; send a slightly different amount",
+                format_sip(MIN_PACKAGE_DEPOSIT)
             ),
             Self::Prove(e) => write!(f, "cannot build the payment: {e}"),
             Self::Mempool(e) => write!(f, "the mempool rejected the payment: {e:?}"),
@@ -839,7 +839,7 @@ mod tests {
             vec![("test".into(), SpendKey::from_digest(Digest([1; 32])))],
             SecretSeed::from_os_rng().unwrap(),
         );
-        let cms = wallets.genesis_notes(&[(0, 100 * siworld_core::params::ATOMS_PER_SI)]);
+        let cms = wallets.genesis_notes(&[(0, 100 * siworld_core::params::ATOMS_PER_SIP)]);
         let state = ChainState::genesis_with_commitments(&params, &cms);
         let pow = TxPow::for_params(&params);
         let to = SpendKey::from_digest(Digest([2; 32])).address();
@@ -852,7 +852,7 @@ mod tests {
             &MockProver,
             0,
             &to,
-            siworld_core::params::ATOMS_PER_SI,
+            siworld_core::params::ATOMS_PER_SIP,
             false,
             || Err(PayError::Randomness),
         );
@@ -870,7 +870,7 @@ mod tests {
                 &MockProver,
                 0,
                 &to,
-                siworld_core::params::ATOMS_PER_SI,
+                siworld_core::params::ATOMS_PER_SIP,
                 false,
             )
             .unwrap();

@@ -65,11 +65,10 @@ impl BlockVerifier for TestVerifier {
     fn settlement(
         &self,
         _: &[Digest],
-        _: u64,
-        _: u64,
+        _: &native::settlement::RewardPlan,
         _: Hash,
         _: Hash,
-        _: &Digest,
+        _: &[Digest],
         proof: &[u8],
     ) -> Result<(), String> {
         self.settlements.set(self.settlements.get() + 1);
@@ -110,10 +109,12 @@ fn candidate(state: &State, seed: u32) -> Block {
         target: state.next_target(),
         nonce: 0,
         transactions,
-        reward: RewardRecord {
+        reward_mode: crate::state::RewardMode::Voyager,
+        rewards: vec![RewardRecord {
             commitment: felt(seed + 20000),
             ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
-        },
+        }],
+        fund_spends: Vec::new(),
         settlement_proof: vec![1],
     };
     let seed = block.pow_seed().unwrap();
@@ -417,7 +418,10 @@ fn symlinks_and_nonregular_paths_are_rejected_without_following_them() {
 #[test]
 fn asert_rules_and_replayed_work_are_durable_and_wrong_rules_fail_closed() {
     let dir = TestDir::new();
-    let base = Config::asert_development([93; 32], 1_700_000_000, [0xff; 32], 1).unwrap();
+    let base = Config::asert_development([93; 32], 1_700_000_000, [0xff; 32], 1)
+        .unwrap()
+        .with_fund_allocation(siworld_core::v1_economics::FundAllocation::new(vec![1, 1]).unwrap())
+        .unwrap();
     let mut store = Store::open(dir.db(), base.clone(), &TestVerifier::default()).unwrap();
     let block = candidate(store.state(), 1);
     store.append(&block, &TestVerifier::default()).unwrap();
@@ -550,13 +554,13 @@ fn higher_work_reorganization_replaces_all_fork_specific_state_and_is_durable() 
         !store
             .state()
             .commitments
-            .contains(&old[0].reward.commitment)
+            .contains(&old[0].rewards[0].commitment)
     );
     assert!(
         store
             .state()
             .commitments
-            .contains(&replacement[1].reward.commitment)
+            .contains(&replacement[1].rewards[0].commitment)
     );
     for nullifier in old_state.spent.difference(&ancestor.spent) {
         assert!(!store.state().spent.contains(nullifier));
@@ -568,9 +572,7 @@ fn higher_work_reorganization_replaces_all_fork_specific_state_and_is_durable() 
     drop(store);
     let reopened = Store::open_existing(dir.db(), config(), &TestVerifier::default()).unwrap();
     assert_eq!(reopened.state().fingerprint(), fingerprint);
-    assert_eq!(reopened.state().total_subsidy, expected.total_subsidy);
-    assert_eq!(reopened.state().fund_direct, expected.fund_direct);
-    assert_eq!(reopened.state().fund_locked, expected.fund_locked);
+    assert_eq!(reopened.state().economics, expected.economics);
     assert_eq!(reopened.detached_count().unwrap(), 1);
     assert_eq!(
         reopened.detached_block(&old[0].id().unwrap()).unwrap(),

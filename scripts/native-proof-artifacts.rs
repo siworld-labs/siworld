@@ -63,8 +63,7 @@ fn encode_key(
     Ok(out)
 }
 
-fn bundle(kind: &str) -> Result<Value, String> {
-    let p = params(kind)?;
+fn bundle(kind: &str, p: FriParams) -> Result<Value, String> {
     let security = match kind {
         "transaction" => transaction_report(p)?,
         "settlement" => settlement_report(p)?,
@@ -72,7 +71,7 @@ fn bundle(kind: &str) -> Result<Value, String> {
             let air = IssuanceAir::new(3).with_min_height(p.hiding_min_height());
             instance_report(&air, air.height, p)?
         }
-        _ => unreachable!(),
+        _ => return Err("unknown native relation".into()),
     };
     if security["screen"]["passes_selected_model"] != true {
         return Err("native relation fails the selected security screen".into());
@@ -111,7 +110,7 @@ fn bundle(kind: &str) -> Result<Value, String> {
                 postcard::to_allocvec(&prover.vk.commitment).map_err(|e| e.to_string())?,
             )
         }
-        _ => unreachable!(),
+        _ => return Err("unknown native relation".into()),
     };
     let bytes = encode_key(id, capacity, p, width, degree, &commitment)?;
     Ok(
@@ -125,10 +124,24 @@ fn bundle(kind: &str) -> Result<Value, String> {
 
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let [kind, output] = args.as_slice() else {
-        return Err("usage: native-proof-artifacts transaction|settlement|issuance OUTPUT".into());
+    let (kind, output, parameters, candidate) = match args.as_slice() {
+        [kind, output] => (kind, output, params(kind)?, false),
+        [mode, kind, b, q, g, output] if mode == "--candidate" => {
+            let parse = |value: &String| value.parse::<u32>().map_err(|_| "invalid candidate integer".to_owned());
+            let (b, q, g) = (parse(b)?, parse(q)?, parse(g)?);
+            if !(5..=8).contains(&b) || !(1..=128).contains(&q) || ![20, 24].contains(&g) {
+                return Err("unsupported candidate coordinate".into());
+            }
+            (kind, output, FriParams { log_blowup: b, num_queries: q,
+                query_pow_bits: g, commit_pow_bits: 0, batch_pow_bits: g, max_log_arity: 1 }, true)
+        }
+        _ => return Err("usage: native-proof-artifacts KIND OUTPUT | --candidate KIND BLOWUP QUERIES GRINDING OUTPUT".into()),
     };
-    let result = bundle(kind)?;
+    let mut result = bundle(kind, parameters)?;
+    if candidate {
+        result["status"] = json!("candidate-pending-review");
+        result["acceptance"] = json!(false);
+    }
     let mut bytes = serde_json::to_vec_pretty(&result).map_err(|e| e.to_string())?;
     bytes.push(b'\n');
     use std::io::Write;
@@ -151,6 +164,14 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unknown_candidate_relation_is_rejected_before_setup() {
+        assert_eq!(
+            bundle("peer-defined", params("transaction").unwrap()).unwrap_err(),
+            "unknown native relation"
+        );
+    }
+
     #[test]
     fn relation_kind_capacity_and_all_fri_fields_are_bound() {
         let p = params("settlement").unwrap();

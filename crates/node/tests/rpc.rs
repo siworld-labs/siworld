@@ -13,7 +13,7 @@ use siworld_core::issuance::{epoch_of, fee_base};
 use siworld_core::Digest;
 use siworld_crypto::{SecretSeed, SpendKey};
 use siworld_node::address::encode_address;
-use siworld_node::amount::format_si;
+use siworld_node::amount::format_sip;
 use siworld_node::genesis::{AllocationFile, Genesis, GenesisFile, ProofsFile};
 use siworld_node::hex;
 use siworld_node::node::Node;
@@ -35,7 +35,7 @@ fn call(rpc: &str, request: &Value) -> Result<Value, String> {
     call_authenticated(rpc, &request, &token(2))
 }
 
-const SI: u64 = siworld_core::params::ATOMS_PER_SI;
+const SIP: u64 = siworld_core::params::ATOMS_PER_SIP;
 
 #[test]
 fn unauthenticated_requests_cannot_read_or_spend() {
@@ -63,7 +63,7 @@ fn key(i: u8) -> SpendKey {
     SpendKey::from_digest(Digest([i; 32]))
 }
 
-/// Starts a node holding 100 SI on its own thread and returns its RPC
+/// Starts a node holding 100 SIP on its own thread and returns its RPC
 /// address once the RPC answers.
 struct RunningNode {
     _journal: common::JournalDir,
@@ -240,7 +240,7 @@ fn a_second_send_waits_for_the_first_to_confirm() {
     let send =
         |amount: &str| call(&rpc, &json!({"method": "send", "to": to, "amount": amount})).unwrap();
     assert_eq!(send("10")["sent"], "10");
-    let change = format_si(90 * SI - fee_base(epoch_of(0)));
+    let change = format_sip(90 * SIP - fee_base(epoch_of(0)));
     assert_eq!(
         call(&rpc, &json!({"method": "balance"})).unwrap(),
         json!({ "total": "100", "spendable": "0", "pending": change })

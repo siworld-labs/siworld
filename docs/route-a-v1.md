@@ -1,7 +1,13 @@
 # Native Transaction Proof Design
 
-Status: engineering-frozen native two-input/three-output transaction profile,
-with isolated codec, issuance and SI-reward settlement implementations in
+The [monetary revision](v1-economics.md) reopens transaction, settlement and
+issuance proof qualification. Notes bind unlock heights; every input must be
+unlocked at its trusted referenced snapshot height. Settlement binds the public
+Voyager/Holder mode, one or five SIP reward notes, pool claims and fee allocation.
+Retained profiles and numerical measurements are pre-revision baselines.
+
+Status: selected native two-input/three-output transaction design,
+with isolated codec, issuance and SIP-reward settlement implementations in
 `crates/bench-multi-asset`. The [multi-asset profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
 and [actual measurements](v1-multi-asset-evaluation.md) bind the selected
 parameters, actual-AIR security, source and public verifier key. Node/decoder
@@ -113,7 +119,7 @@ integration requirements.
 ## Fixed transaction relation
 
 Each V1 transaction has two inputs and three outputs, with per-asset
-conservation and SI-only fees. This relation is implemented in the isolated
+conservation and SIP-only fees. This relation is implemented in the isolated
 crate under [the multi-asset design](v1-multi-asset.md). It constrains
 both inputs independently, including ownership, nullifier derivation, value
 ranges and unlock conditions. A positive-amount input must prove commitment-tree
@@ -340,9 +346,9 @@ deterministic and atomic. Invalid input leaves state unchanged. Proof inputs
 must never select an untrusted verification key. Use synthetic fixtures and
 independent network identities.
 
-## Frozen transaction profile and capacity gate
+## Pre-revision transaction profile and revised capacity gate
 
-The qualified scan measures log blowups 5, 6, 7 and 8 with query and batch
+The pre-economic-revision scan measured log blowups 5, 6, 7 and 8 with query and batch
 grinding 20 or 24, using the minimum query count passing the actual-AIR
 80-bit screen. All eight configurations receive three fresh four-worker
 measurements on the EPYC 7763, Ubuntu 24.04, two-exposed-core/four-vCPU
@@ -473,8 +479,8 @@ The private asset ID, third output and issuance-supply relation change the
 transaction AIR, encrypted plaintext, statement digest and trusted verifier key.
 The isolated implementation includes the actual three-output codec, per-asset
 balance AIR, native fixed-supply issuance proof with ML-DSA-65 verification, and
-an SI-only reward constraint inside the settlement AIR. The two-output baseline
-is unchanged. The transaction engineering profile is frozen after the
+a SIP-only reward constraint inside the settlement AIR. The two-output baseline
+is unchanged. The pre-economic-revision transaction engineering profile was frozen after the
 qualified three-trial generation scan; complete integration, independent
 review and sustained testnet acceptance remain outstanding.
 
@@ -482,13 +488,13 @@ See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md),
 [V1 Multi-Asset Transaction Format](v1-multi-asset.md), and
 [V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md). Node issuance
 application remains integration work. Testnet issuance requires exactly
-**50 SI (5,000,000,000 atoms)**, credited entirely to a dedicated
+**50 SIP (5,000,000,000 atoms)**, credited entirely to a dedicated
 development-fund account. That account is not yet configured; issuance
 admission remains closed and must fail closed until the authenticated
 destination, verified fee payment, one-time consumption and atomic fund credit
 are implemented and configured. No default recipient, fee waiver or miner
 share is permitted. The mainnet issuance fee remains undecided. A valid
-signature cannot replace the supply proof or verified SI fee payment.
+signature cannot replace the supply proof or verified SIP fee payment.
 
 ## Backup checkpoint freshness
 

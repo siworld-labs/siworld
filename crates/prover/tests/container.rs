@@ -18,7 +18,7 @@ use siworld_crypto::{expand, note_commitment, SecretSeed, SetSum, SpendKey};
 use siworld_prover::{Plonky3System, SetupError};
 use siworld_state::ChainState;
 
-const SI: u64 = 100_000_000;
+const SIP: u64 = 100_000_000;
 
 fn seed(tag: u64) -> Digest {
     expand(&Digest([0x51; 32]), "prover test", tag)
@@ -52,11 +52,11 @@ fn miner() -> Miner {
     }
 }
 
-/// Genesis holding one 10 SI package of `key(1)`.
+/// Genesis holding one 10 SIP package of `key(1)`.
 fn genesis() -> (ChainState, Note) {
     let note = Note {
         owner: key(1).owner(),
-        value: 10 * SI,
+        value: 10 * SIP,
         cond: Condition::default(),
         rho: seed(1),
         rseed: seed(2),
@@ -65,7 +65,7 @@ fn genesis() -> (ChainState, Note) {
     (state, note)
 }
 
-/// A payment of 3 SI from `key(1)`'s genesis package to `key(2)`, the change
+/// A payment of 3 SIP from `key(1)`'s genesis package to `key(2)`, the change
 /// back to `key(1)`, at the standard fee of the anchor's epoch.
 fn payment(state: &ChainState, note: &Note, fee_delta: i64) -> SlotWitness {
     let (anchor, height) = state.anchors.latest().unwrap();
@@ -85,14 +85,14 @@ fn payment(state: &ChainState, note: &Note, fee_delta: i64) -> SlotWitness {
     let outputs = [
         Note {
             owner: key(2).owner(),
-            value: 3 * SI,
+            value: 3 * SIP,
             cond: Condition::default(),
             rho: rho[0],
             rseed: seed(5),
         },
         Note {
             owner: key(1).owner(),
-            value: 7 * SI - fee,
+            value: 7 * SIP - fee,
             cond: Condition::default(),
             rho: rho[1],
             rseed: seed(6),

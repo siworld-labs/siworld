@@ -162,7 +162,23 @@ fn actual_continuous_service_exports_stops_and_replays() {
     let directory = Directory::new();
     let network = directory.0.join("network");
     let timestamp = wall_ms().unwrap() / 1000;
-    let config = local::initialize_asert(&network, timestamp, [0xff; 32], 1).unwrap();
+    let rules = crate::state::Config::asert_development([68; 32], timestamp, [0xff; 32], 1)
+        .unwrap()
+        .with_fund_allocation(siworld_core::v1_economics::FundAllocation::new(vec![1, 1]).unwrap())
+        .unwrap();
+    let config = local::initialize_config(&network, rules).unwrap();
+    let keys =
+        crate::wallet::WalletKeys::from_seed(config.network, zeroize::Zeroizing::new([42; 32]), 0)
+            .unwrap();
+    crate::mining::save(
+        &network,
+        config.network,
+        &crate::producer::MiningSettings {
+            mode: crate::state::RewardMode::Voyager,
+            recipient: keys.address(),
+        },
+    )
+    .unwrap();
     let verifier = NativeVerifier::new().unwrap();
     let store = Store::open(network.join("chain.redb"), config.clone(), &verifier).unwrap();
     drop(store);

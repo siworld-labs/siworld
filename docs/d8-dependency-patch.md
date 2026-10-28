@@ -1,5 +1,10 @@
 # D8 Dependency Patch and Review Boundary
 
+The [monetary revision](v1-economics.md) reopens affected proof qualification.
+Earlier source-bound reports, keys and numeric profiles are baseline evidence
+only; revised lock/reward relations require new actual-AIR screening and
+resource measurements. Separate optimization work does not waive this gate.
+
 Status: experimental source implementation with fixed project-fork revisions.
 The native application directly pins the source revision and registry lock graph;
 the earlier local-path adapter is retired. The upstream proposal is
@@ -17,10 +22,10 @@ grinding; this patch does not modify those registry packages or Cargo caches.
 
 Two complete revisions separate upstream-neutral APIs from compatibility:
 
-| Source branch | Fixed revision | Scope |
+| Source line | Fixed revision | Scope |
 | --- | --- | --- |
-| `codex/d8-w24-native-suite` | `cb50fe9bb2dcd76fc7de1b71d0cd3f099eb235db` | Experimental suite, batch work, typed bounded hiding workers |
-| `codex/d8-w24-native-suite-downstream` | `d3d15b2b5d1325fb38ebc8979c1cae04b761e71f` | Same APIs plus bounded downstream environment compatibility; no-std serial behavior preserved |
+| Native suite | `cb50fe9bb2dcd76fc7de1b71d0cd3f099eb235db` | Experimental suite, batch work, typed bounded hiding workers |
+| Downstream compatibility | `d3d15b2b5d1325fb38ebc8979c1cae04b761e71f` | Same APIs plus bounded downstream environment compatibility; no-std serial behavior preserved |
 
 The source is distributed at [the project fork](https://github.com/siworld-labs/Plonky3-recursion).
 The source patch, base revision and complete dependency lock graph remain pinned

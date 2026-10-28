@@ -368,16 +368,16 @@ fn funded_node(
                 budget: siworld_node::fund_keys::FundBudget {
                     version: 1,
                     id: "ab".repeat(32),
-                    direct_si: "1000000000".into(),
-                    lock_si: "1000000000".into(),
-                    total_si: "2000000000".into(),
-                    max_payout_si: "1000000".into(),
+                    direct_sip: "1000000000".into(),
+                    lock_sip: "1000000000".into(),
+                    total_sip: "2000000000".into(),
+                    max_payout_sip: "1000000".into(),
                 },
                 genesis: siworld_node::hex(&target.genesis.id),
                 seconds: 3600,
-                direct_si: "1000000".into(),
-                lock_si: "1000000".into(),
-                max_payout_si: "1000000".into(),
+                direct_sip: "1000000".into(),
+                lock_sip: "1000000".into(),
+                max_payout_sip: "1000000".into(),
                 recipients: vec![encode_address(&key(3).address())],
                 approval: None,
             },
@@ -449,11 +449,11 @@ fn failed_background_build_preserves_payment_reservations_and_payouts() {
     let balance = a.call(json!({"method": "balance"})).unwrap();
     assert_eq!(
         balance["spendable"],
-        siworld_node::amount::format_si(before.spendable)
+        siworld_node::amount::format_sip(before.spendable)
     );
     assert_eq!(
         balance["pending"],
-        siworld_node::amount::format_si(before.pending)
+        siworld_node::amount::format_sip(before.pending)
     );
     assert_eq!(a.info()["mempool"], 1);
     assert_eq!(a.info()["dev_fund"]["payouts"], 0);

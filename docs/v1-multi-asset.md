@@ -1,7 +1,8 @@
 # V1 Multi-Asset Transaction Format
 
 **Status:** Selected V1 design with an isolated native implementation in
-`crates/bench-multi-asset` and an engineering-frozen transaction profile.
+`crates/bench-multi-asset`. The economic revision reopens its proof profile;
+earlier keys and measurements are baseline evidence only.
 The [profile artifact](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
 binds the selected parameters, measured implementation and public preprocessing
 key. It is not independent cryptographic approval or network activation.
@@ -10,7 +11,7 @@ remain required. The prior two-output implementation is an unchanged baseline.
 
 ## Scope and invariants
 
-SI and permissionlessly issued assets share one privacy pool. Every note
+SIP and permissionlessly issued assets share one privacy pool. Every note
 contains one private 32-byte asset identifier. The identifier enters both the
 note commitment and the encrypted note plaintext; ordinary transfers do not
 publish it. Issuance publishes the issuer key, sequence, supply and metadata,
@@ -20,11 +21,11 @@ is unknowable.
 
 The fixed transaction shape is two inputs and three outputs. Every position
 uses one ML-KEM recipient ciphertext and two symmetric sender-change
-ciphertexts, including pure SI transfers and padding. A spare output has value
-zero. These roles support token receipt, token change and SI fee change; the
+ciphertexts, including pure SIP transfers and padding. A spare output has value
+zero. These roles support token receipt, token change and SIP fee change; the
 third output is not a second arbitrary recipient.
 
-The transaction AIR checks each asset balance independently. SI alone pays
+The transaction AIR checks each asset balance independently. SIP alone pays
 the standard or priority transaction fee; padding pays zero. All nonzero
 inputs require ownership and commitment-tree membership, while zero-valued
 inputs skip membership. Nullifiers still must differ. The recent-root-tree
@@ -33,7 +34,7 @@ public statement bind all transaction ciphertext bytes.
 
 ## Asset identifiers and note commitments
 
-SI reserves the all-zero identifier. A non-SI identifier is the full output of
+SIP reserves the all-zero identifier. A non-SIP identifier is the full output of
 BLAKE3's derive-key mode with context `siworld asset identifier v1`, absorbing
 network identity, the canonical 1,952-byte ML-DSA-65 issuer public key and the
 little-endian u64 issuance sequence. The registry rejects the reserved value,
@@ -97,21 +98,21 @@ Padding ciphertexts must use actual encryption under temporary valid keys.
 
 The implemented AIR constrains asset-equality flags against all sixteen
 identifier limbs and checks every nonzero input and output. It cannot balance
-an input of one asset against an output of another, or use a non-SI amount to
-pay a transaction fee. The SI equation includes the private fee; its commitment
+an input of one asset against an output of another, or use a non-SIP amount to
+pay a transaction fee. The SIP equation includes the private fee; its commitment
 is public and the opening remains in the sidecar.
 
 Integer limb arithmetic constrains signed carries and rejects overflow and
-an invalid final carry. Three output amounts and the SI fee are four
-subtractands. The implementation covers positive non-SI amounts in atomic
-units, retaining the existing 10,000-atom minimum for nonzero SI outputs.
+an invalid final carry. Three output amounts and the SIP fee are four
+subtractands. The implementation covers positive non-SIP amounts in atomic
+units, retaining the existing 10,000-atom minimum for nonzero SIP outputs.
 This conditional minimum is implemented experimentally and still requires
 protocol review before activation.
 
-A normal token payment uses one token input and one SI fee input, producing
-a token receipt, token change and SI change. Two distinct non-SI inputs have
-no SI fee source in this fixed shape and must be rejected or split by the
-wallet. Pure SI transfers use the same fields and ciphertext roles.
+A normal token payment uses one token input and one SIP fee input, producing
+a token receipt, token change and SIP change. Two distinct non-SIP inputs have
+no SIP fee source in this fixed shape and must be rejected or split by the
+wallet. Pure SIP transfers use the same fields and ciphertext roles.
 
 ## Native fixed-supply issuance
 
@@ -141,10 +142,10 @@ ordered commitment list. An external signature alone is insufficient to mint.
 Native verification checks the network, version, asset-ID derivation,
 resource policy, ML-DSA-65 signature, ciphertext counts and byte hashes, and
 the issuance proof. Acceptance additionally requires a caller-provided
-verifier for an actual SI fee payment bound to that declaration digest.
+verifier for an actual SIP fee payment bound to that declaration digest.
 Merely supplying the claimed fee amount does not satisfy this gate.
 Permissionless issuance and public supply are the selected design. Testnet
-issuance costs exactly **50 SI (5,000,000,000 atoms)**, with the entire fee
+issuance costs exactly **50 SIP (5,000,000,000 atoms)**, with the entire fee
 credited to a dedicated development-fund account. This account has not been
 configured, so issuance admission remains closed. A missing or invalid
 destination fails closed; it cannot waive the fee, select an implicit account
@@ -155,7 +156,7 @@ The reference registry checks sequence, asset-ID and commitment reuse before
 mutation. This is an isolated atomicity model, not the node database
 transition. Node integration must verify every gate and atomically append the
 issuance record, registry entry and minted notes in one storage transaction,
-with the verified SI payment's one-time consumption and dedicated fund credit,
+with the verified SIP payment's one-time consumption and dedicated fund credit,
 and equivalent reorg and duplicate-acceptance handling. Configuration of the
 destination and this durable transition remain implementation gates; the
 isolated caller-provided payment verifier does not satisfy them. Later transfers prove
@@ -200,15 +201,20 @@ delete them. Retain the signed public declaration, ciphertexts, commitments,
 issuance state and public settlement statements permanently. A trusted
 checkpoint must bind the asset registry and issuance state.
 
-## Native SI reward settlement
+## Native SIP reward settlement
 
-The isolated settlement AIR recomputes each fee commitment, checks the exact
-private fee sum and binds the reward-note amount to subsidy plus that sum.
-It constrains all sixteen reward asset-ID limbs to the reserved SI identifier
-inside the AIR and computes the new five-block reward-note commitment.
-A host-only asset check cannot substitute for these constraints. The public
-statement binds the candidate block context and ordered transaction/fee list;
-validators must reconstruct that context from trusted block data.
+Apply the [shared integer monetary transition](v1-economics.md) to reconstruct
+subsidy, reward mode, the pre-block pool, current credit and claim, burn and
+fund credits. Voyager has one reward note; Holder has an immediate note plus
+four height-locked notes. The AIR recomputes every fee commitment and exact
+private fee sum, adds all fees only to note zero, and binds each note amount,
+owner, unlock height, distinct index/randomness and complete commitment.
+All reward asset-ID limbs must equal the reserved SIP identifier inside the
+AIR; a host-only check is insufficient. Validators reconstruct the canonical
+context and ordered transaction/fee list rather than trust peer-supplied
+subsidy, pool, mode or reward openings. Note zero matures after 24 blocks,
+including fees and the Holder pool claim. Revised preprocessing and security
+measurements are required before freezing this relation.
 
 The implementation and its rejection tests are separate from the retained
 network. Block application, fee-payment accounting and the consensus
@@ -235,18 +241,18 @@ their shape-dependent terms identical.
 
 ## Rejection and integration coverage
 
-The isolated tests exercise asset mixing, non-SI fee payment, asset-ID limb
+The isolated tests exercise asset mixing, non-SIP fee payment, asset-ID limb
 substitution, invalid balance carries, changed transaction fields, malformed
 three-output encodings and invalid reward asset limbs. Issuance tests include
 missing or invalid ML-DSA signatures, wrong network/version, forged derived
 IDs, hidden overissuance, note-asset substitution, missing or changed
-ciphertexts, policy-bound failures, unpaid SI fees and atomic sequence reuse
+ciphertexts, policy-bound failures, unpaid SIP fees and atomic sequence reuse
 rejection. Direct-AIR tests check supply and asset constraints independently
 of native witness prevalidation.
 
 Remaining node-level tests must prove unchanged accepted state, nullifiers,
 asset registry and mempool after rejection. Wallet integration must cover
-issuance followed by transfer, token and SI change, padding, mnemonic
+issuance followed by transfer, token and SIP change, padding, mnemonic
 restoration and rescanning. Verify malformed, replayed and reorged issuance
 records under the eventual block transition. Isolated prover tests do not
 establish these network properties.
@@ -260,7 +266,7 @@ halving for all Fiat--Shamir challenge terms, including FRI queries and
 grinding. Challenge-domain terms and BHT collision resistance must also reach
 80 bits. Assess each native proof relation separately.
 
-The engineering-frozen transaction profile uses `log_blowup=7`, 41 queries,
+The pre-economic-revision transaction profile used `log_blowup=7`, 41 queries,
 20-bit query/batch grinding, zero commitment grinding, binary folding and final
 polynomial log length zero. Its three EPYC 7763 four-worker generation trials
 are 1.332143, 1.315662 and 1.316440 seconds. The measured body range is
@@ -288,7 +294,8 @@ includes inventories, framing, authenticated transport, ACKs, handshake,
 retransmission and recovery allowances. Actual wire/full-load measurements
 and issuance resource policy remain qualification gates.
 
-Column and query-opening optimization proceeds independently of this freeze.
+Column and query-opening optimization proceeds independently of the required
+revised-AIR screen; it cannot establish a new freeze without actual measurements.
 A smaller proof or lower uplink requirement requires a new measured profile
 revision; it does not silently change the selected verifier or security target.
 

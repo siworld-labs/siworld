@@ -1,22 +1,29 @@
-//! Public integer subsidy audit over the same native transition used by nodes.
+//! Public integer audit of native V1 subsidy, pool, burn and fund accounting.
 //!
-//! This verifies every supplied transaction and settlement proof. It audits SI
-//! creation and the two credited fund counters, without disclosing fee openings.
-//! Native engineering blocks do not yet carry asset issuance or fund payouts;
-//! this report must not be described as an audit of those unimplemented paths.
-use crate::state::{BlockVerifier, Config, State, subsidy_split};
+//! Supplied transaction and settlement proofs are independently replayed. Fees
+//! remain private and are transfers, not new issuance. Private wallet receipts
+//! and voluntarily locked transaction values are outside this public audit.
+use crate::state::{BlockVerifier, Config, RewardMode, State};
 use crate::wire::{Block, Hash};
+use siworld_core::v1_economics::{FundAccount, FundBalance};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HeightIssuance {
     pub height: u64,
     pub block_id: Hash,
+    pub mode: RewardMode,
     pub subsidy: u64,
-    pub miner_subsidy: u64,
-    pub fund_direct: u64,
-    pub fund_locked: u64,
+    pub miner_subsidy: u128,
+    pub fund_credit: Vec<u64>,
+    pub protocol_pool_credit: u64,
+    pub mode_pool_credit: u64,
+    pub pool_payout: u64,
+    pub burn: u64,
+    pub pool_balance: u128,
+    pub locked_subsidy: u128,
+    pub scheduled_circulating: u128,
+    pub funds: [FundBalance; 2],
 }
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuditReport {
     pub network: Hash,
@@ -25,26 +32,38 @@ pub struct AuditReport {
     pub fingerprint: Hash,
     pub total_subsidy: u128,
     pub miner_subsidy: u128,
-    pub fund_direct: u128,
-    pub fund_locked: u128,
+    pub holder_pool: u128,
+    pub burned: u128,
+    pub locked_subsidy: u128,
+    pub scheduled_circulating: u128,
+    pub funds: [FundBalance; 2],
     pub heights: Vec<HeightIssuance>,
     pub asset_issuance_supported: bool,
     pub fund_spending_supported: bool,
 }
 impl AuditReport {
-    /// Bind an independently replayed report to the exact accepted chain head.
     pub fn check_head(&self, height: u64, tip: Hash, fingerprint: Hash) -> Result<(), String> {
         if (self.height, self.tip, self.fingerprint) != (height, tip, fingerprint) {
             return Err("issuance audit does not match the accepted state".into());
         }
         Ok(())
     }
+    pub fn check_supply(&self) -> Result<(), String> {
+        let accounted = self
+            .miner_subsidy
+            .checked_add(self.holder_pool)
+            .and_then(|v| v.checked_add(self.burned))
+            .and_then(|v| v.checked_add(self.funds[0].entitlement))
+            .and_then(|v| v.checked_add(self.funds[1].entitlement))
+            .ok_or("public supply audit overflow")?;
+        if accounted != self.total_subsidy {
+            return Err("public supply conservation failed".into());
+        }
+        Ok(())
+    }
 }
-
-/// Replay a complete canonical engineering history from the immutable genesis.
-/// Callers choose the canonical chain; this function neither selects a fork nor
-/// authenticates a downloaded checkpoint. Replaying the replacement chain from
-/// genesis naturally removes every orphan subsidy and fund credit.
+/// The caller authenticates the selected canonical history or checkpoint.
+/// Replacement replay discards every orphan pool, burn, fund and unlock change.
 pub fn replay_chain(
     config: Config,
     blocks: &[Block],
@@ -52,10 +71,7 @@ pub fn replay_chain(
 ) -> Result<(State, AuditReport), String> {
     replay_blocks(config, blocks.iter().cloned().map(Ok), verifier)
 }
-
-/// Stream one canonical proof-carrying block at a time. Proof bodies are dropped
-/// after each transition; the report retains only public per-height counters.
-/// A source read failure aborts instead of producing a partial success report.
+/// Stream one full-proof block at a time. Missing data aborts the audit.
 pub fn replay_blocks(
     config: Config,
     blocks: impl IntoIterator<Item = Result<Block, String>>,
@@ -64,44 +80,67 @@ pub fn replay_blocks(
     let mut state = State::new(config)?;
     let mut heights = Vec::new();
     let mut miner_total = 0u128;
-    let mut direct_total = 0u128;
-    let mut locked_total = 0u128;
+    let mut fund_total = [0u128; 2];
     let mut subsidy_total = 0u128;
+    let mut burned_total = 0u128;
     for block in blocks {
         let block = block?;
+        let allocation = state.reward_allocation(block.reward_mode)?;
         state.apply(&block, verifier)?;
-        let subsidy =
-            siworld_core::issuance::block_reward(siworld_core::issuance::epoch_of(block.height));
-        let (miner, direct, locked) = subsidy_split(block.height);
-        if u128::from(miner) + u128::from(direct) + u128::from(locked) != u128::from(subsidy) {
-            return Err("subsidy split differs from the issuance curve".into());
-        }
+        allocation.check_conservation().map_err(|e| e.to_string())?;
         subsidy_total = subsidy_total
-            .checked_add(u128::from(subsidy))
+            .checked_add(u128::from(allocation.subsidy))
             .ok_or("subsidy audit overflow")?;
         miner_total = miner_total
-            .checked_add(u128::from(miner))
-            .ok_or("miner audit overflow")?;
-        direct_total = direct_total
-            .checked_add(u128::from(direct))
-            .ok_or("direct fund audit overflow")?;
-        locked_total = locked_total
-            .checked_add(u128::from(locked))
-            .ok_or("locked fund audit overflow")?;
-        if (state.total_subsidy, state.fund_direct, state.fund_locked)
-            != (subsidy_total, direct_total, locked_total)
-        {
-            return Err("accepted issuance counters differ from the integer audit".into());
+            .checked_add(allocation.miner_subsidy_credit())
+            .ok_or("miner subsidy audit overflow")?;
+        burned_total = burned_total
+            .checked_add(u128::from(allocation.burn))
+            .ok_or("burn audit overflow")?;
+        for (total, credit) in fund_total.iter_mut().zip(&allocation.fund_credit) {
+            *total = total
+                .checked_add(u128::from(*credit))
+                .ok_or("fund audit overflow")?;
         }
+        let totals = state.economics.totals();
+        let funds = [
+            state.economics.fund(FundAccount::First),
+            state.economics.fund(FundAccount::Second),
+        ];
+        if totals.issued != subsidy_total
+            || totals.miner_subsidy_credited != miner_total
+            || totals.burned != burned_total
+            || totals.holder_pool != allocation.pool_after
+            || funds[0].entitlement != fund_total[0]
+            || funds[1].entitlement != fund_total[1]
+        {
+            return Err("accepted economics differ from the integer audit".into());
+        }
+        state
+            .economics
+            .assert_supply_invariant()
+            .map_err(|e| e.to_string())?;
         heights.push(HeightIssuance {
             height: block.height,
             block_id: state.tip,
-            subsidy,
-            miner_subsidy: miner,
-            fund_direct: direct,
-            fund_locked: locked,
+            mode: block.reward_mode,
+            subsidy: allocation.subsidy,
+            miner_subsidy: allocation.miner_subsidy_credit(),
+            fund_credit: allocation.fund_credit,
+            protocol_pool_credit: allocation.protocol_pool_credit,
+            mode_pool_credit: allocation.mode_pool_credit,
+            pool_payout: allocation.pool_payout,
+            burn: allocation.burn,
+            pool_balance: totals.holder_pool,
+            locked_subsidy: totals.locked_subsidy,
+            scheduled_circulating: state
+                .economics
+                .scheduled_circulating()
+                .map_err(|e| e.to_string())?,
+            funds,
         });
     }
+    let totals = state.economics.totals();
     let report = AuditReport {
         network: state.config.network,
         height: state.height,
@@ -109,12 +148,22 @@ pub fn replay_blocks(
         fingerprint: state.fingerprint(),
         total_subsidy: subsidy_total,
         miner_subsidy: miner_total,
-        fund_direct: direct_total,
-        fund_locked: locked_total,
+        holder_pool: totals.holder_pool,
+        burned: burned_total,
+        locked_subsidy: totals.locked_subsidy,
+        scheduled_circulating: state
+            .economics
+            .scheduled_circulating()
+            .map_err(|e| e.to_string())?,
+        funds: [
+            state.economics.fund(FundAccount::First),
+            state.economics.fund(FundAccount::Second),
+        ],
         heights,
         asset_issuance_supported: false,
-        fund_spending_supported: false,
+        fund_spending_supported: true,
     };
+    report.check_supply()?;
     Ok((state, report))
 }
 
@@ -125,7 +174,6 @@ pub(crate) mod tests;
 mod streaming_tests {
     use super::*;
     use crate::fixtures::{TestVerifier, candidate};
-
     #[test]
     fn streaming_and_slice_audits_agree_on_the_exact_chain() {
         let config = Config::development([73; 32], 0).unwrap();
@@ -134,16 +182,12 @@ mod streaming_tests {
         state.apply(&first, &TestVerifier).unwrap();
         let second = candidate(&state, 100_000);
         let blocks = [first, second];
-        let (_, slice_report) = replay_chain(config.clone(), &blocks, &TestVerifier).unwrap();
-        let (stream_state, stream_report) =
+        let (_, slice) = replay_chain(config.clone(), &blocks, &TestVerifier).unwrap();
+        let (state, stream) =
             replay_blocks(config, blocks.into_iter().map(Ok), &TestVerifier).unwrap();
-        assert_eq!(stream_report, slice_report);
-        stream_report
-            .check_head(
-                stream_state.height,
-                stream_state.tip,
-                stream_state.fingerprint(),
-            )
+        assert_eq!(stream, slice);
+        stream
+            .check_head(state.height, state.tip, state.fingerprint())
             .unwrap();
     }
     #[test]
@@ -154,7 +198,7 @@ mod streaming_tests {
         let source = std::iter::once(Ok(first))
             .chain(std::iter::once(Err("source unavailable".to_owned())))
             .chain(std::iter::from_fn(|| -> Option<Result<Block, String>> {
-                panic!("source was consumed after its first failure")
+                panic!("source was consumed after failure")
             }));
         assert!(
             matches!(replay_blocks(config, source, &TestVerifier), Err(reason) if reason == "source unavailable")

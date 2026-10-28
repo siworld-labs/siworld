@@ -57,7 +57,7 @@ pub struct Condition {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Note {
     pub owner: Digest,
-    /// SI amount (atom): 0 (dummy package) or at least MIN_PACKAGE_DEPOSIT.
+    /// SIP amount (atom): 0 (dummy package) or at least MIN_PACKAGE_DEPOSIT.
     pub value: u64,
     pub cond: Condition,
     pub rho: Digest,

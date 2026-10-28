@@ -156,10 +156,14 @@ pub fn copy_file(source: &Path, output: &Path, password: &str) -> Result<(), Str
 pub struct FundBudget {
     pub version: u32,
     pub id: String,
-    pub direct_si: String,
-    pub lock_si: String,
-    pub total_si: String,
-    pub max_payout_si: String,
+    #[serde(rename = "direct_si")]
+    pub direct_sip: String,
+    #[serde(rename = "lock_si")]
+    pub lock_sip: String,
+    #[serde(rename = "total_si")]
+    pub total_sip: String,
+    #[serde(rename = "max_payout_si")]
+    pub max_payout_sip: String,
 }
 pub(crate) struct BudgetLimits {
     pub accounts: [u64; 2],
@@ -168,10 +172,10 @@ pub(crate) struct BudgetLimits {
 }
 impl FundBudget {
     pub(crate) fn validate(&self) -> Result<BudgetLimits, String> {
-        let amount = |s: &str| crate::amount::parse_si(s).ok_or("invalid cumulative SI budget");
-        let accounts = [amount(&self.direct_si)?, amount(&self.lock_si)?];
-        let total = amount(&self.total_si)?;
-        let max = amount(&self.max_payout_si)?;
+        let amount = |s: &str| crate::amount::parse_sip(s).ok_or("invalid cumulative SIP budget");
+        let accounts = [amount(&self.direct_sip)?, amount(&self.lock_sip)?];
+        let total = amount(&self.total_sip)?;
+        let max = amount(&self.max_payout_sip)?;
         if self.version != 1
             || !canonical_id(&self.id)
             || accounts == [0, 0]
@@ -198,9 +202,12 @@ pub struct FundGrant {
     pub approval_id: String,
     pub budget: FundBudget,
     pub seconds: u64,
-    pub direct_si: String,
-    pub lock_si: String,
-    pub max_payout_si: String,
+    #[serde(rename = "direct_si")]
+    pub direct_sip: String,
+    #[serde(rename = "lock_si")]
+    pub lock_sip: String,
+    #[serde(rename = "max_payout_si")]
+    pub max_payout_sip: String,
     pub recipients: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approval: Option<crate::fund_approval::GrantApproval>,
@@ -211,9 +218,10 @@ impl FundGrant {
             .map_err(|_| "invalid fund authorization file".into())
     }
     pub(crate) fn validate(&self, genesis: &Digest) -> Result<Authorization, String> {
-        let amount = |s: &str| crate::amount::parse_si(s).ok_or("invalid SI authorization amount");
-        let remaining = [amount(&self.direct_si)?, amount(&self.lock_si)?];
-        let max = amount(&self.max_payout_si)?;
+        let amount =
+            |s: &str| crate::amount::parse_sip(s).ok_or("invalid SIP authorization amount");
+        let remaining = [amount(&self.direct_sip)?, amount(&self.lock_sip)?];
+        let max = amount(&self.max_payout_sip)?;
         let budget = self.budget.validate()?;
         if !matches!(
             (self.version, self.approval.is_some()),
@@ -274,4 +282,35 @@ pub struct FundStatus {
     pub direct_remaining: u64,
     pub lock_remaining: u64,
     pub max_payout: u64,
+}
+
+#[cfg(test)]
+mod denomination_compatibility_tests {
+    use super::{FundBudget, FundGrant};
+
+    #[test]
+    fn fund_policy_keeps_signed_serialization_bytes() {
+        let original = br#"{"version":1,"id":"1111111111111111111111111111111111111111111111111111111111111111","direct_si":"1.25","lock_si":"2.5","total_si":"3.75","max_payout_si":"0.5"}"#;
+        let policy: FundBudget = serde_json::from_slice(original).unwrap();
+        assert_eq!(serde_json::to_vec(&policy).unwrap().as_slice(), original);
+        assert_eq!(
+            crate::fund_approval::policy_hash(&policy),
+            crate::fund_approval::hash("siworld cumulative fund policy v1", original)
+        );
+        let incompatible = std::str::from_utf8(original)
+            .unwrap()
+            .replace("direct_si", "direct_sip");
+        assert!(serde_json::from_str::<FundBudget>(&incompatible).is_err());
+    }
+
+    #[test]
+    fn fund_grant_keeps_signed_serialization_bytes() {
+        let original = br#"{"version":2,"genesis":"2222222222222222222222222222222222222222222222222222222222222222","approval_id":"3333333333333333333333333333333333333333333333333333333333333333","budget":{"version":1,"id":"1111111111111111111111111111111111111111111111111111111111111111","direct_si":"1.25","lock_si":"2.5","total_si":"3.75","max_payout_si":"0.5"},"seconds":60,"direct_si":"1","lock_si":"2","max_payout_si":"0.25","recipients":[]}"#;
+        let grant: FundGrant = serde_json::from_slice(original).unwrap();
+        assert_eq!(serde_json::to_vec(&grant).unwrap().as_slice(), original);
+        let incompatible = std::str::from_utf8(original)
+            .unwrap()
+            .replace("max_payout_si", "max_payout_sip");
+        assert!(serde_json::from_str::<FundGrant>(&incompatible).is_err());
+    }
 }

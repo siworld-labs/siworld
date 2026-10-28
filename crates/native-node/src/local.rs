@@ -6,9 +6,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 const MAGIC: &[u8; 8] = b"SWNDv2\0\0";
-const CONFIG_BYTES: usize = 8 + 90;
+const CONFIG_BYTES: usize = 8 + crate::state::CONFIG_RULE_BYTES;
 const CONFIG_FILE: &str = "engineering-network.bin";
-const MAX_REWARD_SECRET: usize = 4096;
+const MAX_REWARD_SECRET: usize = crate::producer::MAX_REWARD_SECRET_BYTES;
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -37,7 +37,7 @@ fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
         a.len() == b.len() && a.modified().ok() == b.modified().ok()
     }
 }
-fn regular_read(path: &Path, private: bool, max: usize) -> Result<File, String> {
+pub(crate) fn regular_read(path: &Path, private: bool, max: usize) -> Result<File, String> {
     let before = fs::symlink_metadata(path).map_err(|_| "local file unavailable")?;
     if !before.is_file()
         || before.file_type().is_symlink()
@@ -105,7 +105,7 @@ pub fn initialize_asert(
         Config::asert_development(network, genesis_timestamp, target, pow_iterations)?,
     )
 }
-fn initialize_config(path: &Path, config: Config) -> Result<Config, String> {
+pub fn initialize_config(path: &Path, config: Config) -> Result<Config, String> {
     config.validate()?;
     let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]

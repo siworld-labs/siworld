@@ -27,7 +27,7 @@ pub const ASSET_MATCH_CELL: usize = 17;
 pub const UNUSED_FEE_CARRIES: Range<usize> = 621..630;
 
 /// One of the three references is compared with each of the five notes.
-/// Input reference 0/1 aliases note 0/1. Reference 2 is the all-zero SI ID.
+/// Input reference 0/1 aliases note 0/1. Reference 2 is the all-zero SIP ID.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AssetRef {
     Note(usize),

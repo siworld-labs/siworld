@@ -9,14 +9,15 @@ runnable recursive implementation.
 
 | Component | Present scope | Native V1 boundary |
 | --- | --- | --- |
-| `crates/bench-multi-asset` | Transaction, issuance and settlement AIRs, native proof tools, public codecs and engineering profile | Isolated workspace; no native node depends on it yet |
+| `crates/bench-multi-asset` | Transaction, issuance and settlement AIRs, native proof tools and codecs | Native integration imports these relations; economic changes require new profile qualification |
 | `crates/bench-d8` | Earlier two-output native proof baseline and dependency adapter | Diagnostic baseline; does not activate the three-output profile |
-| `core`, `crypto`, `state` | Legacy types, encrypted notes, signatures, commitments, roots and nullifiers | Native types/state transitions require explicit integration |
+| `core`, `crypto`, `state` | Shared integer monetary reference and legacy cryptographic/state primitives | Native integration explicitly binds types, network identity and economic state |
+| `crates/native-node` | Isolated codec, shared transition, admission, sync/forks, wallet and audit interfaces | Revised economics, live transport and deployment require dedicated validation |
 | `circuits`, `prover`, `bench-stark` | Legacy recursive proof route and pinned keys | Retained runtime and paused V2 review surface |
 | `consensus`, `storage`, `node` | Legacy block production/validation, persistent full-block replay, libp2p and local RPC | Native block codec, common transition, admission, retention and transport remain milestones |
 | `tools/control-panel` | Local operational interface for retained engineering nodes | It is outside consensus and is not native V1 deployment evidence |
 
-The transaction engineering profile pins parameters, source/dependency
+The pre-economic-revision transaction profile pins parameters, source/dependency
 identities, security data and public verifier artifacts. The
 [three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
 also fixes public preprocessing identities for 576-position settlement and
@@ -31,18 +32,18 @@ all outputs, and generate a native proof. Nodes must resolve the selected
 snapshot from canonical local state, verify sidecars and proofs under bounded
 resource admission, then atomically reserve nullifiers.
 
-Miners assemble 64–576 positions in groups of 16. The M1 (N1) block-codec and
-transition milestone must enforce strictly ascending proof-independent BLAKE3
-statement IDs and reject equality. Proof bytes, proof lengths/randomness and
-fee sidecars do not affect those IDs. This native block-order validator is not
-yet implemented. A separate native settlement proof binds ordered commitments,
-subsidy context and the SI reward note.
+Miners assemble 64–576 positions in groups of 16. The isolated native codec and
+shared transition enforce strictly ascending proof-independent BLAKE3 statement
+IDs and reject equality. Proof bytes, proof lengths/randomness and fee sidecars
+do not affect those IDs. A separate settlement proof binds ordered commitments
+and all mode-dependent SIP reward notes. The [economic revision](v1-economics.md)
+requires new source-bound proofs and state-transition qualification.
 
 Production, validation and historical application must use one deterministic,
 integer-only, atomic transition. Compact relay references accepted transaction
 identities and recovers bounded missing data; it does not authorize skipping
 proof validation. Isolated issuance proves exact hidden minted supply, while
-node acceptance must also verify ML-DSA-65 and atomically consume its SI fee
+node acceptance must also verify ML-DSA-65 and atomically consume its SIP fee
 payment and update the registry.
 
 ## Storage and synchronization

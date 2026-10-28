@@ -10,19 +10,19 @@ use siworld_core::params::COINBASE_MATURITY;
 use siworld_core::Block;
 use siworld_crypto::{SpendKey, ViewKey};
 
-const SI: u64 = 100_000_000;
+const SIP: u64 = 100_000_000;
 
 /// alice pays bob (both outputs to bob) in block 1.
 fn paid_block() -> (siworld_state::ChainState, Block, u64) {
     let p = params();
-    let (state, owned) = genesis(&p, &[(key(1), SI, 0)]);
+    let (state, owned) = genesis(&p, &[(key(1), SIP, 0)]);
     let fee = fee_now(&state);
     let tx = pay(
         &state,
         &p,
         [real(&state, &owned[0]), dummy(1)],
         &key(2),
-        [SI / 2, SI / 2 - fee],
+        [SIP / 2, SIP / 2 - fee],
         fee,
         7,
     )
@@ -49,7 +49,7 @@ fn recipient_finds_payment_at_its_tree_position() {
     let bob = found(&key(2).view_key(), &block);
     let mut values: Vec<u64> = bob.iter().map(|&(_, v)| v).collect();
     values.sort_unstable();
-    assert_eq!(values, [SI / 2 - fee, SI / 2]);
+    assert_eq!(values, [SIP / 2 - fee, SIP / 2]);
 
     // The block appended its slot outputs and then one matured miner package
     // (the zero digest this early in the chain).

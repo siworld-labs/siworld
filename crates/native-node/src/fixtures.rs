@@ -26,11 +26,10 @@ impl BlockVerifier for TestVerifier {
     fn settlement(
         &self,
         _: &[Digest],
-        _: u64,
-        _: u64,
+        _: &native::settlement::RewardPlan,
         _: Hash,
         _: Hash,
-        _: &Digest,
+        _: &[Digest],
         proof: &[u8],
     ) -> Result<(), String> {
         if proof == [1] {
@@ -67,10 +66,12 @@ pub(crate) fn candidate(state: &State, seed: u32) -> Block {
         target: state.next_target(),
         nonce: 0,
         transactions,
-        reward: RewardRecord {
+        reward_mode: crate::state::RewardMode::Voyager,
+        rewards: vec![RewardRecord {
             commitment: felt(seed + 20000),
             ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
-        },
+        }],
+        fund_spends: Vec::new(),
         settlement_proof: vec![1],
     };
     let seed = block.pow_seed().unwrap();

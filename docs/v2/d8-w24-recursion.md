@@ -100,15 +100,15 @@ the early performance checkpoint permitting further work.
 | Scalar W24 geometry | 3–5 days | Typed geometry, coefficient extraction/recomposition, standard permutation tables, native/circuit binary compression; mutations of all 24 inputs, 12 digest limbs and eight extension coefficients, wrong padding and malformed geometry |
 | Recursive suite and FRI | 3–5 days | D8 AIR/table/recomposition dispatch, registry/config codec, transcript observation/squeezing, cap/MMCS targets and canonical artifacts; native/circuit transcript equivalence, wrong suite/key/cap and noncanonical proof rejection |
 | Opening-batch grinding | 2–4 days | Native nonce generation and recursive verification with identical transcript order; configuration/shape/key binding, serialization, positive-difficulty and zero-difficulty rejection tests; required before checkpoint |
-| SI relation port | 4–7 days | Consistent leaf/anchor/note/nullifier/hash/codecs, eight-input and root circuits, reviewed additive-set/output layouts; trigger the early performance checkpoint at the first verified eight-input merge with opening-batch grinding and the final checkpoint configuration; independent native oracle, all public-field mutations and complete N=16 proof verification |
+| SIP relation port | 4–7 days | Consistent leaf/anchor/note/nullifier/hash/codecs, eight-input and root circuits, reviewed additive-set/output layouts; trigger the early performance checkpoint at the first verified eight-input merge with opening-batch grinding and the final checkpoint configuration; independent native oracle, all public-field mutations and complete N=16 proof verification |
 | Security screening and measurements | 2–4 days | Actual shape extraction, pinned conjectured and Johnson reports, composition/quantum screening, only passing profiles receive three full N=16 experimental runs under the 10-GiB ceiling; production budget selection follows measured peaks |
 | Production integration and freeze | 3–6 days | Shared transition/verification interfaces, worker/network binding, resource admission, isolated engineering-network fixtures, reproducible complete sources/artifacts/keys for audit |
 
 Plan the first eight-input checkpoint for engineering day 13, with an estimated
 window of days 10–18 from the start of implementation. This comprises 3–5 days
 for scalar geometry, 3–5 for the recursive suite, 2–4 for opening-batch grinding,
-and the first 2–4 days of the SI port for the leaf and eight-input relation.
-The remaining 2–3 SI-port days cover the root and full rejection coverage.
+and the first 2–4 days of the SIP port for the leaf and eight-input relation.
+The remaining 2–3 SIP-port days cover the root and full rejection coverage.
 Opening-batch grinding is on the critical path; it is not deferred until after
 timing. Run the checkpoint immediately when the first merge verifies under the
 final checkpoint configuration, even if earlier than day 10; do not wait for

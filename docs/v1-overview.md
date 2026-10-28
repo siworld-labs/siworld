@@ -1,11 +1,10 @@
 # Native V1 System Overview
 
-Status: the two-input/three-output transaction, fixed-576 confidential-fee
-settlement and three-initial-note issuance proof relations are engineering-
-frozen with source-bound public preprocessing keys and security reports.
-These fixed shapes execute in an isolated proof workspace. Native node, wallet and
-network integration remains incomplete. There is no public native V1 testnet
-or production network.
+Status: the selected economic revision reopens native transaction, settlement
+and issuance proof parameters. The prior source-bound profiles are baseline
+evidence, not qualification of the revised lock and reward relations. Native
+node, wallet and network integration remains incomplete. There is no public
+native V1 testnet or production network. See the [monetary rules](v1-economics.md).
 
 **Engineering target ≥80-bit quantum security, pending independent review.**
 The target applies to the specified estimator terms; it is not a reviewed
@@ -15,8 +14,8 @@ full-system security claim.
 
 | Area | Present implementation | Remaining native V1 work |
 | --- | --- | --- |
-| Transaction proof | Private asset IDs, two inputs/three outputs, per-asset conservation, SI-only fees, snapshot/ciphertext binding and source-bound profile | Canonical envelope, bounded node decoder, atomic admission and wallet integration |
-| Issuance and settlement | Source-bound freeze of three-initial-note fixed-supply issuance, declaration-signature checks and 576-position SI-only reward settlement | Issuance policy, other preprocessing shapes and atomic block/state integration |
+| Transaction proof | Private asset IDs, two inputs/three outputs, per-asset conservation, SIP-only fees, snapshot/ciphertext binding and source-bound profile | Canonical envelope, bounded node decoder, atomic admission and wallet integration |
+| Issuance and settlement | Three-initial-note fixed-supply issuance, declaration-signature checks and fixed-576 SIP-only fee settlement baseline | Mode-dependent one/five reward notes, pool/burn/fund accounting, revised keys and resource screening, atomic integration |
 | Existing node | Legacy two-output recursive proofs, storage, peer relay and local RPC | It does not activate native V1 |
 | Native network | Codec, transport, retention and acceptance requirements | Complete block validation, compact relay, pruning, checkpoint bootstrap and sustained-load qualification |
 | Connection privacy | Hybrid authenticated transport and Dandelion++ designs | Reviewed implementation and actual-listener adversarial tests |
@@ -30,9 +29,9 @@ directories and keys; it imports no retained notes or proofs.
 
 The selected design requires the following integrated behavior:
 
-1. The wallet constructs the same two-input/three-output public format for SI,
+1. The wallet constructs the same two-input/three-output public format for SIP,
    issued assets and padding. Asset IDs are private and bound into notes.
-   The relation balances each asset independently and pays fees only in SI.
+   The relation balances each asset independently and pays fees only in SIP.
 2. It generates a native D8/W24 transaction proof and locally checks encrypted
    outputs before broadcast. The AIR binds all ciphertext bytes, but does not
    prove encryption correctness or recipient decryptability.
@@ -43,7 +42,8 @@ The selected design requires the following integrated behavior:
 4. A miner selects 64–576 positions in groups of 16, adds valid fixed-shape
    padding and generates one separate native fee-settlement proof. Strict
    ordering by proof-independent BLAKE3 statement IDs and duplicate rejection
-   are first-milestone requirements, not implemented native block behavior.
+   are enforced by the isolated native codec and shared transition; this does
+   not establish deployed network acceptance.
 5. Compact references avoid retransmitting proofs already held by peers.
    Missing data requires authenticated bounded recovery. Production,
    validation and replay must share one atomic state transition.
@@ -53,7 +53,11 @@ requires a 24-block local reorganization bound. It accepts the newest 4,096
 canonical recent-root-tree snapshots. Expired or orphaned selectors require
 transaction eviction and wallet reproof.
 
-## Transaction profile and measurements
+## Pre-revision transaction profile and measurements
+
+The following profile predates the economic revision. Unlock-height constraints
+and mode-dependent reward settlement require new actual-AIR reports, keys and
+three-trial measurements before refreezing. Earlier numbers do not pass that gate.
 
 The [three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
 freezes fixed shapes and public keys; it does not adopt issuance limits or
@@ -78,6 +82,9 @@ Classical conjectured and all selected quantum terms must pass their own
 screens; independent cryptographic review remains required.
 
 ## Capacity, storage and roles
+
+The limits below remain planning budgets. Reconcile the revised reward-note,
+settlement and permanent-record formats before capacity or storage acceptance.
 
 The complete conditional capacity model gives **43 Mbps minimum uplink** and
 **100 Mbps recommended** for 576 positions, three relay copies and bounded

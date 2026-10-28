@@ -1,5 +1,11 @@
 # Security and Privacy Model
 
+The [monetary revision](v1-economics.md) adds review boundaries for trusted
+snapshot-height locks, mode-dependent SIP reward notes, pool/burn conservation,
+per-credit fund vesting and atomic economic rollback. Old profile results do
+not qualify those changed relations. Wallet threshold backup reconstructs one
+key and supplies no V1 consensus multisignature guarantee.
+
 ## Status and scope
 
 **Engineering target ≥80-bit quantum security, pending independent review.**

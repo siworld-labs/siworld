@@ -8,14 +8,14 @@ use siworld_circuits::dummy::dummy_slot;
 use siworld_circuits::MockProver;
 use siworld_circuits::RelationContext;
 use siworld_consensus::PendingTx;
-use siworld_core::params::ATOMS_PER_SI;
+use siworld_core::params::ATOMS_PER_SIP;
 use siworld_core::Digest;
 use siworld_node::mempool::admissible;
 use siworld_node::{Config, Devnet, Mempool, MempoolError};
 
-const SI: u64 = ATOMS_PER_SI;
+const SIP: u64 = ATOMS_PER_SIP;
 
-/// A payment of 1 SI from `from` to dave; each call spends a different package.
+/// A payment of 1 SIP from `from` to dave; each call spends a different package.
 fn payment(net: &mut Devnet, from: &str, priority: bool) -> PendingTx {
     let state = net.state().clone();
     let params = net.chain.params.clone();
@@ -30,7 +30,7 @@ fn payment(net: &mut Devnet, from: &str, priority: bool) -> PendingTx {
             system.as_ref(),
             from,
             &to,
-            SI,
+            SIP,
             priority,
         )
         .unwrap()
@@ -306,13 +306,13 @@ fn rejected_submission_leaves_the_pool_unchanged() {
 #[test]
 fn devnet_releases_inputs_of_evicted_payments() {
     let mut net = Devnet::with_mempool_capacity(Config::default(), 1);
-    net.pay("alice", "dave", SI, false).unwrap();
-    net.pay("bob", "dave", SI, true).unwrap();
+    net.pay("alice", "dave", SIP, false).unwrap();
+    net.pay("bob", "dave", SIP, true).unwrap();
     net.mine(1).unwrap();
-    assert_eq!(net.balance("dave"), Some(SI));
+    assert_eq!(net.balance("dave"), Some(SIP));
     // alice's payment was evicted and its input released: a payment that needs
-    // both of her 50 SI packages goes through.
-    net.pay("alice", "dave", 60 * SI, false).unwrap();
+    // both of her 50 SIP packages goes through.
+    net.pay("alice", "dave", 60 * SIP, false).unwrap();
     net.mine(2).unwrap();
-    assert_eq!(net.balance("dave"), Some(61 * SI));
+    assert_eq!(net.balance("dave"), Some(61 * SIP));
 }

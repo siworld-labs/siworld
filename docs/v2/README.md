@@ -1,9 +1,12 @@
-# Paused V2 Proof Research
+# V2 Research and Authorization Planning
 
-Status: paused experimental recursive aggregation and historical proof
-compression. Native V1 uses independent native transaction, settlement and
+Status: future protocol research, not adopted V1 behavior. Recursive
+aggregation and historical proof compression remain paused. Native V1 uses independent native transaction, settlement and
 issuance proofs; these research targets are not V1 acceptance criteria.
 
+- [Uniform private multisignature authorization](multisignature.md): at most
+  two-of-three in-circuit hash signatures, uniform slots and versioned policy
+  commitments. No extra V1 signature fields are adopted.
 - [Proof composition experiments](proof-composition.md).
 - [D8/W24 recursive implementation plan](d8-w24-recursion.md).
 - [Recursive security review scope](proof-security-review.md).

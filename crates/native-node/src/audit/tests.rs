@@ -24,11 +24,10 @@ impl BlockVerifier for TestVerifier {
     fn settlement(
         &self,
         _: &[Digest],
-        _: u64,
-        _: u64,
+        _: &native::settlement::RewardPlan,
         _: Hash,
         _: Hash,
-        _: &Digest,
+        _: &[Digest],
         proof: &[u8],
     ) -> Result<(), String> {
         if proof == [1] {
@@ -65,10 +64,12 @@ pub(crate) fn candidate(state: &State, seed: u32) -> Block {
         target: state.next_target(),
         nonce: 0,
         transactions,
-        reward: RewardRecord {
+        reward_mode: crate::state::RewardMode::Voyager,
+        rewards: vec![RewardRecord {
             commitment: felt(seed + 20_000),
             ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
-        },
+        }],
+        fund_spends: Vec::new(),
         settlement_proof: vec![1],
     }
 }
@@ -86,21 +87,30 @@ fn every_height_matches_integer_curve_and_accepted_state() {
     let (replayed, report) = replay_chain(config, &blocks, &TestVerifier).unwrap();
     assert_eq!(replayed.fingerprint(), state.fingerprint());
     assert_eq!(report.fingerprint, state.fingerprint());
-    assert_eq!(report.total_subsidy, state.total_subsidy);
-    assert_eq!(report.fund_direct, state.fund_direct);
-    assert_eq!(report.fund_locked, state.fund_locked);
+    assert_eq!(report.total_subsidy, state.economics.totals().issued);
+    assert_eq!(
+        report.funds,
+        [
+            state.economics.fund(FundAccount::First),
+            state.economics.fund(FundAccount::Second)
+        ]
+    );
+    report.check_supply().unwrap();
     assert_eq!(report.heights.len(), 3);
+    let mut previous_pool = 0u128;
     for row in &report.heights {
         assert_eq!(
             row.subsidy,
-            siworld_core::issuance::block_reward(siworld_core::issuance::epoch_of(row.height))
+            siworld_core::v1_economics::subsidy(row.height).unwrap()
         );
         assert_eq!(
-            u128::from(row.subsidy),
-            u128::from(row.miner_subsidy)
-                + u128::from(row.fund_direct)
-                + u128::from(row.fund_locked)
+            u128::from(row.subsidy) + previous_pool,
+            row.miner_subsidy
+                + row.pool_balance
+                + u128::from(row.burn)
+                + row.fund_credit.iter().map(|v| u128::from(*v)).sum::<u128>()
         );
+        previous_pool = row.pool_balance;
     }
     report
         .check_head(state.height, state.tip, state.fingerprint())
@@ -111,7 +121,7 @@ fn every_height_matches_integer_curve_and_accepted_state() {
             .is_err()
     );
     assert!(!report.asset_issuance_supported);
-    assert!(!report.fund_spending_supported);
+    assert!(report.fund_spending_supported);
 }
 
 #[test]
@@ -147,5 +157,28 @@ fn fresh_canonical_replay_discards_orphan_subsidy_and_fund_credits() {
     let (_, shorter) = replay_chain(config, &[first], &TestVerifier).unwrap();
     assert_eq!(shorter.heights.len(), 1);
     assert_eq!(old.total_subsidy, shorter.total_subsidy * 2);
-    assert_eq!(old.fund_direct, shorter.fund_direct * 2);
+    assert_eq!(old.funds[0].entitlement, shorter.funds[0].entitlement * 2);
+}
+
+#[test]
+fn mixed_mode_replay_accounts_for_pool_claims_and_burn_without_fee_disclosure() {
+    let config = Config::development([34; 32], 0).unwrap();
+    let mut state = State::new(config.clone()).unwrap();
+    let first = candidate(&state, 900);
+    state.apply(&first, &TestVerifier).unwrap();
+    let mut second = candidate(&state, 300_000);
+    second.reward_mode = RewardMode::Holder;
+    second.rewards = (0..5)
+        .map(|index| RewardRecord {
+            commitment: felt(400_000 + index),
+            ciphertext: [index as u8; REWARD_CIPHERTEXT_BYTES],
+        })
+        .collect();
+    let (_, report) = replay_chain(config, &[first, second], &TestVerifier).unwrap();
+    report.check_supply().unwrap();
+    assert!(report.heights[1].pool_payout > 0);
+    assert_eq!(report.heights[0].pool_payout, 0);
+    assert_eq!(report.heights[1].burn, 0);
+    assert_eq!(report.burned, u128::from(report.heights[0].burn));
+    assert_eq!(report.funds[0].entitlement, report.funds[1].entitlement);
 }

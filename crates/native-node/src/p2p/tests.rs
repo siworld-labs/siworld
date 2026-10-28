@@ -146,10 +146,12 @@ fn invalid_local_block_emits_no_frame_header() {
         target: [0xff; 32],
         nonce: 0,
         transactions: Vec::new(),
-        reward: crate::wire::RewardRecord {
+        reward_mode: crate::state::RewardMode::Voyager,
+        rewards: vec![crate::wire::RewardRecord {
             commitment: [0; 48],
             ciphertext: [0; crate::wire::REWARD_CIPHERTEXT_BYTES],
-        },
+        }],
+        fund_spends: Vec::new(),
         settlement_proof: vec![1],
     };
     assert_eq!(session.send_block(1, &block), Err(Error::InvalidProtocol));

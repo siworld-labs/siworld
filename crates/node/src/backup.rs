@@ -469,7 +469,7 @@ pub fn drill_full_backup(
     for order in orders.orders() {
         let id = crate::payments::PaymentId::parse(&order.payment_id).map_err(|e| e.to_string())?;
         let to = crate::address::parse_address(&order.to).ok_or("invalid drill order")?;
-        let amount = crate::amount::parse_si(&order.amount).ok_or("invalid drill amount")?;
+        let amount = crate::amount::parse_sip(&order.amount).ok_or("invalid drill amount")?;
         let outcome = node
             .pay_with_id(id, &to, amount, order.priority)
             .map_err(|e| e.to_string())?;

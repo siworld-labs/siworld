@@ -91,10 +91,10 @@ Usage:
   siworld-node orders-init --order-ledger NEW_DIR --order-witness NEW_DIR
                        --genesis FILE --owner HEX [--ledger-password-file FILE]
   siworld-node orders-record --order-ledger DIR --order-witness DIR
-                       --payment-id HEX --to ADDRESS --amount SI [--priority]
+                       --payment-id HEX --to ADDRESS --amount SIP [--priority]
                        [--ledger-password-file FILE]
   siworld-node orders-dispatch --order-ledger DIR --order-witness DIR
-                       --payment-id HEX --to ADDRESS --amount SI [--priority]
+                       --payment-id HEX --to ADDRESS --amount SIP [--priority]
                        [--ledger-password-file FILE]
   siworld-node orders-cancel --order-ledger DIR --order-witness DIR
                        --payment-id HEX --expected-ledger-checkpoint FILE [--commit]
@@ -145,7 +145,7 @@ global freshness or coordinates separate wallet instances.
 Fund files use separate encrypted custody in a dedicated owner-only directory.
 genesis/run authenticate them with a hidden prompt or --fund-password-file.
 Fund signing starts locked; siworld-cli fundunlock requires its password and an
-explicit chain/recipient/SI budget file. Locking does not revoke signed payouts.
+explicit chain/recipient/SIP budget file. Locking does not revoke signed payouts.
 
 TESTNET ONLY: the protocol is not final and these coins have no value.
 
@@ -598,7 +598,7 @@ fn order_command(command: &str, args: &[String]) -> Result<(), String> {
             let to =
                 siworld_node::address::parse_address(required("--to")?).ok_or("invalid address")?;
             let amount =
-                siworld_node::amount::parse_si(required("--amount")?).ok_or("invalid amount")?;
+                siworld_node::amount::parse_sip(required("--amount")?).ok_or("invalid amount")?;
             let order = siworld_node::payments::PaymentOrder::new(
                 id,
                 &to,

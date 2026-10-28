@@ -722,6 +722,12 @@ fn mine(
 }
 fn continuous(directory: &Path, control: &Control) -> Result<(), String> {
     let config = local::load(directory)?;
+    if config.fund_allocation.is_none() {
+        return Err(
+            "explicit genesis-bound fund wallet allocation is required before production".into(),
+        );
+    }
+    let _settings = crate::mining::load(directory, config.network)?;
     if config.fixture {
         return Err(
             "continuous production rejects fixture work rules; initialize a new ASERT network"
@@ -775,7 +781,11 @@ fn continuous(directory: &Path, control: &Control) -> Result<(), String> {
                     .checked_add(1)
                     .ok_or("timestamp exhausted")?,
             );
-            let mut produced = producer::assemble(store.state(), &prover, positions, timestamp)?;
+            // Snapshot the explicit preference once. Later changes apply only to
+            // the next candidate, never to this proof or ongoing work search.
+            let settings = crate::mining::load(directory, config.network)?;
+            let mut produced =
+                producer::assemble(store.state(), &prover, positions, timestamp, &settings)?;
             if control.stop()? {
                 break;
             }
@@ -857,6 +867,12 @@ fn continuous(directory: &Path, control: &Control) -> Result<(), String> {
 pub fn run(directory: &Path) -> Result<(), String> {
     let _lease = Lease::acquire(directory)?;
     let config = local::load(directory)?;
+    if config.fund_allocation.is_none() {
+        return Err(
+            "explicit genesis-bound fund wallet allocation is required before production".into(),
+        );
+    }
+    let _settings = crate::mining::load(directory, config.network)?;
     if config.fixture {
         return Err("continuous production requires an ASERT engineering configuration".into());
     }

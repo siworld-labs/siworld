@@ -90,16 +90,16 @@ impl Fixture {
                 budget: siworld_node::fund_keys::FundBudget {
                     version: 1,
                     id: "ab".repeat(32),
-                    direct_si: "1000000000".into(),
-                    lock_si: "1000000000".into(),
-                    total_si: "2000000000".into(),
-                    max_payout_si: "1000000".into(),
+                    direct_sip: "1000000000".into(),
+                    lock_sip: "1000000000".into(),
+                    total_sip: "2000000000".into(),
+                    max_payout_sip: "1000000".into(),
                 },
                 genesis: siworld_node::hex(&n.genesis.id),
                 seconds: 3600,
-                direct_si: "0.0004".into(),
-                lock_si: "0".into(),
-                max_payout_si: "0.0002".into(),
+                direct_sip: "0.0004".into(),
+                lock_sip: "0".into(),
+                max_payout_sip: "0.0002".into(),
                 recipients: vec![encode_address(&recipient(3)), encode_address(&recipient(4))],
                 approval: None,
             },
@@ -224,7 +224,7 @@ fn combined_cumulative_limit_covers_both_accounts_and_reorg_does_not_refund() {
     }
     let mut n = f.open(true);
     let mut grant = cumulative_grant(&n, 1);
-    grant.lock_si = "0.0002".into();
+    grant.lock_sip = "0.0002".into();
     n.unlock_fund(PASSWORD, &grant).unwrap();
     n.payout(id(1), DevAccount::Direct, &recipient(3), 20_000)
         .unwrap();
@@ -419,16 +419,16 @@ fn journal_ownership_missing_files_corruption_and_chain_rollback_fail_closed() {
                 budget: siworld_node::fund_keys::FundBudget {
                     version: 1,
                     id: "ab".repeat(32),
-                    direct_si: "1000000000".into(),
-                    lock_si: "1000000000".into(),
-                    total_si: "2000000000".into(),
-                    max_payout_si: "1000000".into(),
+                    direct_sip: "1000000000".into(),
+                    lock_sip: "1000000000".into(),
+                    total_sip: "2000000000".into(),
+                    max_payout_sip: "1000000".into(),
                 },
                 genesis: siworld_node::hex(&f.genesis.id),
                 seconds: 60,
-                direct_si: "1".into(),
-                lock_si: "0".into(),
-                max_payout_si: "1".into(),
+                direct_sip: "1".into(),
+                lock_sip: "0".into(),
+                max_payout_sip: "1".into(),
                 recipients: vec![encode_address(&recipient(3))],
                 approval: None,
             }

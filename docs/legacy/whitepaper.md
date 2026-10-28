@@ -50,6 +50,6 @@ The [security model](security-model.md) distinguishes these observers and record
 
 ## Implementation scope
 
-The implementation includes SI-only notes, real note encryption, recursive Plonky3 proofs, peer relay, persistent blocks, authenticated local RPC, encrypted wallet files, durable payment journals and fund-account controls. It retains reward-linked fee tiers and replay-based storage. This legacy runtime does not implement native V1 multi-asset transactions, hybrid transport or the selected native proof lifecycle. Separate native V1 proof relations exist outside this runtime.
+The implementation includes SIP-only notes, real note encryption, recursive Plonky3 proofs, peer relay, persistent blocks, authenticated local RPC, encrypted wallet files, durable payment journals and fund-account controls. It retains reward-linked fee tiers and replay-based storage. This legacy runtime does not implement native V1 multi-asset transactions, hybrid transport or the selected native proof lifecycle. Separate native V1 proof relations exist outside this runtime.
 
 Detailed parameters are in [protocol](protocol.md), component boundaries in [architecture](architecture.md), and reproducible measurement commands in [benchmarks](benchmarks.md).

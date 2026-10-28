@@ -22,11 +22,10 @@ impl BlockVerifier for TestVerifier {
     fn settlement(
         &self,
         _: &[Digest],
-        _: u64,
-        _: u64,
+        _: &native::settlement::RewardPlan,
         _: Hash,
         _: Hash,
-        _: &Digest,
+        _: &[Digest],
         proof: &[u8],
     ) -> Result<(), String> {
         if proof == [1] {
@@ -63,10 +62,12 @@ fn candidate(state: &State, seed: u32) -> Block {
         target: state.next_target(),
         nonce: 0,
         transactions,
-        reward: RewardRecord {
+        reward_mode: crate::state::RewardMode::Voyager,
+        rewards: vec![RewardRecord {
             commitment: felt(seed + 20000),
             ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
-        },
+        }],
+        fund_spends: Vec::new(),
         settlement_proof: vec![1],
     };
     let seed = block.pow_seed().unwrap();
@@ -91,8 +92,8 @@ fn producer_and_validator_apply_the_same_transition() {
     assert_eq!(producer.spent.len(), 128);
     assert_eq!(producer.tree.count, 193);
     assert_eq!(
-        producer.total_subsidy,
-        siworld_core::issuance::block_reward(0) as u128
+        producer.economics.totals().issued,
+        u128::from(siworld_core::v1_economics::INITIAL_REWARD)
     );
 }
 #[test]
@@ -145,7 +146,7 @@ fn rejects_reused_output_and_reward_commitments() {
     for reward in [false, true] {
         let mut next = candidate(&state, 200000);
         if reward {
-            next.reward.commitment = first.reward.commitment;
+            next.rewards[0].commitment = first.rewards[0].commitment;
         } else {
             next.transactions[63].record.body[96..144]
                 .copy_from_slice(&first.transactions[0].record.body[96..144]);
@@ -288,11 +289,10 @@ fn asert_header_failures_precede_proof_checks_and_are_atomic() {
         fn settlement(
             &self,
             _: &[Digest],
-            _: u64,
-            _: u64,
+            _: &native::settlement::RewardPlan,
             _: Hash,
             _: Hash,
-            _: &Digest,
+            _: &[Digest],
             _: &[u8],
         ) -> Result<(), String> {
             panic!("header failure reached settlement verifier")
@@ -379,4 +379,266 @@ fn configuration_codec_rejects_noncanonical_modes_and_rule_changes() {
         assert!(Config::decode_rules(&invalid).is_err());
     }
     assert!(Config::decode_rules(&encoded[..89]).is_err());
+}
+
+#[test]
+fn economic_timings_are_genesis_bound_and_engineering_only() {
+    let production = Config::development([21; 32], 0).unwrap();
+    let compressed = production
+        .clone()
+        .with_economics(
+            siworld_core::v1_economics::EconomicsParams::engineering([60, 120, 180, 240], 3)
+                .unwrap(),
+        )
+        .unwrap();
+    assert_ne!(production.genesis_id(), compressed.genesis_id());
+    assert_eq!(
+        Config::decode_rules(&compressed.encode_rules()).unwrap(),
+        compressed
+    );
+    assert_eq!(compressed.encode_rules().len(), CONFIG_RULE_BYTES);
+    let service = Config::asert_development([21; 32], 1, [0xff; 32], 1).unwrap();
+    assert!(service.with_economics(compressed.economics).is_err());
+}
+
+fn holder_candidate(state: &State, seed: u32) -> Block {
+    let mut block = candidate(state, seed);
+    block.reward_mode = RewardMode::Holder;
+    block.rewards = (0..5)
+        .map(|index| RewardRecord {
+            commitment: felt(seed + 20_000 + index),
+            ciphertext: [index as u8; REWARD_CIPHERTEXT_BYTES],
+        })
+        .collect();
+    block
+}
+
+#[test]
+fn mode_reward_count_pool_burn_and_trusted_plan_are_bound() {
+    let initial = State::new(Config::development([22; 32], 0).unwrap()).unwrap();
+    let voyager = candidate(&initial, 1_000);
+    let holder = holder_candidate(&initial, 2_000);
+    let mut v = initial.clone();
+    v.apply(&voyager, &TestVerifier).unwrap();
+    let mut h = initial.clone();
+    h.apply(&holder, &TestVerifier).unwrap();
+    assert_eq!(v.economics.totals().holder_pool, 692_483_001);
+    assert_eq!(v.economics.totals().burned, 147_661_816);
+    assert_eq!(h.economics.totals().holder_pool, 101_810_479);
+    assert_eq!(h.economics.totals().burned, 0);
+    assert_eq!(h.tree.count, v.tree.count + 4);
+    assert_eq!(
+        initial
+            .reward_plan(RewardMode::Holder)
+            .unwrap()
+            .allocations
+            .len(),
+        5
+    );
+    for mut malformed in [voyager.clone(), holder.clone()] {
+        malformed.reward_mode = if malformed.reward_mode == RewardMode::Voyager {
+            RewardMode::Holder
+        } else {
+            RewardMode::Voyager
+        };
+        let mut state = initial.clone();
+        let before = state.fingerprint();
+        assert!(state.apply(&malformed, &TestVerifier).is_err());
+        assert_eq!(state.fingerprint(), before);
+    }
+    let mut duplicate = holder;
+    duplicate.rewards[4] = duplicate.rewards[0].clone();
+    let mut state = initial;
+    let before = state.fingerprint();
+    assert!(state.apply(&duplicate, &TestVerifier).is_err());
+    assert_eq!(state.fingerprint(), before);
+}
+
+#[test]
+fn failed_settlement_never_advances_any_economic_state() {
+    let mut state = State::new(Config::development([23; 32], 0).unwrap()).unwrap();
+    let mut holder = holder_candidate(&state, 30_000);
+    holder.settlement_proof = vec![0];
+    let before = state.fingerprint();
+    let economics = state.economics.clone();
+    assert!(state.apply(&holder, &TestVerifier).is_err());
+    assert_eq!(state.fingerprint(), before);
+    assert_eq!(state.economics, economics);
+}
+
+#[test]
+fn fund_policy_is_explicit_genesis_bound_and_unconfigured_service_fails_closed() {
+    use siworld_core::v1_economics::FundAllocation;
+    let service = Config::asert_development([24; 32], 1, [0xff; 32], 1).unwrap();
+    assert_eq!(service.fund_allocation, None);
+    let mut state = State::new(service.clone()).unwrap();
+    let before = state.fingerprint();
+    assert!(state.reward_plan(RewardMode::Holder).is_err());
+    assert!(
+        state
+            .apply(&candidate(&state, 4_000), &TestVerifier)
+            .is_err()
+    );
+    assert_eq!(state.fingerprint(), before);
+    let configured = service
+        .clone()
+        .with_fund_allocation(FundAllocation::new(vec![3, 7]).unwrap())
+        .unwrap();
+    assert_ne!(service.genesis_id(), configured.genesis_id());
+    assert_eq!(
+        Config::decode_rules(&configured.encode_rules()).unwrap(),
+        configured
+    );
+    assert_eq!(configured.fund_key_hashes, service.fund_key_hashes);
+    assert!(
+        State::new(configured)
+            .unwrap()
+            .reward_plan(RewardMode::Holder)
+            .is_ok()
+    );
+    assert!(
+        service
+            .with_fund_allocation(FundAllocation::new(vec![1, 2, 3]).unwrap())
+            .is_err()
+    );
+}
+
+fn signed_fund_spend(
+    network: Hash,
+    account: u8,
+    amount: u64,
+    counter: u64,
+    seed: u32,
+) -> crate::fund_spend::FundSpend {
+    use libcrux_ml_dsa::ml_dsa_65;
+    use native::codec::decode_digest;
+    use native::multi_asset::{Note, SIP_ASSET_ID};
+    let pair = ml_dsa_65::generate_key_pair([83 + account; 32]);
+    let mut spend = crate::fund_spend::FundSpend {
+        account,
+        counter,
+        amount,
+        owner: felt(seed),
+        rho: encode_digest(&crate::fund_spend::canonical_rho(network, account, counter)),
+        rseed: felt(seed + 2),
+        commitment: [0; 48],
+        ciphertext: [account + 3; 1313],
+        verifying_key: *pair.verification_key.as_ref(),
+        signature: [0; crate::fund_spend::SIGNATURE_BYTES],
+    };
+    let note = Note {
+        asset_id: SIP_ASSET_ID,
+        owner: decode_digest(&spend.owner).unwrap(),
+        value: amount,
+        unlock_height: 0,
+        rho: decode_digest(&spend.rho).unwrap(),
+        rseed: decode_digest(&spend.rseed).unwrap(),
+    };
+    spend.commitment = encode_digest(&Hasher::new().note_cm(&note));
+    spend.signature = *ml_dsa_65::sign(
+        &pair.signing_key,
+        &spend.message(network),
+        b"siworld v0",
+        [84 + account; 32],
+    )
+    .unwrap()
+    .as_ref();
+    spend
+}
+
+#[test]
+fn signed_fund_payouts_mature_independently_are_atomic_and_replay_without_orphans() {
+    use siworld_core::v1_economics::FundAllocation;
+    let network = [25; 32];
+    let mut config = Config::development(network, 0)
+        .unwrap()
+        .with_fund_allocation(FundAllocation::new(vec![3, 7]).unwrap())
+        .unwrap();
+    for account in 0..2 {
+        let spend = signed_fund_spend(network, account as u8, 1, 0, 8_000_000);
+        config.fund_key_hashes[account] = *blake3::hash(&spend.verifying_key).as_bytes();
+    }
+    let mut state = State::new(config).unwrap();
+    for height in 1..=23 {
+        let block = candidate(&state, height * 100_000);
+        state.apply(&block, &TestVerifier).unwrap();
+    }
+    let mut early = candidate(&state, 2_400_000);
+    early
+        .fund_spends
+        .push(signed_fund_spend(network, 0, 1, 0, 8_100_000));
+    let before = state.fingerprint();
+    assert!(state.apply(&early, &TestVerifier).is_err());
+    assert_eq!(state.fingerprint(), before);
+    early.fund_spends.clear();
+    state.apply(&early, &TestVerifier).unwrap();
+    let parent = state.clone();
+    let first_available = (siworld_core::v1_economics::INITIAL_REWARD * 3 / 100) / 2;
+    let mut payout = candidate(&state, 2_500_000);
+    payout
+        .fund_spends
+        .push(signed_fund_spend(network, 0, first_available, 0, 8_200_000));
+    let mut wrong_rho = payout.clone();
+    wrong_rho.fund_spends[0].rho = felt(8_300_000);
+    let before = state.fingerprint();
+    assert!(
+        state
+            .apply(&wrong_rho, &TestVerifier)
+            .unwrap_err()
+            .contains("nonce")
+    );
+    assert_eq!(state.fingerprint(), before);
+    for case in 0..4 {
+        let mut invalid = payout.clone();
+        invalid.fund_spends[0] = match case {
+            0 => {
+                let mut invalid = invalid.fund_spends[0].clone();
+                invalid.signature[0] ^= 1;
+                invalid
+            }
+            1 => signed_fund_spend(network, 0, first_available, 1, 8_200_000),
+            2 => signed_fund_spend(network, 0, first_available + 1, 0, 8_200_000),
+            _ => signed_fund_spend(
+                network,
+                1,
+                (siworld_core::v1_economics::INITIAL_REWARD * 7 / 100) / 2 + 1,
+                0,
+                8_200_000,
+            ),
+        };
+        let before = state.fingerprint();
+        assert!(state.apply(&invalid, &TestVerifier).is_err(), "case {case}");
+        assert_eq!(state.fingerprint(), before);
+    }
+    state.apply(&payout, &TestVerifier).unwrap();
+    assert_eq!(
+        state.economics.fund(FundAccount::First).spent,
+        u128::from(first_available)
+    );
+    assert_eq!(state.economics.fund(FundAccount::Second).spent, 0);
+    assert!(
+        state
+            .commitments
+            .contains(&payout.fund_spends[0].commitment)
+    );
+    let mut replacement = parent.clone();
+    let without_payout = candidate(&replacement, 2_600_000);
+    replacement.apply(&without_payout, &TestVerifier).unwrap();
+    assert_eq!(replacement.economics.fund(FundAccount::First).spent, 0);
+    assert_eq!(
+        replacement.economics.fund(FundAccount::First).spend_count,
+        0
+    );
+    assert!(
+        !replacement
+            .commitments
+            .contains(&payout.fund_spends[0].commitment)
+    );
+    assert_eq!(
+        replacement.economics.totals().issued,
+        state.economics.totals().issued
+    );
+    let mut replay = parent;
+    replay.apply(&without_payout, &TestVerifier).unwrap();
+    assert_eq!(replay.fingerprint(), replacement.fingerprint());
 }

@@ -14,16 +14,17 @@ disposable test keys and valueless test assets.
 
 | Status | Scope |
 | --- | --- |
-| Done | Source-bound engineering freeze of three isolated native proof relations: two-input/three-output transaction, 576-position settlement and three-initial-note issuance; public verifier artifacts and proof measurements |
-| In progress | Native V1 node, wallet, block, storage and network integration |
+| Done | Earlier native transaction, settlement and issuance proof baselines with public verifier artifacts and reproducible measurements |
+| In progress | V1 economics revision, renewed proof qualification, native node/wallet/network integration and launch-time fund configuration |
 | Not yet | Independent security review: pending; public test network: not available; production network: not available |
 
-Engineering freeze records implementation, dependency, parameter and artifact
-identities. It is not independent cryptographic approval or network activation.
-The [relation manifest](crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-freezes those fixed shapes and their public preprocessing keys. It does not
-adopt issuance policy, qualify smaller-capacity settlement keys or activate
-node/network behavior. See [current decisions](docs/00-decisions.md).
+The economics revision changes input-lock eligibility and miner reward notes.
+Its proof parameters and public preprocessing keys require a new actual-AIR
+security scan and three-trial measurement. The retained
+[relation manifest](crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+describes the earlier relation; it does not qualify changed sources. See
+[current decisions](docs/00-decisions.md) and the
+[economic specification](docs/v1-economics.md).
 The existing runnable node uses the **legacy recursive proof route**. The
 retained seven-node N=2 engineering testnet does not run native V1.
 
@@ -31,14 +32,14 @@ retained seven-node N=2 engineering testnet does not run native V1.
 
 - **One transaction shape:** two inputs and three outputs, private 32-byte
   asset identifiers in one shared privacy pool, per-asset conservation and
-  SI-only confidential fees. Standard transfers and valid zero-value padding
+  SIP-only confidential fees. Standard transfers and valid zero-value padding
   use the same public format.
 - **Native verification:** wallets produce one D8/W24 STARK transaction proof.
   Nodes verify on admission; miners generate one separate native settlement
   proof per block. V1 does not recursively aggregate transaction proofs.
 - **Blocks:** 64–576 positions in groups of 16, with a 300-second PoW target.
   Strict ordering by proof-independent BLAKE3 statement identity and duplicate
-  rejection are required for the first native block-integration milestone.
+  rejection are enforced by the native engineering runtime.
 - **Lifecycle:** permanent public ledger data; transaction, settlement and
   issuance proofs plus private fee sidecars expire three days after final
   confirmation. Checkpoint bootstrap has an explicit trust boundary.

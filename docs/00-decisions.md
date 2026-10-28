@@ -1,17 +1,11 @@
 # Current Protocol Decisions
 
-Status: three isolated native proof relations are engineering-frozen in the
-[source-bound relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json):
-two-input/three-output transaction, exactly 576-position settlement and exactly
-three-initial-note issuance. Their public preprocessing keys and complete
-actual-AIR security reports reproduce under the fixed source/dependency graph.
-The [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-retains the existing parameter-selection measurements unchanged.
-Its qualified EPYC 7763 measurements meet the selected wallet-generation gate.
-The previous single-asset [freeze bundle](../crates/bench-d8/artifacts/v1-native-freeze.json)
-remains an unchanged diagnostic baseline. Independent cryptographic approval,
-standalone verifier qualification, node/wallet integration and network
-activation remain separate requirements.
+Status: the V1 economics revision reopens transaction and settlement proof
+qualification. Source-bound profiles and measurements retained in the repository
+are baselines for the earlier relation; they do not qualify the revised input
+unlock or multi-note reward constraints. Re-extract actual-AIR security, reproduce
+public preprocessing keys and measure fresh proofs before refreezing. No external
+audit approval or network activation is implied.
 
 ## Network and proof architecture
 
@@ -26,11 +20,59 @@ Use KoalaBear D8, standard Poseidon2 W24 and twelve-element digests. Require
 classical conjectured security of at least 128 bits and quantum-halved Johnson
 Fiat–Shamir terms, including query and enforced grinding terms, of at least
 80 bits. Challenge-domain and selected BHT collision terms must also meet
-80 bits. The quantum-halved Johnson challenge ledgers are approximately 81.6922 bits
-for the transaction, 81.9837 for fixed-576 settlement and 81.8987 for three-note
-issuance. All future parameter changes must retain at least 80 bits.
+80 bits. The earlier baseline reported quantum-halved Johnson challenge ledgers of
+81.6922 bits for transactions, 81.9837 for fixed-576 settlement and 81.8987 for
+three-note issuance. Revised relations require their own actual-AIR reports. All future parameter changes must retain at least 80 bits.
 The [collision ledger](bht-security-accounting.md) distinguishes raw classical
 reports from quantum model conversions and application hashes.
+
+## Subsidy, reward modes and fund allocation
+
+Amounts use SIP: one SIP is 100,000,000 atoms. Native V1 pays an initial
+3,394,524,515 atoms per 300-second block. Blocks 1 through 4,032 use that
+amount; block 4,033 first applies `DECAY_Q32 / 2^32`. Subsequent epochs contain
+4,032 blocks. The native floor is 100,000,000 atoms per block; the equivalent
+60-second tail constant is 20,000,000 atoms. Retained legacy issuance behavior
+is not changed by this versioned native rule.
+
+Subsidy allocates 3% to the public Holder pool, 10% to development-fund
+wallets and the residual to the miner base. Each fund wallet has its own
+explicit share, credit history, released entitlement and spent counter. Its
+50% direct portion matures after 24 blocks; its other 50% releases in daily
+height-based steps over 1,461 days, with 288 blocks per day. Each credit vests
+independently; cumulative released atoms use integer floors, releasing all
+remaining atoms on the last day. A wallet may spend only its own released
+unspent entitlement, authenticated by its existing ML-DSA-65 authorization.
+Fund wallets do not share expenditure allowances.
+
+The launch-time number of fund wallets and individual shares remain
+unconfigured. Reserve an explicit allocation interface, bind the selected
+configuration to genesis and reject new-network block production without it.
+Do not infer equal shares or create replacement keys. Synthetic allocations
+used by tests are not a production allocation decision.
+
+The public block mode is explicitly selected without a miner default:
+
+- Voyager: floor(5% of miner base) is burned, floor(20%) enters the Holder pool
+  and the residual becomes one reward note maturing after 24 blocks.
+- Holder: four notes each receive floor(10% of miner base), unlocking after
+  52,560 / 105,120 / 157,680 / 210,240 blocks. The residual, confidential fees
+  and pool payment form the fifth note, which matures after 24 blocks.
+
+Credit the block's 3% pool allocation before computing a Holder payment as
+floor(pool balance / 4,032). Voyager never draws from the pool. Fees are
+transfers and all enter reward note zero; fees do not participate in subsidy
+splits. Template creation snapshots the selected mode, so preference changes
+cannot modify an already prepared candidate. Reward note nonces bind height
+and ordered note index, preventing repeated nullifiers across tranches.
+
+Cumulative issued subsidy equals cumulative miner subsidy-note credits plus
+Holder pool balance, burned subsidy and fund entitlements. Count neither fees
+nor fund transfers as issuance. Block acceptance and reorganizations atomically
+include pool, burn, fund and future unlock schedules. Public locked/circulating
+figures describe scheduled subsidy/fund accounting, not an exact sum of private
+unspent balances. The [economic specification](v1-economics.md) defines the
+integer formulas, projections and test requirements.
 
 ## Root snapshots and output-encryption boundary
 
@@ -80,7 +122,7 @@ Select from log blowups 5 through 8 and query/batch grinding 20 or 24, using
 three fresh trials per configuration. All three generation times must pass;
 rank passing configurations by their largest observed serialized proof.
 
-Freeze `log_blowup=7`, 41 queries, query grinding 20, opening-batch grinding 20,
+The pre-economics baseline used `log_blowup=7`, 41 queries, query grinding 20, opening-batch grinding 20,
 commitment grinding zero, binary folding and `log_final_poly_len=0`.
 The [actual-AIR report and measurements](v1-multi-asset-evaluation.md) record
 three generation times of 1.332143, 1.315662 and 1.316440 seconds, maximum
@@ -88,7 +130,7 @@ whole-process charged memory 531,668,992 bytes and quantum-halved Johnson
 challenge union 81.692219 bits. These are three-sample qualification results,
 not worst-case latency or independent cryptographic approval.
 
-The multi-asset `MAX_LEAF_PROOF_LEN` is 655,360 bytes (640 KiB). This is the
+The revised-relation admission target remains `MAX_LEAF_PROOF_LEN = 655,360` bytes (640 KiB). This is the
 smallest 64-KiB multiple at least 10% above the largest observed selected proof
 of 584,848 bytes, giving 12.056% sample headroom. It is an enforced admission
 requirement for the new integration, not a mathematical encoded-size bound.
@@ -124,8 +166,8 @@ three elapsed days after final confirmation, then are deleted. Public data is
 permanent on every node; no V1 archive-node role retains proof bodies beyond
 that window. Openings use eight independent canonical KoalaBear elements,
 approximately 247.91 bits of entropy. The corrected settlement AIR keeps the
-fee total and miner amount private and proves the ordinary reward-note
-commitment, height-derived rho and maturity. Network, height and the ordered
+fee total and miner amount private and proves the mode-selected reward-note
+commitments, height/index-derived nonces and authenticated unlock plan. Network, height and the ordered
 transaction list enter its public context. Transaction proofs enforce private
 anchor fee schedules; settlement opens and sums commitments without imposing
 one current tier on old-snapshot transactions. See [fee settlement](fee-settlement.md).
@@ -260,15 +302,15 @@ of this design; identity custody and review remain launch requirements.
 
 ## V1 assets, durable public data and issuance audit
 
-V1 supports permissionless issued assets in the same privacy pool as SI.
+V1 supports permissionless issued assets in the same privacy pool as SIP.
 Notes bind a private asset ID into their commitment and ciphertext. All
-transactions have two inputs and three outputs, including SI-only and padding
+transactions have two inputs and three outputs, including SIP-only and padding
 transactions. The AIR balances every private asset independently; fees are
-paid only in SI. Issuance publishes declared supply, name and precision and
+paid only in SIP. Issuance publishes declared supply, name and precision and
 uses a domain-separated ML-DSA-65 signature verified natively by the node.
 The isolated native implementation covers ID derivation and fixed-supply issuance-to-note binding in
 [the multi-asset design](v1-multi-asset.md). Testnet asset issuance requires
-exactly **50 SI (5,000,000,000 atoms)**, credited entirely to a dedicated
+exactly **50 SIP (5,000,000,000 atoms)**, credited entirely to a dedicated
 development-fund account. That account is not yet configured: issuance admission
 must remain closed and fail closed until its authenticated destination and the
 atomic fee-payment consumption transition are implemented and configured.
@@ -288,41 +330,40 @@ days after final confirmation.
 There is no V1 archive role. Release-pinned checkpoint plus PoW is the default
 new-node path; full historical proof validation is a future upgrade.
 
-V1 requires an integer-only height-by-height SI issuance audit using the
+V1 requires an integer-only height-by-height SIP issuance audit using the
 shared reward schedule and fund transition. The native offline command and
-library now independently replay canonical proofs, check SI subsidies and
+library now independently replay canonical proofs, check SIP subsidies and
 direct/locked fund credits and bind the report to the accepted height, tip and
-state fingerprint. They explicitly do not support asset issuance or signed
-fund spending, and do not check wallet reward-recovery receipts. Those audit
-paths remain implementation work alongside their node transitions; the
-partial audit must not be described as full issuance/fund-spending coverage.
+state fingerprint. Signed fund spending is included by the economic transition when existing
+verification keys and allocation are explicitly configured. Asset issuance
+admission and private wallet receipt checks remain separate audit scopes.
 Project-operated permanent-public-data backups
 and mandatory mnemonic backup/full ciphertext rescan are described in
 [deployment](v1-deployment.md) and [the storage model](v1-storage-and-sync.md).
 
-## Multi-asset implementation and engineering freeze
+## Multi-asset implementation and reopened qualification
 
 The isolated [multi-asset crate](../crates/bench-multi-asset/README.md) implements
-native asset conservation, the three-output codec, ML-DSA-authenticated
-fixed-supply issuance and the SI-only settlement reward asset. No retained
-node uses this crate. The [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-pins source/dependency identities, all 24 EPYC trials, actual-instance security
-terms, selected parameters, proof cap and canonical public verifier data.
-CI reproduces that key and report and rejects measured-runtime source drift.
-The unreferenced optimization prototype is excluded from this frozen relation.
+native asset conservation, the fixed three-output codec, ML-DSA-authenticated
+fixed-supply issuance and SIP-only settlement rewards. The economic revision
+adds trusted snapshot-height lock eligibility and mode-selected reward notes.
+Ordinary transaction and issuance outputs use unlock height zero; consensus
+reward notes obtain their locks from the authenticated reward plan.
 
-Transaction selection is complete under the stated engineering measurement
-model. The [relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-freezes source-bound keys, complete security reports and b8/q36/g20 parameters
-for exactly 576 settlement positions and exactly three initial issuance notes.
-Both keep separate 512-KiB caps. Other capacities require their own preprocessing
-identities; the three-note shape does not adopt a protocol issuance note limit.
-See [reproduction](native-proof-profiles.md). No performance rerun or node
-activation is implied by reproducing these public keys.
-Independent verifier CPU/memory qualification,
-full valid-block timings, node admission/decoder integration, configured testnet
-issuance-fee collection and durable issuance transitions remain separate gates. A successful
-standalone proof does not activate consensus or establish testnet acceptance.
+The [prior transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+and [prior relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+remain diagnostic baselines. They are not approval for the changed sources.
+New security reports, public keys and three-trial measurements must reproduce
+before replacing their role in the native verifier. Transaction proving must
+remain within two seconds on the EPYC 7763 four-vCPU reference, with a
+655,360-byte cap and at least 80 quantum-halved Johnson bits. Settlement and
+issuance retain separately evaluated 524,288-byte targets. Keep 576 positions;
+report any resource failure and bandwidth impact rather than reducing capacity.
+
+Independent verifier qualification, valid-block timing, configured testnet
+issuance-fee collection, durable wallet recovery, retention and network
+acceptance remain separate gates. A successful isolated proof does not
+activate a public network.
 
 
 ## Native engineering integration boundary
@@ -332,7 +373,7 @@ native transaction and fixed-576 settlement verification with strict ascending
 BLAKE3 statement-ID ordering, all-input reuse checks, the canonical snapshot
 window and an atomic append/replay transition. It creates independent disposable
 engineering directories and imports no retained chain, key or wallet data.
-The frozen native relation keys and parameters are unchanged.
+The economics revision requires fresh source-bound relation keys and qualification.
 
 Continuous production uses a new independent ASERT engineering directory with
 configuration format v2, fresh network identity and genesis, immutable
@@ -390,12 +431,12 @@ remain necessary for long-lived deployment.
 Seed-wallet APIs derive independent spend, deterministic ML-KEM view and
 256-bit change keys per network/account, authenticate output recovery after
 complete canonical replay, reconcile orphan receipts/spends and prepare fixed
-SI or asset transfers with SI-only standard/priority fees. Native proving
+SIP or asset transfers with SIP-only standard/priority fees. Native proving
 returns the transaction, matching sidecar and private payment opening.
 Mnemonic backup, protected persistence, valid-chain seed-wallet funding,
 pruned-public-history rescan and full M2 workflow acceptance remain incomplete.
-The service's existing private reward receipts remain required. Frozen proof
-source, parameters and public verifier artifacts are unchanged.
+Seed-backed mining destinations and ordered per-note encryption receipts are
+required for recovery. Existing artifacts are earlier-relation baselines.
 
 The dedicated native runtime CI job compiles the integration and runs
 synthetic-verifier state/transport tests and native-proof tests. Tests with

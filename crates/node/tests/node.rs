@@ -7,7 +7,7 @@ use std::sync::Arc;
 use siworld_circuits::MockProver;
 use siworld_consensus::{mine, TipChange};
 use siworld_core::issuance::{block_reward, epoch_of, fee_base, reward_split};
-use siworld_core::params::{ATOMS_PER_SI, COINBASE_MATURITY};
+use siworld_core::params::{ATOMS_PER_SIP, COINBASE_MATURITY};
 use siworld_core::DevAccount;
 use siworld_core::{Block, Digest};
 use siworld_crypto::{SecretSeed, SpendKey};
@@ -22,7 +22,7 @@ use siworld_node::PayError;
 use siworld_state::deposit;
 use siworld_storage::BlockStore;
 
-const SI: u64 = ATOMS_PER_SI;
+const SIP: u64 = ATOMS_PER_SIP;
 
 fn key(i: u8) -> SpendKey {
     SpendKey::from_digest(Digest([i; 32]))
@@ -141,8 +141,8 @@ fn a_payment_relayed_to_another_miner_reaches_the_recipient() {
     assert_eq!(
         a.balance().unwrap(),
         Balance {
-            total: 100 * SI,
-            spendable: 100 * SI,
+            total: 100 * SIP,
+            spendable: 100 * SIP,
             pending: 0
         }
     );
@@ -156,16 +156,16 @@ fn a_payment_relayed_to_another_miner_reaches_the_recipient() {
     // a mined blocks 1 and 2: their miner packages are pending until they
     // mature.
     let mined_by_a = share(1) + share(2);
-    let tx = a.pay(&b.address(), 10 * SI, false).unwrap();
+    let tx = a.pay(&b.address(), 10 * SIP, false).unwrap();
     assert_eq!(a.mempool.len(), 1);
     // The inputs are reserved until the payment is on chain; the change is
     // pending.
     assert_eq!(
         a.balance().unwrap(),
         Balance {
-            total: 100 * SI + mined_by_a,
+            total: 100 * SIP + mined_by_a,
             spendable: 0,
-            pending: 90 * SI - fee(paid_at) + mined_by_a
+            pending: 90 * SIP - fee(paid_at) + mined_by_a
         }
     );
     b.submit_tx(decode_tx(&encode_tx(&tx)).unwrap(), Some(Digest([0xa; 32])))
@@ -176,7 +176,7 @@ fn a_payment_relayed_to_another_miner_reaches_the_recipient() {
     assert_eq!(sync(&b, &mut a), vec![TipChange::Extended]);
     assert!(a.mempool.is_empty());
 
-    let change = 90 * SI - fee(paid_at);
+    let change = 90 * SIP - fee(paid_at);
     assert_eq!(
         a.balance().unwrap(),
         Balance {
@@ -191,8 +191,8 @@ fn a_payment_relayed_to_another_miner_reaches_the_recipient() {
     assert_eq!(
         b.balance().unwrap(),
         Balance {
-            total: 10 * SI + mined_by_b,
-            spendable: 10 * SI,
+            total: 10 * SIP + mined_by_b,
+            spendable: 10 * SIP,
             pending: mined_by_b
         }
     );
@@ -271,15 +271,15 @@ fn miner_packages_mature_after_one_hundred_blocks_and_follow_reorgs() {
 fn a_reorg_rolls_the_wallet_back_to_the_fork() {
     let mut a = node(1, None);
     let mut b = node(2, None);
-    a.pay(&b.address(), 10 * SI, false).unwrap();
+    a.pay(&b.address(), 10 * SIP, false).unwrap();
     mine_one(&mut a);
     // The change, and the miner package a mined for itself (its reward share
     // and the fee), still pending.
     assert_eq!(
         a.balance().unwrap(),
         Balance {
-            total: 90 * SI + share(1),
-            spendable: 90 * SI - fee(0),
+            total: 90 * SIP + share(1),
+            spendable: 90 * SIP - fee(0),
             pending: fee(0) + share(1)
         }
     );
@@ -297,24 +297,24 @@ fn a_reorg_rolls_the_wallet_back_to_the_fork() {
     assert_eq!(
         a.balance().unwrap(),
         Balance {
-            total: 100 * SI,
-            spendable: 100 * SI,
+            total: 100 * SIP,
+            spendable: 100 * SIP,
             pending: 0
         }
     );
-    a.pay(&b.address(), 10 * SI, false).unwrap();
+    a.pay(&b.address(), 10 * SIP, false).unwrap();
 }
 
 #[test]
 fn a_send_while_the_change_is_unconfirmed_reports_pending_funds() {
     let mut a = node(1, None);
     let b = node(2, None);
-    a.pay(&b.address(), 10 * SI, false).unwrap();
-    let change = 90 * SI - fee(0);
+    a.pay(&b.address(), 10 * SIP, false).unwrap();
+    let change = 90 * SIP - fee(0);
     // a's only package is in flight: the change would cover a second payment
     // once the first confirms.
     assert_eq!(
-        a.pay(&b.address(), 5 * SI, false).unwrap_err(),
+        a.pay(&b.address(), 5 * SIP, false).unwrap_err(),
         PayError::FundsPending { pending: change }
     );
     // Even the change cannot cover this one.
@@ -325,23 +325,23 @@ fn a_send_while_the_change_is_unconfirmed_reports_pending_funds() {
     assert_eq!(a.mempool.len(), 1, "failed sends leave the pool alone");
 
     mine_one(&mut a);
-    a.pay(&b.address(), 5 * SI, false).unwrap();
+    a.pay(&b.address(), 5 * SIP, false).unwrap();
 }
 
 #[test]
 fn a_send_that_needs_an_immature_miner_package_reports_pending_funds() {
     let mut a = node(1, None);
     let b = node(2, None);
-    a.pay(&b.address(), 10 * SI, false).unwrap();
+    a.pay(&b.address(), 10 * SIP, false).unwrap();
     mine_one(&mut a);
-    // The change plus the pending miner package a mined covers 90 SI.
+    // The change plus the pending miner package a mined covers 90 SIP.
     assert_eq!(
-        a.pay(&b.address(), 90 * SI - fee(1), false).unwrap_err(),
+        a.pay(&b.address(), 90 * SIP - fee(1), false).unwrap_err(),
         PayError::FundsPending {
             pending: fee(0) + share(1)
         }
     );
-    a.pay(&b.address(), 90 * SI - fee(0) - fee(1), false)
+    a.pay(&b.address(), 90 * SIP - fee(0) - fee(1), false)
         .unwrap();
 }
 
@@ -349,10 +349,10 @@ fn a_send_that_needs_an_immature_miner_package_reports_pending_funds() {
 fn paying_itself_splits_a_package_for_two_sends_in_a_row() {
     let mut a = node(1, None);
     let b = node(2, None);
-    a.pay(&a.address(), 50 * SI, false).unwrap();
+    a.pay(&a.address(), 50 * SIP, false).unwrap();
     mine_one(&mut a);
-    a.pay(&b.address(), 10 * SI, false).unwrap();
-    a.pay(&b.address(), 10 * SI, false).unwrap();
+    a.pay(&b.address(), 10 * SIP, false).unwrap();
+    a.pay(&b.address(), 10 * SIP, false).unwrap();
     assert_eq!(a.mempool.len(), 2);
 }
 
@@ -360,13 +360,13 @@ fn paying_itself_splits_a_package_for_two_sends_in_a_row() {
 fn a_dropped_payment_frees_its_input_and_clears_the_pending_change() {
     let mut a = node(1, None);
     let b = node(2, None);
-    let tx = a.pay(&b.address(), 10 * SI, false).unwrap();
+    let tx = a.pay(&b.address(), 10 * SIP, false).unwrap();
     a.wallets.release(&tx.slot);
     assert_eq!(
         a.balance().unwrap(),
         Balance {
-            total: 100 * SI,
-            spendable: 100 * SI,
+            total: 100 * SIP,
+            spendable: 100 * SIP,
             pending: 0
         }
     );
@@ -384,7 +384,7 @@ fn a_restarted_node_replays_its_store() {
     let (tip, balance) = {
         let mut a = node(1, Some(open_store()));
         mine_one(&mut a);
-        a.pay(&b.address(), 10 * SI, false).unwrap();
+        a.pay(&b.address(), 10 * SIP, false).unwrap();
         mine_one(&mut a);
         // A side block is stored too, and the replay keeps the same fork choice.
         assert_eq!(a.accept(&side).unwrap(), TipChange::None);
@@ -445,16 +445,16 @@ fn the_development_fund_pays_through_its_own_miner() {
             budget: siworld_node::fund_keys::FundBudget {
                 version: 1,
                 id: "ab".repeat(32),
-                direct_si: "1000000000".into(),
-                lock_si: "1000000000".into(),
-                total_si: "2000000000".into(),
-                max_payout_si: "1000000".into(),
+                direct_sip: "1000000000".into(),
+                lock_sip: "1000000000".into(),
+                total_sip: "2000000000".into(),
+                max_payout_sip: "1000000".into(),
             },
             genesis: hex(&fund.genesis.id),
             seconds: 3600,
-            direct_si: "1000000".into(),
-            lock_si: "1000000".into(),
-            max_payout_si: "1000000".into(),
+            direct_sip: "1000000".into(),
+            lock_sip: "1000000".into(),
+            max_payout_sip: "1000000".into(),
             recipients: vec![siworld_node::address::encode_address(&other.address())],
             approval: None,
         },

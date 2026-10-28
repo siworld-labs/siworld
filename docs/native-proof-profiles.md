@@ -1,16 +1,20 @@
 # Native Proof Profile Reproduction
 
-Status: engineering freeze of three isolated native relations and their public
-preprocessing identities. This is not cryptographic approval, a production
-wallet, native block integration or network activation. The earlier transaction
-measurement artifact remains unchanged.
+Status: reproduction of the pre-economic-revision native proof baseline. The
+[monetary revision](v1-economics.md) changes input-lock and settlement relations
+and invalidates qualification of these keys for revised V1. Earlier source-bound
+artifacts remain unchanged historical evidence. Revised sources must fail their
+old source-binding check; reproduce the old artifacts only at their recorded
+source revision. New reports, keys and measurements must be generated from the
+revised sources before a new freeze. This is not cryptographic approval or
+network activation.
 
 ## Fixed relation scope
 
 | Relation | Fixed shape | FRI profile | Proof-body admission requirement |
 | --- | --- | --- | ---: |
-| Transaction | Two inputs, three outputs; per-asset balance and SI-only fees | Blowup 7, 41 queries | 655,360 bytes |
-| Fee settlement | 576 ordered positions; reward asset is SI | Blowup 8, 36 queries | 524,288 bytes |
+| Transaction | Two inputs, three outputs; per-asset balance and SIP-only fees | Blowup 7, 41 queries | 655,360 bytes |
+| Fee settlement | 576 ordered positions; reward asset is SIP | Blowup 8, 36 queries | 524,288 bytes |
 | Asset issuance | Three initial notes; fixed public supply | Blowup 8, 36 queries | 524,288 bytes |
 
 All use KoalaBear D8, Poseidon2 W24, twelve-element digests, query and opening-
@@ -112,10 +116,10 @@ RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
 ```
 
 A successful result requires `verified: true`. The issuance diagnostic checks
-ML-DSA-65 and the proof, but its SI issuance-fee callback is a synthetic fixture;
+ML-DSA-65 and the proof, but its SIP issuance-fee callback is a synthetic fixture;
 it does not consume an actual on-chain fee payment. Production issuance must
 use `IssuanceProver::verify_signed` with authenticated network/policy context and
-atomic exactly-once SI-payment consumption. Transactions require a verifier-
+atomic exactly-once SIP-payment consumption. Transactions require a verifier-
 selected canonical snapshot and reconstructed public statement. Settlement
 requires the ordered transaction/fee list, subsidy, height and network context
 from the candidate block. The standalone diagnostics supply none of the durable
@@ -125,10 +129,10 @@ node state transitions, compact relay or wallet recovery required for launch.
 
 The retained recursive node sorts legacy proof-free slot IDs and rejects any
 non-strict adjacent pair, including duplicate IDs. Its old slot encoding is not
-the new three-output transaction statement. Native V1 block ordering remains an
-M1 integration requirement: compute the specified domain-separated BLAKE3
+the new three-output transaction statement. The isolated native codec and transition implement strict block ordering:
+compute the specified domain-separated BLAKE3
 statement identity, excluding proof randomness, proof length and sidecar; sort
 strictly; reject duplicate IDs and unsorted blocks before expensive proof work.
 The shared producer/validator transition and node-level atomic rejection tests
-must implement this rule. The isolated public codec does not implement a native
-block validator, and public-key reproduction does not satisfy that milestone.
+must exercise this rule. Public-key reproduction does not qualify sustained
+runtime, wallet or network integration.

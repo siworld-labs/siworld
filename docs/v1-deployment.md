@@ -1,8 +1,15 @@
 # Native V1 Deployment and Observability
 
+The [monetary revision](v1-economics.md) requires new source-bound proof
+measurements and final encoding of one/five reward notes, pool/burn/fund
+records and lock fields. The numerical tables below retain the pre-revision
+baseline and conditional allowances; they are not revised-network acceptance.
+Reconcile the final formats, issuance limits and actual database overhead
+before claiming bandwidth margin or SSD lifetime.
+
 Status: qualification design for the independent native V1 engineering network.
-The native transaction engineering profile is frozen with actual-AIR security
-and reference-host performance evidence. The prior two-output profile remains
+The earlier native transaction profile has actual-AIR security
+and reference-host evidence; revised V1 requires renewed qualification. The prior two-output profile remains
 a diagnostic baseline. Node integration, operating profiles, network capacity and supported
 deployment platforms remain subject to acceptance. This document does not change the retained seven-node network.
 [Decisions](00-decisions.md), [native transaction design](route-a-v1.md) and the
@@ -242,7 +249,9 @@ within two seconds. Set the body cap at least 10% above the largest observed
 selected-profile proof, rounded up to 64 KiB. The selected b7/q41/g20 profile
 generated in 1.315662–1.332143 seconds across three reference-host trials, with
 a 1.316440-second median and a 531,668,992-byte charged process-tree peak.
-Its 655,360-byte cap is 12.056% above the largest 584,848-byte sampled proof.
+Those pre-economic-revision numbers do not qualify the new lock relation.
+The retained 655,360-byte cap was 12.056% above the largest 584,848-byte
+baseline proof. A revised scan and complete wire ledger are required.
 Refer to the [complete measurement record](v1-multi-asset-evaluation.md) for
 the pinned security report and measurement scope. Enforce this byte cap in the
 wallet and node, and account for it independently in network, memory and
