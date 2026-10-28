@@ -93,12 +93,13 @@ smallest 64-KiB multiple at least 10% above the largest observed selected proof
 of 584,848 bytes, giving 12.056% sample headroom. It is an enforced admission
 requirement for the new integration, not a mathematical encoded-size bound.
 Settlement and issuance proof caps remain independently 524,288 bytes.
-The old 512-KiB decoder and retained network are unchanged; a new prepared
-multi-asset decoder and envelope must enforce this profile before activation.
+The old 512-KiB decoder and retained network are unchanged. The native
+integration's prepared multi-asset decoder and envelope enforce this profile. Worker isolation and deployed-network resource qualification
+remain required before activation.
 
 The implemented public body is 2,027 bytes; its fee commitment and snapshot
-selector bring permanent bytes to 2,115 per position. A proposed 2,184-byte
-relay prefix and 78-byte sidecar bring the capped combined payload to
+selector bring permanent bytes to 2,115 per position. The native codec's
+2,184-byte relay prefix and 78-byte sidecar bring the capped combined payload to
 657,622 bytes. Full three-copy traffic for 576 positions, settlement, bounded
 issuance, inventories, requests, AEAD/multiplexing, IPv6/TCP/link framing,
 reciprocal ACKs, handshakes, retransmission and recovery is modeled at
@@ -173,10 +174,12 @@ Dandelion++. Use groups of 16, 64–576 positions and `MAX_REORG_DEPTH=24`.
 The fixed settlement AIR has 576 openings; smaller blocks derive canonical
 zero-fee internal tails without additional chain transactions. Checkpoint
 bootstrap has an explicit trust assumption after historical proof deletion.
-N1–N7 require an estimated 33–56 engineering days including dual-identity
-transport work; wallet durability and private monitoring add separate 6–10
-and 3–5 day estimates. These exclude review, infrastructure and elapsed
-observation windows. New-network launch requires [native V1 acceptance](prover-acceptance.md).
+The original N1–N7 planning range is 33–56 engineering days including
+dual-identity transport work; wallet durability and private monitoring add
+separate 6–10 and 3–5 day estimates. These are scope estimates, not remaining
+work or completed acceptance. They exclude review, infrastructure and elapsed
+observation windows. The current implementation boundary is recorded below.
+New-network launch requires [native V1 acceptance](prover-acceptance.md).
 The retained seven-node network, history and keys remain unchanged.
 
 ## Deployment qualification and visibility
@@ -285,11 +288,15 @@ days after final confirmation.
 There is no V1 archive role. Release-pinned checkpoint plus PoW is the default
 new-node path; full historical proof validation is a future upgrade.
 
-V1 requires an integer-only height-by-height SI issuance audit
-tool using the shared reward schedule and fund transition. It must verify
-subsidy/fund credits, signed spending, cumulative issuance and public asset
-issuance limits without exposing hidden fees or balances. This tool remains
-required implementation work. Project-operated permanent-public-data backups
+V1 requires an integer-only height-by-height SI issuance audit using the
+shared reward schedule and fund transition. The native offline command and
+library now independently replay canonical proofs, check SI subsidies and
+direct/locked fund credits and bind the report to the accepted height, tip and
+state fingerprint. They explicitly do not support asset issuance or signed
+fund spending, and do not check wallet reward-recovery receipts. Those audit
+paths remain implementation work alongside their node transitions; the
+partial audit must not be described as full issuance/fund-spending coverage.
+Project-operated permanent-public-data backups
 and mandatory mnemonic backup/full ciphertext rescan are described in
 [deployment](v1-deployment.md) and [the storage model](v1-storage-and-sync.md).
 
@@ -318,9 +325,9 @@ issuance-fee collection and durable issuance transitions remain separate gates. 
 standalone proof does not activate consensus or establish testnet acceptance.
 
 
-## Native M1 engineering integration boundary
+## Native engineering integration boundary
 
-The separate [single-node engineering runtime](v1-native-runtime.md) integrates
+The separate [engineering runtime](v1-native-runtime.md) integrates
 native transaction and fixed-576 settlement verification with strict ascending
 BLAKE3 statement-ID ordering, all-input reuse checks, the canonical snapshot
 window and an atomic append/replay transition. It creates independent disposable
@@ -352,9 +359,51 @@ document records the requirement, not a completed observation or deployment.
 The 72-hour maximum-load and seven-day independent-host acceptance requirements
 remain additional gates.
 
-Unsupported issuance operations remain absent until the dedicated testnet
-fund account, atomic fee collection and resource bounds are configured and
-implemented. Networking, reorganizations, pruning, checkpoint bootstrap,
-wallet durability, transport privacy and sustained network acceptance remain
-separate implementation gates. A linear single-node proof/replay test does not
-establish those properties.
+The native node library composes the same store/transition with a bounded
+verified mempool, padding preparation, real-transaction candidate assembly and
+private fee settlement. Admission checks the canonical snapshot, both pending
+nullifiers, all outputs, matching sidecar and independent frozen proof before
+insertion. The verified-pool policy is 512 MiB/2,048 entries, 16 MiB/64 entries
+per opaque peer and at most 4,096 peer identities. These logical limits do not
+supply isolated workers, ingress queues or a process-memory guarantee.
+
+The authenticated-stream interface binds network, genesis and frozen verifier
+manifest, with bounded framing and declared peer roles, full-proof batches and exact-proof
+compact recovery. Sync attempts pin peer/base/ancestor/continuation and retain
+budget reservations until adoption or discard. There is no production hybrid
+authenticator or enabled listening service. A reviewed X25519 + ML-KEM,
+Ed25519 + ML-DSA provider, authenticated record protection, actual-listener
+failure tests and Dandelion++ remain required before network activation.
+
+Fork choice compares cumulative verified work only; equal work retains the
+current chain. Candidate blocks replay through the common transition and may
+detach at most 24 blocks. Replacement canonical rows, accepted head/fingerprint
+and checksummed detached evidence commit atomically. The default policy permits
+32 candidate blocks, a 640-MiB logical candidate budget and 1 GiB of retained
+detached evidence. Transport has its own shared 640-MiB logical budget; the two
+budgets do not establish a combined process-memory bound. Non-tip ancestor reconstruction replays from
+genesis and has a height-4,096 local work guard; exceeding it is resource
+unavailability, not invalidity or a consensus horizon. Tip extension does not
+need that replay. Qualified checkpoint/replay and time-based evidence pruning
+remain necessary for long-lived deployment.
+
+Seed-wallet APIs derive independent spend, deterministic ML-KEM view and
+256-bit change keys per network/account, authenticate output recovery after
+complete canonical replay, reconcile orphan receipts/spends and prepare fixed
+SI or asset transfers with SI-only standard/priority fees. Native proving
+returns the transaction, matching sidecar and private payment opening.
+Mnemonic backup, protected persistence, valid-chain seed-wallet funding,
+pruned-public-history rescan and full M2 workflow acceptance remain incomplete.
+The service's existing private reward receipts remain required. Frozen proof
+source, parameters and public verifier artifacts are unchanged.
+
+Compilation and test execution of the new integration remain pending remote
+CI. Synthetic-verifier state/transport tests and native-proof tests with
+synthetic funding do not establish end-to-end valid-chain wallet acceptance or
+production cryptographic transport. Unsupported issuance operations remain
+absent until the dedicated testnet fund account, atomic fee collection and
+resource bounds are configured and implemented. Three-day proof/sidecar
+retention, checkpoint bootstrap, fund spending, protected wallet durability,
+transport privacy and sustained network acceptance remain separate gates.
+No library test changes the frozen single-node observation or the retained
+seven-node network.

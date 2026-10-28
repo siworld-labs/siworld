@@ -110,3 +110,45 @@ change the currently selected profile or budget without regenerated evidence.
 Object-storage backup uploads and bulk checkpoint downloads need a separate
 rate-limited maintenance window or extra bandwidth; the 64-KiB control
 allowance covers manifests, not checkpoint bodies.
+
+## Native protocol framing check
+
+Run `python3 scripts/v1-network-budget.py --native-protocol` to apply the
+current native library codec while preserving the original default and legacy
+reports. This mode uses the 51-byte application header, the four-byte gossip
+envelope-length prefix and 64-byte compact references containing both statement
+and proof digests. The compact fixed fields occupy 1,525 bytes, including the
+reward commitment/ciphertext and settlement-length field. At 576 positions and
+the independent 524,288-byte settlement cap, its payload is
+`1,525 + 576 * 64 + 524,288 = 562,677` bytes.
+
+Settlement is already carried in the compact body; this mode charges no
+separate settlement message. It retains the conservative three-copy
+full-reference inventory allowance and an additional 8 KiB/block record
+allowance. Missing-reference requests are split into 36 batches of 16 per
+copy, with a two-byte count, 64-byte references and an end marker per batch.
+All capped transaction envelopes include the private sidecar and four-byte
+gossip prefix. The existing issuance, packet/ACK, control, retransmission and
+5% body-recovery allowances remain. Requesting every reference is a metadata
+allowance; it does not authorize unbounded body recovery beyond that reserve.
+
+| Native relay schedule | Wire bytes/300 seconds | Wire rate | Minimum link for 15% unused |
+| --- | ---: | ---: | ---: |
+| Settlement carried once in compact | 1,369,154,385 | 36.51078360 Mbps | 43 Mbps |
+| Additional standalone settlement copy | 1,371,043,201 | 36.56115203 Mbps | 44 Mbps |
+
+The first case leaves 15.0912% unused on a 43-Mbps link; 42 Mbps fails the
+15% reserve. Reproduce the second case with `--native-protocol
+--duplicate-settlement`. It leaves only 14.9741% unused at 43 Mbps and is a
+sensitivity case, not a requirement to send a second settlement proof. Full
+block synchronization or duplicate relay still needs an explicit schedule and
+budget; the compact calculation does not include unlimited full-block copies.
+
+The production hybrid provider remains unavailable. Its 16-KiB record/30-byte
+crypto-multiplexing overhead and 32-KiB per-handshake payload allowance are
+conditional assumptions, not validated provider wire limits. Eight 103-byte
+session hellos are conservatively charged with an extra application frame.
+The in-memory 256-KiB handshake reservation is not a transmitted-byte limit.
+A larger actual handshake, record overhead or relay fanout can require a new
+floor; measure and rerun the budget before activation. This calculation does
+not change frozen proof parameters or establish network acceptance.

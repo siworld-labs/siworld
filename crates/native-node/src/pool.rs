@@ -198,6 +198,23 @@ impl Pool {
         if !(MIN_SLOTS..=MAX_SLOTS).contains(&count) || !count.is_multiple_of(GROUP) {
             return Err("candidate positions must be 64 through 576 in groups of 16".into());
         }
+        self.take_reserved(state, count)
+    }
+    /// Fill a transaction candidate's exact shortfall. The completed candidate
+    /// still needs 64 through 576 positions in groups of 16; a shortfall itself
+    /// may be any count, including zero. Entries remain protected by the same
+    /// consumed reservations as ordinary complete-padding candidates.
+    pub(crate) fn take_for_fill(
+        &mut self,
+        state: &State,
+        count: usize,
+    ) -> Result<Vec<Padding>, String> {
+        if count > MAX_SLOTS {
+            return Err("candidate padding shortfall exceeds 576".into());
+        }
+        self.take_reserved(state, count)
+    }
+    fn take_reserved(&mut self, state: &State, count: usize) -> Result<Vec<Padding>, String> {
         self.prune(state)?;
         if self.entries.len() < count
             || self

@@ -226,7 +226,7 @@ fn decode_payment(bytes: &[u8; 1313]) -> PaymentCiphertext {
     }
 }
 
-fn prepare_reward(state: &State) -> Result<PreparedReward, String> {
+fn prepare_reward(state: &State, total_fees: u64) -> Result<PreparedReward, String> {
     let height = state
         .height
         .checked_add(1)
@@ -234,12 +234,16 @@ fn prepare_reward(state: &State) -> Result<PreparedReward, String> {
     let unlock_height = height
         .checked_add(native::multi_asset::COINBASE_MATURITY)
         .ok_or("engineering reward maturity height overflows")?;
+    let miner_amount = subsidy_split(height)
+        .0
+        .checked_add(total_fees)
+        .ok_or("engineering miner reward amount overflows")?;
     let h = Hasher::new();
     let nk = random_fields()?;
     let note = Note {
         asset_id: SI_ASSET_ID,
         owner: h.owner(&nk),
-        value: subsidy_split(height).0,
+        value: miner_amount,
         unlock_height,
         rho: h.miner_rho(height),
         rseed: random_fields()?,
@@ -351,14 +355,20 @@ pub fn prepare_padding(state: &State, prover: &NativeProver) -> Result<Padding, 
     })
 }
 
-/// Assemble current-height settlement around previously verified, move-only
-/// positions. Transaction proofs and snapshot identities are preserved.
-pub fn assemble(
+struct PreparedCandidate {
+    block: Block,
+    settlement: FixedSettlementWitness,
+    reward_secret: Zeroizing<Vec<u8>>,
+}
+
+/// Validate all prepared positions and fee openings before preparing the
+/// reward or invoking a prover. Transaction proofs were independently checked
+/// at admission; the final block still requires the shared state transition.
+fn prepare_candidate(
     state: &State,
-    prover: &NativeProver,
     mut positions: Vec<Padding>,
     timestamp: u64,
-) -> Result<ProducedBlock, String> {
+) -> Result<PreparedCandidate, String> {
     check_count(positions.len())?;
     if timestamp <= state.median_time_past() {
         return Err("candidate timestamp must exceed median time past".into());
@@ -376,8 +386,14 @@ pub fn assemble(
     let mut identities = BTreeSet::new();
     let mut slots = Vec::with_capacity(MAX_SLOTS);
     let mut transactions = Vec::with_capacity(count);
+    let mut total_fees = 0u64;
     for value in positions {
         state.snapshot(value.transaction.record.snapshot)?;
+        if value.transaction.proof.is_empty()
+            || value.transaction.proof.len() > crate::wire::MAX_TX_PROOF
+        {
+            return Err("prepared transaction proof byte limit".into());
+        }
         let public = PublicTransaction::decode(&value.transaction.record.body)
             .map_err(|_| "invalid prepared transaction public fields")?;
         for nf in public.nf {
@@ -396,13 +412,15 @@ pub fn assemble(
             return Err("prepared position identity collision".into());
         }
         let commitment = h.fee_commit(value.opening.fee, &value.opening.blind);
-        if value.opening.fee != 0
-            || !value.opening.dummy
-            || value.opening.priority
-            || encode_digest(&commitment) != value.transaction.record.fee_commit
-        {
+        if encode_digest(&commitment) != value.transaction.record.fee_commit {
             return Err("prepared position opening mismatch".into());
         }
+        // The transaction relation already checks its private anchored fee
+        // schedule. Settlement consumes only the exact opening; reference-model
+        // tier/classification flags must not reinterpret older valid proofs.
+        total_fees = total_fees
+            .checked_add(value.opening.fee)
+            .ok_or("prepared position fee sum overflows")?;
         slots.push(SettlementSlot {
             commitment,
             opening: value.opening,
@@ -410,8 +428,8 @@ pub fn assemble(
         transactions.push(value.transaction);
     }
     slots.extend(tail_slots(state.config.network, height, count)?);
-    let reward = prepare_reward(state)?;
-    let mut block = Block {
+    let reward = prepare_reward(state, total_fees)?;
+    let block = Block {
         network: state.config.network,
         height,
         parent: state.tip,
@@ -433,12 +451,32 @@ pub fn assemble(
         miner_rseed: reward.note.rseed,
         slots,
     };
-    block.settlement_proof = prover.settlement(&witness)?;
-    block.validate_shape()?;
-    validate_reward_secret(&block, &reward.secret)?;
-    Ok(ProducedBlock {
+    witness
+        .check(&h)
+        .map_err(|_| "invalid prepared fee settlement")?;
+    Ok(PreparedCandidate {
         block,
+        settlement: witness,
         reward_secret: reward.secret,
+    })
+}
+
+/// Assemble current-height settlement around previously verified positions.
+/// Transaction proofs and snapshot identities are preserved. Every committed
+/// fee enters the SI miner reward with checked integer addition.
+pub fn assemble(
+    state: &State,
+    prover: &NativeProver,
+    positions: Vec<Padding>,
+    timestamp: u64,
+) -> Result<ProducedBlock, String> {
+    let mut prepared = prepare_candidate(state, positions, timestamp)?;
+    prepared.block.settlement_proof = prover.settlement(&prepared.settlement)?;
+    prepared.block.validate_shape()?;
+    validate_reward_secret(&prepared.block, &prepared.reward_secret)?;
+    Ok(ProducedBlock {
+        block: prepared.block,
+        reward_secret: prepared.reward_secret,
     })
 }
 
@@ -556,7 +594,7 @@ mod tests {
     #[test]
     fn reward_material_restores_and_rejects_every_binding_mutation() {
         let state = State::new(Config::development([32; 32], 0).unwrap()).unwrap();
-        let reward = prepare_reward(&state).unwrap();
+        let reward = prepare_reward(&state, 0).unwrap();
         let block = Block {
             network: state.config.network,
             height: 1,
@@ -590,6 +628,134 @@ mod tests {
         }
         for count in [64, 80, 576] {
             check_count(count).unwrap();
+        }
+    }
+
+    fn fee_positions(state: &State, fees: &[u64]) -> Vec<Padding> {
+        fees.iter()
+            .enumerate()
+            .map(|(index, fee)| {
+                let seed = 10_000 + index as u32 * 100;
+                let mut body = [0; crate::wire::PUBLIC_BYTES];
+                for field in 0..5 {
+                    let mut digest = [F::ZERO; 12];
+                    digest[0] = F::from_u32(seed + field as u32);
+                    body[field * 48..(field + 1) * 48].copy_from_slice(&encode_digest(&digest));
+                }
+                let blind = core::array::from_fn(|i| F::from_u32(seed + 10 + i as u32));
+                Padding {
+                    transaction: Transaction {
+                        record: PublicRecord::new(
+                            state.tip_snapshot().selector,
+                            body,
+                            encode_digest(&Hasher::new().fee_commit(*fee, &blind)),
+                        )
+                        .unwrap(),
+                        proof: vec![1],
+                    },
+                    opening: FeeOpening {
+                        fee: *fee,
+                        blind,
+                        dummy: false,
+                        priority: false,
+                    },
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn candidate_settlement_credits_exact_private_fees_without_reinterpreting_flags() {
+        let state = State::new(Config::development([41; 32], 0).unwrap()).unwrap();
+        let fingerprint = state.fingerprint();
+        let mut fees = vec![0; 64];
+        fees[0] = 7;
+        fees[1] = 19;
+        fees[2] = 123_456_789;
+        for (dummy, priority) in [(false, false), (false, true), (true, false), (true, true)] {
+            let mut positions = fee_positions(&state, &fees);
+            positions[2].opening.dummy = dummy;
+            positions[2].opening.priority = priority;
+            let prepared = prepare_candidate(&state, positions, state.timestamp() + 1).unwrap();
+            prepared.settlement.check(&Hasher::new()).unwrap();
+            assert_eq!(prepared.settlement.issuance_reward, subsidy_split(1).0);
+            assert_eq!(
+                prepared.settlement.miner_amount,
+                subsidy_split(1).0 + fees.iter().sum::<u64>()
+            );
+            assert_eq!(prepared.settlement.miner_asset_id, SI_ASSET_ID);
+            assert_eq!(prepared.settlement.slots.len(), MAX_SLOTS);
+            let fees_by_id: std::collections::BTreeMap<_, _> = fee_positions(&state, &fees)
+                .into_iter()
+                .map(|position| {
+                    (
+                        position
+                            .transaction
+                            .record
+                            .statement_id(&state.config.network),
+                        position.opening.fee,
+                    )
+                })
+                .collect();
+            for (transaction, slot) in prepared
+                .block
+                .transactions
+                .iter()
+                .zip(&prepared.settlement.slots)
+            {
+                assert_eq!(
+                    slot.opening.fee,
+                    fees_by_id[&transaction.record.statement_id(&state.config.network)]
+                );
+                assert_eq!(
+                    encode_digest(&slot.commitment),
+                    transaction.record.fee_commit
+                );
+            }
+            assert_eq!(
+                prepared.settlement.transaction_list_digest,
+                prepared.block.list_digest()
+            );
+            validate_reward_secret(&prepared.block, &prepared.reward_secret).unwrap();
+            assert_eq!(state.fingerprint(), fingerprint);
+        }
+    }
+
+    #[test]
+    fn fee_sum_and_subsidy_overflow_fail_without_state_changes() {
+        let state = State::new(Config::development([42; 32], 0).unwrap()).unwrap();
+        let fingerprint = state.fingerprint();
+        for first in [u64::MAX, u64::MAX - subsidy_split(1).0] {
+            let mut fees = vec![0; 64];
+            fees[0] = first;
+            fees[1] = 1;
+            assert!(
+                prepare_candidate(&state, fee_positions(&state, &fees), state.timestamp() + 1)
+                    .is_err()
+            );
+            assert_eq!(state.fingerprint(), fingerprint);
+        }
+        assert!(prepare_reward(&state, u64::MAX).is_err());
+        assert_eq!(state.fingerprint(), fingerprint);
+    }
+
+    #[test]
+    fn mismatched_private_openings_and_malformed_prepared_proofs_fail_before_proving() {
+        let state = State::new(Config::development([43; 32], 0).unwrap()).unwrap();
+        let fingerprint = state.fingerprint();
+        for mutation in 0..4 {
+            let mut positions = fee_positions(&state, &[0; 64]);
+            match mutation {
+                0 => positions[0].opening.fee = 1,
+                1 => positions[0].opening.blind[7] += F::ONE,
+                2 => positions[0].transaction.proof.clear(),
+                _ => positions[0]
+                    .transaction
+                    .proof
+                    .resize(crate::wire::MAX_TX_PROOF + 1, 1),
+            }
+            assert!(prepare_candidate(&state, positions, state.timestamp() + 1).is_err());
+            assert_eq!(state.fingerprint(), fingerprint);
         }
     }
 

@@ -79,6 +79,52 @@ class NetworkBudgetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             budget.wire_message(0)
 
+    def test_native_protocol_counts_current_framing_and_compact_settlement_once(self):
+        result = budget.native_protocol_report()
+        parameters = result['parameters']
+        self.assertEqual(parameters['application_frame_bytes'], 51)
+        self.assertEqual(parameters['gossip_length_prefix_bytes'], 4)
+        self.assertEqual(parameters['compact_reference_bytes'], 64)
+        self.assertEqual(parameters['compact_fixed_bytes'], 1525)
+        self.assertEqual(parameters['compact_payload_bytes'], 562_677)
+        self.assertEqual(parameters['missing_request_payload_bytes'], 1026)
+        self.assertEqual(parameters['missing_request_batches_per_copy'], 36)
+        self.assertFalse(parameters['hybrid_provider_qualified'])
+        self.assertEqual(result['components_bytes_per_interval']['settlement_wire'], 0)
+        self.assertEqual(result['wire_bytes_per_interval'], 1_369_154_385)
+        self.assertEqual(result['minimum_link_mbps'], 43)
+        self.assertTrue(result['meets_capacity_headroom'])
+        self.assertFalse(budget.native_protocol_report(link_mbps=42)['meets_capacity_headroom'])
+
+    def test_duplicate_settlement_crosses_the_43_mbps_headroom_boundary(self):
+        result = budget.native_protocol_report(link_mbps=43, duplicate_settlement=True)
+        self.assertTrue(result['parameters']['standalone_settlement_duplicate'])
+        self.assertEqual(result['wire_bytes_per_interval'], 1_371_043_201)
+        self.assertEqual(result['minimum_link_mbps'], 44)
+        self.assertFalse(result['meets_capacity_headroom'])
+        self.assertTrue(budget.native_protocol_report(
+            link_mbps=44, duplicate_settlement=True)['meets_capacity_headroom'])
+
+    def test_native_protocol_caps_and_reserves_remain_independent(self):
+        base = budget.native_protocol_report()
+        larger = budget.native_protocol_report(transaction_proof_cap=768 * 1024)
+        self.assertEqual(larger['parameters']['settlement_proof_cap_bytes'], 524_288)
+        self.assertEqual(larger['parameters']['issuance_proof_cap_bytes'], 524_288)
+        self.assertEqual(base['parameters']['compact_payload_bytes'],
+                         larger['parameters']['compact_payload_bytes'])
+        components = larger['components_bytes_per_interval']
+        unreserved = sum(value for name, value in components.items()
+                         if name not in ('retransmission_reserve', 'recovery_reserve'))
+        self.assertEqual(components['retransmission_reserve'], budget.ceil_div(unreserved * 2, 100))
+        self.assertEqual(components['recovery_reserve'], budget.ceil_div(unreserved * 5, 100))
+        self.assertEqual(larger['wire_bytes_per_interval'], sum(components.values()))
+        self.assertEqual(budget.native_protocol_report(64)['parameters']
+                         ['missing_request_batches_per_copy'], 4)
+        for arguments in ({'positions': 65}, {'link_mbps': 0},
+                          {'transaction_proof_cap': 0}, {'capacity_headroom_percent': 100}):
+            with self.assertRaises(ValueError):
+                budget.native_protocol_report(**arguments)
+
     def test_only_fixed_capacity_groups_are_accepted(self):
         self.assertGreater(budget.report(64)['remaining_bytes_per_interval'], 0)
         for positions in (0, 63, 65, 577, 592):

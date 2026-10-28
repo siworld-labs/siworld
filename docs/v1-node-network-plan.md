@@ -1,9 +1,14 @@
 # Native V1 Node and Network Integration
 
-Status: implementation plan for the independent native-proof engineering
-network. The transaction AIR, bounded proof decoder, canonical snapshot pool
-and wallet output checks are isolated engineering components. This document
-does not activate them on the retained seven-node network.
+Status: implementation inventory and remaining activation plan for the
+independent native-proof engineering network. The native library contains
+bounded admission, authenticated-stream protocol interfaces, full-proof sync,
+verified-work fork choice, atomic reorganization, seed-derived wallet
+primitives and a public subsidy audit. A production hybrid provider and
+listening network service are not implemented. Compilation and test execution
+of the new integration remain pending remote CI; no network acceptance is
+implied. The frozen
+proof profiles and retained seven-node legacy network remain unchanged.
 
 ## Proof parameters and activation
 
@@ -31,10 +36,9 @@ not cryptographic invalidity and must not become consensus rejection rules.
 
 ## Canonical transaction ledger
 
-The proposed three-output relay envelope has a 2,184-byte prefix and one
+The native three-output relay envelope implements a 2,184-byte prefix and one
 bounded proof body. All integer framing is little-endian and encodings are
-canonical. The current diagnostic implementation has a 1,899-byte prefix;
-its source and artifact hashes remain baseline evidence only.
+canonical. Earlier diagnostic codecs remain baseline evidence only.
 
 | Field | Bytes |
 | --- | ---: |
@@ -66,18 +70,17 @@ statement: network, suite, snapshot identity, public body and fee commitment.
 It excludes the proof length, proof randomness and sidecar. A new proof for the
 same statement therefore preserves the identity. The native block codec must
 order these identities strictly ascending and reject equal IDs. This is an
-M1 (N1) requirement, implemented and rejection-tested in the isolated
-[single-node engineering runtime](v1-native-runtime.md). P2P admission and
-public-network activation remain separate gates.
+M1 (N1) requirement, implemented with swapped-order and duplicate-ID rejection
+tests in the [engineering runtime](v1-native-runtime.md). Library admission
+uses the same identity. Public-network activation remains a separate gate.
 A verification cache also keys on the proof digest and locally trusted verifier identity; statement
 identity alone cannot authenticate a replacement proof.
 
-The proposed maximum envelope plus sidecar is **657,622 bytes** before stream
-framing. The proposed permanent record is **2,115 bytes**: 2,027 public bytes,
-48 fee-commitment bytes and a 40-byte snapshot selector. Recheck both values
-against the integrated envelope and state transition. The 2,115-byte permanent
-record and complete envelope framing are implemented in the isolated M1 codec;
-network admission/resource qualification remains pending.
+The maximum envelope plus sidecar is **657,622 bytes** before stream framing.
+The permanent record is **2,115 bytes**: 2,027 public bytes, 48 fee-commitment
+bytes and a 40-byte snapshot selector. Both formats are implemented in the
+native codec and used by library admission; network resource qualification
+remains pending.
 Version, suite and
 network context may be amortized in the authenticated block header. A full
 32-byte compact reference is additional transmission data when sent, rather
@@ -86,25 +89,28 @@ identity is reconstructible from the authenticated canonical record.
 
 ## Admission and local resource policy
 
-The initial policy below is a design for the new network, not a measurement of
-the retained node or a change to its existing 64-MiB mempool ceiling. Bounds
-apply to owned bytes, including sidecars and internal bookkeeping. An entry
-count supplements a byte limit; it never replaces one. Reserve capacity before
-reading or copying a declared body and release reservations on every failure.
+The policy below separates implemented in-process bounds from operational
+guards still required before activation. It does not measure the retained node
+or change its existing 64-MiB mempool ceiling. Logical bounds apply to owned
+bytes, including sidecars and internal bookkeeping, and are not allocator/RSS
+guarantees. Entry counts supplement byte limits. Reserve before reading or
+copying a declared body and release reservations on every failure.
 
-| Resource | Initial local policy |
-| --- | --- |
-| Verified transaction pool | 512 MiB and at most 2,048 entries |
-| Unverified ingress queue | 64 MiB and at most 128 entries |
-| Per-peer unverified ingress | 2 MiB and at most four entries |
-| Per-peer verified contribution | 16 MiB and at most 64 entries |
-| Concurrent transaction verification | Two isolated workers, one proof per worker |
-| Verifier worker sandbox | Selected initial policy: 128 MiB charged memory, zero swap, 250-ms CPU allowance per job |
-| Local deadlines | Ten seconds to receive a reserved transaction body; five seconds of queue residence; two-second verification wall deadline |
-| Negative-result cache | 1 MiB, at most 8,192 entries, 300-second local expiry |
-| Peer-abuse state | 1 MiB, at most 4,096 opaque peer identities, 600-second local expiry |
-| Missing-data block reconstruction | 640 MiB and at most two candidate blocks |
-| Padding proof pool | Target at least 64 usable entries; maximum 128 entries and 65 MiB |
+| Resource | Initial local policy | Implementation status |
+| --- | --- | --- |
+| Verified transaction pool | 512 MiB and at most 2,048 entries | Native admission library |
+| Per-peer verified contribution | 16 MiB and at most 64 entries; at most 4,096 opaque peer identities | Native admission library |
+| Unverified ingress queue | 64 MiB and at most 128 entries | Required worker-service integration |
+| Per-peer unverified ingress | 2 MiB and at most four entries | Required worker-service integration |
+| Concurrent transaction verification | Two isolated workers, one proof per worker | Required worker-service integration |
+| Verifier worker sandbox | 128 MiB charged memory, zero swap, 250-ms CPU allowance per job | Selected guard; not provided by the in-process pool |
+| Local deadlines | Ten seconds to receive a reserved transaction body; five seconds of queue residence; two-second verification wall deadline | Worker-service qualification remains required |
+| Negative-result cache | 1 MiB, at most 8,192 entries, 300-second local expiry | Not implemented |
+| Peer-abuse state | 1 MiB, at most 4,096 opaque peer identities, 600-second local expiry | Expiring abuse cache not implemented |
+| Shared transport buffers | 640 MiB; 16 concurrent handshakes with 4 MiB aggregate handshake allowance | Native protocol library; logical accounting only |
+| Branch candidate validation | 32 blocks and 640 MiB logical state/body budget; 1 GiB retained detached evidence | Native chain/store library |
+| Missing-data block reconstruction | 640 MiB and at most two candidate blocks | Selected deployment policy; durable bounded spooling remains required |
+| Padding proof pool | Target at least 64 usable entries; maximum 128 entries and 65 MiB | Native pool and continuous single-node service |
 
 The worker memory and CPU values are selected initial operational guards.
 Isolated verifier measurements, malformed-input tests and target-host load
@@ -124,14 +130,20 @@ metadata, even though the entry-count ceiling is 128. Do not grow the byte
 budget automatically to reach that ceiling.
 
 Two fully buffered maximum-size block payloads exceed the 640-MiB
-reconstruction budget. Retain at most two candidate identities, but stream
-verified bodies to bounded disk storage and backpressure/reschedule the
-second candidate rather than holding both complete bodies in memory. Reserve
-metadata and temporary copies within the same budget. Pool shortages delay
-production or admission; they do not allow oversized allocations or invalid
-padding.
+reconstruction budget. The protocol currently streams one framed block into
+bounded owned structures and keeps its reservation while staged. Deployment
+still requires bounded durable spooling and backpressure before supporting
+two full candidates concurrently. Reserve metadata and temporary copies within
+the same budget. Pool shortages delay production or admission; they do not
+allow oversized allocations or invalid padding.
 
-Admission order is:
+The admission library implements snapshot, sidecar, proof and pending-conflict
+checks below, including preflight before proof copying. Its synchronous verifier
+adapter has no worker sandbox or resource timeout. A separately isolated worker
+must implement the explicit unavailable/invalid result interface; local limits
+must never be inferred as cryptographic rejection.
+
+Required admission order is:
 
 1. Validate the outer fixed header, declared lengths, network and fixed local
    suite before allocating the full body. Reserve both global and peer bytes.
@@ -166,7 +178,10 @@ them from the wire maximum.
 The block codec permits groups of 16, with 64 through 576 positions. A
 consensus-visible position always contains the same transaction shape.
 Producer and validator use the same integer-only atomic transition for the
-ordered transaction statements, nullifiers, outputs, issuance and settlement.
+ordered transaction statements, nullifiers, outputs and settlement. Native
+issuance admission is still disabled pending its dedicated fund destination,
+atomic fee collection and resource rules; the isolated issuance relation does
+not activate this path.
 The settlement proof is verified independently of all transaction proofs.
 Its statement must bind every position exactly once and the single miner
 reward output; compact references cannot substitute for this binding.
@@ -195,10 +210,23 @@ delays production or triggers bounded regeneration; it does not permit an
 undersized block or invalid placeholder.
 
 At the 300-second target, finality is depth 24 and `MAX_REORG_DEPTH=24` for the
-new route. Test depth 23, 24 and 25 explicitly, including the exact finalized
-boundary, reward accounting, snapshot-window refill and orphaned-pool eviction.
-Deeper divergence requires explicit checkpoint recovery. The retained route's
-existing reorganization policy is unchanged.
+new route. The chain library reconstructs the local ancestor, replays every
+candidate block, then selects strictly greater verified cumulative work. Equal
+work retains the current chain. A shorter branch can win by doing more verified
+work; a taller advertised chain cannot bypass validation. Adoption updates
+canonical records, head, fingerprint and checksummed detached evidence in one
+redb transaction before changing accepted memory. Detached records are evidence,
+not chain authority or an implementation of time-based proof retention.
+
+Tests cover depth 23/24/25 boundaries, late validation failure, snapshot/pool
+reconciliation, detached evidence and durable reopen; the new integration suite
+requires execution evidence. Ancestor reconstruction currently replays from
+genesis and defaults to a height-4,096 work guard. A non-tip ancestor beyond
+that guard returns local resource unavailability; it is not a checkpoint or a
+consensus horizon. Tip extension does not need that reconstruction. A qualified
+checkpoint/replay mechanism remains necessary for long-lived deployment.
+Deeper-than-24 divergence requires explicit recovery. The retained route's
+existing policy is unchanged.
 
 ## Compact relay and capacity
 
@@ -206,11 +234,15 @@ Initially use full 32-byte statement identifiers in inventories. Short IDs
 require a separately reviewed collision-recovery scheme. Authenticate the
 complete ordered list, retrieve missing public records and proofs under the
 same byte/admission limits, and verify all data before applying a block.
+The implemented compact reference
+binds both statement ID and proof digest, preventing an unverified replacement
+proof from reusing an accepted statement. Library recovery omits sidecars.
 Request no more than 16 missing transactions per response; reserve their
 declared bytes before accepting the response. Limit reconstruction to the
 640-MiB/two-block budget above, including retained downloaded bodies and
-bookkeeping. Stream accepted bodies to the bounded proof store rather than
-building additional unaccounted copies.
+bookkeeping. The production proof store and bounded disk spooling remain
+required;
+additional complete-body copies must not escape the shared accounting.
 
 Missing sidecars prevent a local producer from constructing settlement. A
 validator does not require a sidecar to check an already constructed block:
@@ -230,11 +262,27 @@ Measure the deployed listener before acceptance.
 Set the new transaction profile's `MAX_LEAF_PROOF_LEN` to 655,360 bytes,
 independently of the 524,288-byte settlement and issuance caps. Preserve
 576 positions and the 80-bit quantum screen. The old 512-KiB prepared decoder
-is baseline-only; the new shape/key/limit require an integrated decoder and
-admission tests. Future layout optimization does not block this engineering
+is baseline-only. The native library uses the
+new trusted shape/key/limit with envelope and admission rejection tests; its
+worker isolation and adversarial resource qualification remain separate gates.
+Future layout optimization does not block this engineering
 freeze and cannot reduce bandwidth requirements without new measurements.
 
-## Proof retention and synchronization
+## Full-proof synchronization and retention
+
+The engineering sync library exchanges genesis-anchored locators of at most
+64 entries and contiguous batches of at most 16 proof-carrying blocks. A sync
+attempt binds the peer, local base, ancestor, request identifiers and expected
+continuation. Metadata/range changes, wrong genesis or concurrent canonical
+changes abort the attempt without a partial adoption. Reservations stay owned
+until adoption or discard. Every candidate uses verified work and the same
+store transition; each successful adoption establishes a fresh base for the
+next batch. This full-proof engineering path does not authenticate checkpoints
+or provide pruned-history bootstrap.
+
+The retention and checkpoint behavior below remains required design work; no
+three-day deletion or trusted-checkpoint importer is implemented by the chain
+library.
 
 Keep transaction, settlement and native issuance proofs and received private
 fee sidecars until three elapsed days after final confirmation, then delete
@@ -283,8 +331,26 @@ object hashes/signatures, replaying blocks and PoW, rebuilding indexes, and
 comparing roots, work and state before promotion. Run monthly restore checks and
 quarterly replacement-host recovery tests. Wallet creation requires an explicit
 mnemonic backup; a restored wallet rescans all permanent ciphertexts from genesis or
-an authenticated wallet birth height, including pre-checkpoint segments, verifies note and asset ownership, and reconciles balances and
-payment journals exactly once.
+an authenticated wallet birth height, including pre-checkpoint segments,
+verifies note and asset ownership, and reconciles balances and payment journals
+exactly once.
+
+The engineering wallet library already derives network/account-separated spend,
+ML-KEM view and 256-bit change keys from a supplied seed. It independently
+replays complete supplied canonical history, authenticates ciphertexts and
+note commitments, reconciles orphan receipts/spends, and prepares two-input/
+three-output SI or asset payments with SI-only standard/priority fees. It
+returns a matching private sidecar and payment opening after native proving.
+Mnemonic creation/backup, protected key/opening storage, seed-wallet funding,
+issuance admission, network relay and pruned-public-history rescan are not yet
+integrated. A native-proof test with synthetic funding does not complete M2.
+
+The offline `audit` command and library verify canonical transaction/settlement
+proofs, per-height integer subsidy and direct/locked fund credits, and bind the
+report to the exact accepted head. Asset issuance and fund spending are
+explicitly marked unsupported; reward-recovery receipts are outside this
+report's scope. The complete public issuance audit remains dependent on those
+unimplemented transitions.
 
 ## Transport privacy work
 
@@ -294,14 +360,25 @@ Its reviewed combiner/library profile and routing parameters must be frozen
 before deployment. Pruned bootstrap uses explicit opt-in two-of-three
 checkpoint trust with genesis-pinned authority identities; the release
 checkpoint-plus-PoW path is the V1 default. Full proof replay remains a future
-independently verifying alternative. Neither mechanism is implemented or
-independently approved by selecting this design.
+independently verifying alternative. Neither production hybrid authentication
+nor checkpoint bootstrap is implemented or independently approved by selecting
+this design.
 
-The workspace currently uses libp2p 0.57.1 with TCP, DNS, Noise, Yamux and
-request-response. The live service constructs `noise::Config::new` in its TCP
-upgrade; its transaction announcements flood peers. It has no implemented
-X25519 + ML-KEM handshake or Dandelion++ source-hiding path. The output
-encryption's ML-KEM dependency does not upgrade the connection handshake.
+The retained networking path uses libp2p 0.57.1 with TCP, DNS, Noise, Yamux
+and request-response; its live service constructs `noise::Config::new` and
+floods announcements. It has no implemented hybrid handshake or Dandelion++
+path and is not a native V1 transport.
+
+The native protocol library instead exposes bounded streaming sessions over an
+`Authenticated` channel capability. It binds network, genesis, trusted verifier
+manifest and peer role, requires fresh authentication after framing/I/O failure,
+and supplies TCP accept/connect adapters with aggregate handshake reservations.
+No production `HybridAuthenticator` is supplied, its capability constructor is
+crate-private, and no public listening CLI is enabled. A provider must supply
+reviewed identity binding and authenticated record protection, deadlines,
+sequence/nonce limits, key confirmation, cleanup and rekeying. Synthetic
+providers and loopback protocol tests do not qualify the cryptographic channel.
+The output encryption's ML-KEM dependency does not upgrade a connection.
 
 Implement a distinct versioned authenticated libp2p upgrade combining ephemeral
 X25519 and ML-KEM shared secrets through a domain-separated reviewed hybrid
@@ -327,6 +404,18 @@ half-open connections, reconnect and bounded resource cleanup. Synthetic
 in-memory messages alone do not cover the deployed transport.
 
 ## Implementation milestones
+
+Current source status is distinct from the exit conditions below. N1's native
+codec/transition and continuous single-node service are implemented. N2 has the
+verified-pool and padding APIs, without worker isolation or ingress services.
+N3 has authenticated-stream protocol interfaces, sync and exact-proof compact
+recovery, without a production provider/listening service or qualified wire
+measurements. Verified-work forks and atomic depth-24 reorganization are
+implemented with local replay limits. N8 has seed-derived scanning/transfer
+primitives without protected durability or full valid-chain M2 acceptance.
+The offline audit covers SI subsidy/fund credits only. Compilation and test
+execution of the new integration remain pending remote CI. The frozen service
+observation is not replaced or restarted by this library work.
 
 Estimates are engineering days for one engineer familiar with the codebase,
 excluding independent review, infrastructure procurement and elapsed soak or

@@ -101,6 +101,110 @@ def report(positions=576, link_mbps=None, transaction_proof_cap=TRANSACTION_PROO
     }
 
 
+NATIVE_FRAME_BYTES = 51
+NATIVE_GOSSIP_LENGTH_BYTES = 4
+NATIVE_REFERENCE_BYTES = 64
+NATIVE_COMPACT_FIXED_BYTES = 1525
+NATIVE_MISSING_BATCH = 16
+NATIVE_HELLO_BYTES = 103
+NATIVE_EXTRA_BLOCK_RECORD_BYTES = 8192
+
+
+def native_protocol_report(positions=576, link_mbps=None,
+                           transaction_proof_cap=TRANSACTION_PROOF_CAP,
+                           settlement_proof_cap=SETTLEMENT_PROOF_CAP,
+                           issuance_proof_cap=ISSUANCE_PROOF_CAP,
+                           capacity_headroom_percent=CAPACITY_HEADROOM_PERCENT,
+                           duplicate_settlement=False):
+    """Budget current native framing with explicitly unqualified channel costs.
+
+    The compact body already contains settlement. A separate settlement copy
+    is charged only for the opt-in duplicate-traffic sensitivity calculation.
+    The 8-KiB future-record allowance and full-reference inventory allowance
+    remain conservative additions to the implemented compact codec. HELLO is
+    charged an additional application frame even though session setup writes
+    its fixed bytes directly. Hybrid record and handshake sizes are assumptions,
+    not measurements or bounds established by the unavailable provider.
+    """
+    # Preserve default-report validation and metadata without changing its model.
+    result = report(positions, link_mbps, transaction_proof_cap,
+                    settlement_proof_cap, issuance_proof_cap,
+                    capacity_headroom_percent)
+    copies = result['relay_copies']
+
+    def native_wire(payload):
+        # Reuse exact record/packet/ACK rounding with the current 51-byte header.
+        return wire_message(payload + NATIVE_FRAME_BYTES - 16)
+
+    transaction = (transaction_proof_cap + TRANSACTION_ENVELOPE_BYTES
+                   + SIDECAR_BYTES + NATIVE_GOSSIP_LENGTH_BYTES)
+    compact = (NATIVE_COMPACT_FIXED_BYTES + positions * NATIVE_REFERENCE_BYTES
+               + settlement_proof_cap)
+    request_batches = positions // NATIVE_MISSING_BATCH
+    request_payload = 2 + NATIVE_MISSING_BATCH * NATIVE_REFERENCE_BYTES
+    components = {
+        'transaction_and_sidecar_wire': copies * positions * native_wire(transaction),
+        'settlement_wire': (copies * native_wire(settlement_proof_cap
+                                                + SETTLEMENT_ENVELOPE_BYTES)
+                            if duplicate_settlement else 0),
+        'issuance_wire_allowance': copies * native_wire(issuance_proof_cap + 16_384),
+        'inventory_wire_allowance': copies * native_wire(2 + positions * NATIVE_REFERENCE_BYTES),
+        'compact_block_and_block_record_wire': copies * native_wire(
+            compact + NATIVE_EXTRA_BLOCK_RECORD_BYTES),
+        # Every request contains 16 exact statement/proof pairs. Charge its
+        # END_BATCH even when no body recovery is needed; bodies use the reserve.
+        'all_id_requests_wire': copies * request_batches * (
+            native_wire(request_payload) + native_wire(0)),
+        'handshake_wire_allowance': 8 * native_wire(32_768),
+        'hello_wire_allowance': 8 * native_wire(NATIVE_HELLO_BYTES),
+        'keepalive_wire_allowance': 16 * 10 * native_wire(64),
+        'other_control_wire_allowance': native_wire(65_536),
+    }
+    base = sum(components.values())
+    components['retransmission_reserve'] = ceil_div(base * 2, 100)
+    components['recovery_reserve'] = ceil_div(base * 5, 100)
+    total = sum(components.values())
+    minimum_link = ceil_div(total * 8 * 100,
+                            INTERVAL_SECONDS * 1_000_000 * (100 - capacity_headroom_percent))
+    evaluated_link = minimum_link if link_mbps is None else link_mbps
+    capacity = evaluated_link * 1_000_000 * INTERVAL_SECONDS // 8
+    parameters = result['parameters']
+    parameters.update({
+        'application_frame_bytes': NATIVE_FRAME_BYTES,
+        'gossip_length_prefix_bytes': NATIVE_GOSSIP_LENGTH_BYTES,
+        'compact_reference_bytes': NATIVE_REFERENCE_BYTES,
+        'compact_fixed_bytes': NATIVE_COMPACT_FIXED_BYTES,
+        'compact_payload_bytes': compact,
+        'extra_block_record_allowance_bytes': NATIVE_EXTRA_BLOCK_RECORD_BYTES,
+        'missing_reference_batch_size': NATIVE_MISSING_BATCH,
+        'missing_request_payload_bytes': request_payload,
+        'missing_request_batches_per_copy': request_batches,
+        'standalone_settlement_duplicate': duplicate_settlement,
+        'handshake_payload_allowance_bytes': 32_768,
+        'hybrid_provider_qualified': False,
+    })
+    result.update({
+        'model': 'native-protocol-framing-with-conditional-channel-allowances',
+        'minimum_link_mbps': minimum_link,
+        'evaluated_link_mbps': evaluated_link,
+        'transaction_settlement_payload_bytes': copies * (
+            positions * transaction + compact
+            + (settlement_proof_cap + SETTLEMENT_ENVELOPE_BYTES
+               if duplicate_settlement else 0)),
+        'components_bytes_per_interval': components,
+        'wire_bytes_per_interval': total,
+        'wire_mbps': total * 8 / INTERVAL_SECONDS / 1_000_000,
+        'link_capacity_bytes_per_interval': capacity,
+        'remaining_bytes_per_interval': capacity - total,
+        'remaining_mbps': (capacity - total) * 8 / INTERVAL_SECONDS / 1_000_000,
+        'remaining_percent': (capacity - total) * 100 / capacity,
+        'meets_capacity_headroom': ((capacity - total) * 100
+                                    >= capacity * capacity_headroom_percent),
+        'serialization_seconds': total * 8 / (evaluated_link * 1_000_000),
+    })
+    return result
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--positions', type=int, default=576)
@@ -109,10 +213,24 @@ if __name__ == '__main__':
     parser.add_argument('--settlement-proof-cap-bytes', type=int, default=SETTLEMENT_PROOF_CAP)
     parser.add_argument('--issuance-proof-cap-bytes', type=int, default=ISSUANCE_PROOF_CAP)
     parser.add_argument('--capacity-headroom-percent', type=int, default=CAPACITY_HEADROOM_PERCENT)
+    parser.add_argument('--native-protocol', action='store_true',
+                        help='use native 51-byte framing and exact-proof compact references')
+    parser.add_argument('--duplicate-settlement', action='store_true',
+                        help='with --native-protocol, also charge a separate settlement copy')
     parser.add_argument('--legacy-baseline', action='store_true',
                         help='reproduce the prior 524288-byte proof caps and 30-Mbps link without extra headroom')
     args = parser.parse_args()
-    if args.legacy_baseline:
+    if args.native_protocol and args.legacy_baseline:
+        parser.error('--native-protocol and --legacy-baseline are mutually exclusive')
+    if args.duplicate_settlement and not args.native_protocol:
+        parser.error('--duplicate-settlement requires --native-protocol')
+    if args.native_protocol:
+        print(json.dumps(native_protocol_report(
+            args.positions, args.link_mbps, args.transaction_proof_cap_bytes,
+            args.settlement_proof_cap_bytes, args.issuance_proof_cap_bytes,
+            args.capacity_headroom_percent, args.duplicate_settlement),
+            indent=2, sort_keys=True))
+    elif args.legacy_baseline:
         print(json.dumps(report(args.positions, 30, 524_288, 524_288, 524_288, 0),
                          indent=2, sort_keys=True))
     else:

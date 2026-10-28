@@ -1,4 +1,4 @@
-//! Native V1 single-node engineering runtime, separate from the retained node.
+//! Native V1 engineering chain and network interfaces, separate from the retained node.
 #![forbid(unsafe_code)]
 
 pub mod local;
@@ -10,3 +10,15 @@ pub mod service;
 pub mod state;
 pub mod store;
 pub mod wire;
+
+pub mod admission;
+pub mod audit;
+pub mod chain;
+pub mod p2p;
+pub mod runtime;
+pub mod sync;
+pub mod wallet;
+pub(crate) mod wallet_crypto;
+
+#[cfg(test)]
+mod fixtures;

@@ -130,7 +130,7 @@ fn emit_envelope(tx: &Transaction, network: &Hash, emit: &mut impl FnMut(&[u8]))
     emit(&tx.proof);
 }
 
-fn borrowed_envelope<'a>(
+pub(crate) fn borrowed_envelope<'a>(
     bytes: &'a [u8],
     network: &Hash,
 ) -> Result<(PublicRecord, &'a [u8]), String> {
@@ -225,7 +225,7 @@ impl Block {
         Ok(())
     }
 
-    fn encoded_len(&self) -> Result<usize, String> {
+    pub fn encoded_len(&self) -> Result<usize, String> {
         let mut length = BLOCK_FIXED_BYTES
             .checked_add(self.settlement_proof.len())
             .ok_or("block byte length overflow")?;
@@ -243,6 +243,106 @@ impl Block {
         let mut bytes = Vec::with_capacity(self.encoded_len()?);
         self.emit_encoding(true, &mut |part| bytes.extend_from_slice(part));
         Ok(bytes)
+    }
+
+    /// Writes the existing canonical format without buffering a second block.
+    pub fn write_to(&self, output: &mut impl std::io::Write) -> std::io::Result<()> {
+        self.validate_shape().map_err(invalid_stream)?;
+        let mut error = None;
+        self.emit_encoding(true, &mut |part| {
+            if error.is_none() {
+                if let Err(e) = output.write_all(part) {
+                    error = Some(e);
+                }
+            }
+        });
+        error.map_or(Ok(()), Err)
+    }
+
+    /// Reads at most one bounded canonical block. Only one transaction envelope
+    /// is copied at a time; the caller must reserve the declared block budget.
+    /// I/O errors retain their kind, so a local timeout is not proof invalidity.
+    pub fn read_from(
+        input: &mut impl std::io::Read,
+        length: usize,
+        network: &Hash,
+    ) -> std::io::Result<Self> {
+        use std::io::Read;
+        if !(BLOCK_FIXED_BYTES..=MAX_BLOCK_BYTES).contains(&length) {
+            return Err(invalid_stream("block stream byte limit"));
+        }
+        let mut input = input.take(length as u64);
+        let mut header = [0; BLOCK_HEADER_BYTES];
+        input.read_exact(&mut header)?;
+        let mut r = Reader::new(&header);
+        if r.take(4).map_err(invalid_stream)? != BLOCK_MAGIC
+            || r.u16().map_err(invalid_stream)? != BLOCK_VERSION
+            || r.take(SUITE_ID.len()).map_err(invalid_stream)? != SUITE_ID
+        {
+            return Err(invalid_stream("block stream format mismatch"));
+        }
+        let found_network: Hash = r.array().map_err(invalid_stream)?;
+        if &found_network != network {
+            return Err(invalid_stream("block network mismatch"));
+        }
+        let height = r.u64().map_err(invalid_stream)?;
+        let parent = r.array().map_err(invalid_stream)?;
+        let timestamp = r.u64().map_err(invalid_stream)?;
+        let target = r.array().map_err(invalid_stream)?;
+        let nonce = r.u64().map_err(invalid_stream)?;
+        let count = usize::from(r.u16().map_err(invalid_stream)?);
+        validate_slots(count).map_err(invalid_stream)?;
+        if timestamp == 0
+            || target == [0; 32]
+            || length < BLOCK_FIXED_BYTES + count * (4 + TX_PREFIX_BYTES + 1) + 1
+        {
+            return Err(invalid_stream("invalid or truncated streamed block"));
+        }
+        let mut transactions = Vec::with_capacity(count);
+        let mut previous = None;
+        for _ in 0..count {
+            let mut size = [0; 4];
+            input.read_exact(&mut size)?;
+            let size = u32::from_le_bytes(size) as usize;
+            if !(TX_PREFIX_BYTES + 1..=MAX_ENVELOPE_BYTES).contains(&size)
+                || size as u64 > input.limit()
+            {
+                return Err(invalid_stream("streamed envelope byte limit"));
+            }
+            let mut bytes = vec![0; size];
+            input.read_exact(&mut bytes)?;
+            let tx = Transaction::decode_envelope(&bytes, network).map_err(invalid_stream)?;
+            check_order(&mut previous, tx.record.statement_id(network)).map_err(invalid_stream)?;
+            transactions.push(tx);
+        }
+        let mut reward = RewardRecord {
+            commitment: [0; 48],
+            ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
+        };
+        input.read_exact(&mut reward.commitment)?;
+        input.read_exact(&mut reward.ciphertext)?;
+        let mut size = [0; 4];
+        input.read_exact(&mut size)?;
+        let size = u32::from_le_bytes(size) as usize;
+        validate_proof_len(size, MAX_SETTLEMENT_PROOF, "settlement").map_err(invalid_stream)?;
+        if size as u64 != input.limit() {
+            return Err(invalid_stream("streamed settlement length mismatch"));
+        }
+        let mut settlement_proof = vec![0; size];
+        input.read_exact(&mut settlement_proof)?;
+        let block = Self {
+            network: found_network,
+            height,
+            parent,
+            timestamp,
+            target,
+            nonce,
+            transactions,
+            reward,
+            settlement_proof,
+        };
+        block.validate_shape().map_err(invalid_stream)?;
+        Ok(block)
     }
 
     fn emit_encoding(&self, include_nonce: bool, emit: &mut impl FnMut(&[u8])) {
@@ -1001,4 +1101,8 @@ mod tests {
             assert!(invalid.encode().is_err());
         }
     }
+}
+
+fn invalid_stream(message: impl ToString) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message.to_string())
 }

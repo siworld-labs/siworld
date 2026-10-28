@@ -222,3 +222,69 @@ fn retained_proof_allocation_discards_unaccounted_spare_capacity() {
     assert_eq!(retained.capacity(), 1);
     assert!(pool.bytes() < 64 * 1024);
 }
+
+#[test]
+fn fill_selection_supports_arbitrary_shortfalls_and_preserves_all_conflict_tombstones() {
+    for count in [0, 1, 3, 15, 63, 64, 65, 127, 128] {
+        let state = state();
+        let verify = verifier();
+        let mut pool = Pool::new(state.config.network);
+        for index in 0..128 {
+            pool.insert(&state, entry(&state, 1 + index * 1000), &verify)
+                .unwrap();
+        }
+        let bytes = pool.bytes();
+        let selected = pool.take_for_fill(&state, count).unwrap();
+        assert_eq!(selected.len(), count);
+        assert_eq!(pool.len(), 128 - count);
+        assert!(pool.bytes() <= bytes);
+        if count == 0 {
+            assert_eq!(pool.bytes(), bytes);
+        }
+        if count == 128 {
+            assert_eq!(pool.bytes(), 0);
+        }
+        for value in selected {
+            assert!(pool.insert(&state, value, &verify).is_err());
+        }
+        assert_eq!(pool.len(), 128 - count);
+    }
+}
+
+#[test]
+fn failed_fill_counts_leave_originals_bytes_and_reservations_unchanged() {
+    let state = state();
+    let verify = verifier();
+    let mut pool = Pool::new(state.config.network);
+    for index in 0..64 {
+        pool.insert(&state, entry(&state, 1 + index * 1000), &verify)
+            .unwrap();
+    }
+    let ids: Vec<_> = pool.entries.keys().copied().collect();
+    let before = (
+        pool.len(),
+        pool.bytes(),
+        pool.inputs.len(),
+        pool.outputs.len(),
+        pool.consumed.len(),
+    );
+    for count in [65, MAX_SLOTS, MAX_SLOTS + 1, usize::MAX] {
+        assert!(pool.take_for_fill(&state, count).is_err());
+        assert_eq!(
+            (
+                pool.len(),
+                pool.bytes(),
+                pool.inputs.len(),
+                pool.outputs.len(),
+                pool.consumed.len()
+            ),
+            before
+        );
+        assert_eq!(pool.entries.keys().copied().collect::<Vec<_>>(), ids);
+    }
+    assert!(pool.take(&state, 63).is_err());
+    assert!(pool.take(&state, 65).is_err());
+    assert_eq!(pool.take_for_fill(&state, 63).unwrap().len(), 63);
+    assert_eq!(pool.take_for_fill(&state, 1).unwrap().len(), 1);
+    assert_eq!(pool.bytes(), 0);
+}

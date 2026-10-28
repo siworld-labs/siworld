@@ -1,6 +1,6 @@
 //! Disposable native engineering CLI. No retained-network adapter or reset.
 use siworld_native_node::{
-    local, producer,
+    audit, local, producer,
     proofs::{NativeProver, NativeVerifier},
     service,
     state::Config,
@@ -9,7 +9,7 @@ use siworld_native_node::{
 use std::path::Path;
 fn help() {
     println!(
-        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, peer networking, issuance admission, or public-network activation is provided."
+        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, peer networking, issuance admission, or public-network activation is provided."
     );
 }
 fn cpu_admission() -> Result<(), String> {
@@ -74,7 +74,7 @@ fn run() -> Result<(), String> {
                 local::hex(&store.state().tip)
             );
         }
-        "status" | "check" => {
+        "status" | "check" | "audit" => {
             exact(&args)?;
             if args[0] == "status" && path.join(service::STATUS_FILE).exists() {
                 println!("{}", service::exported_status(path)?);
@@ -83,6 +83,29 @@ fn run() -> Result<(), String> {
             let _lease = service::Lease::acquire(path)?;
             let verifier = NativeVerifier::new()?;
             let store = Store::open_existing(path.join("chain.redb"), config(path)?, &verifier)?;
+            if args[0] == "audit" {
+                let (_, report) = audit::replay_blocks(
+                    store.state().config.clone(),
+                    (1..=store.state().height).map(|height| store.block(height)),
+                    &verifier,
+                )?;
+                check_audit_head(&report, store.state())?;
+                // Heights, subsidy and fund credits are public protocol data.
+                // Private fee openings and local wallet receipts are excluded.
+                for row in &report.heights {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "kind": "height", "height": row.height,
+                            "block_id": local::hex(&row.block_id), "subsidy_atoms": row.subsidy,
+                            "miner_subsidy_atoms": row.miner_subsidy,
+                            "fund_direct_atoms": row.fund_direct, "fund_locked_atoms": row.fund_locked,
+                        })
+                    );
+                }
+                println!("{}", audit_summary(&report));
+                return Ok(());
+            }
             if args[0] == "check" {
                 for height in 1..=store.state().height {
                     let block = store.block(height)?;
@@ -125,9 +148,83 @@ fn run() -> Result<(), String> {
     }
     Ok(())
 }
+fn check_audit_head(
+    report: &audit::AuditReport,
+    state: &siworld_native_node::state::State,
+) -> Result<(), String> {
+    report
+        .check_head(state.height, state.tip, state.fingerprint())
+        .map_err(|_| "offline issuance audit head differs from verified store".to_owned())
+}
+fn audit_summary(report: &audit::AuditReport) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "summary", "scope": "subsidy-and-fund-credits-only",
+        "network": local::hex(&report.network), "height": report.height,
+        "tip": local::hex(&report.tip), "state": local::hex(&report.fingerprint),
+        "total_subsidy_atoms": report.total_subsidy.to_string(),
+        "miner_subsidy_atoms": report.miner_subsidy.to_string(),
+        "fund_direct_atoms": report.fund_direct.to_string(),
+        "fund_locked_atoms": report.fund_locked.to_string(),
+        "asset_issuance_supported": report.asset_issuance_supported,
+        "fund_spending_supported": report.fund_spending_supported,
+        "wallet_reward_recovery_checked": false,
+    })
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("native engineering operation rejected: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use siworld_native_node::state::State;
+
+    fn empty_report() -> (State, audit::AuditReport) {
+        let state = State::new(Config::development([71; 32], 0).unwrap()).unwrap();
+        let report = audit::AuditReport {
+            network: state.config.network,
+            height: 0,
+            tip: state.tip,
+            fingerprint: state.fingerprint(),
+            total_subsidy: 0,
+            miner_subsidy: 0,
+            fund_direct: 0,
+            fund_locked: 0,
+            heights: Vec::new(),
+            asset_issuance_supported: false,
+            fund_spending_supported: false,
+        };
+        (state, report)
+    }
+    #[test]
+    fn audit_summary_states_its_scope_without_implying_wallet_or_asset_checks() {
+        let (_, report) = empty_report();
+        let summary = audit_summary(&report);
+        assert_eq!(summary["scope"], "subsidy-and-fund-credits-only");
+        assert_eq!(summary["total_subsidy_atoms"], "0");
+        assert_eq!(summary["wallet_reward_recovery_checked"], false);
+        assert_eq!(summary["asset_issuance_supported"], false);
+        assert_eq!(summary["fund_spending_supported"], false);
+    }
+    #[test]
+    fn audit_requires_the_exact_verified_height_tip_and_fingerprint() {
+        let (state, report) = empty_report();
+        check_audit_head(&report, &state).unwrap();
+        for field in 0..3 {
+            let mut changed = report.clone();
+            match field {
+                0 => changed.height += 1,
+                1 => changed.tip[0] ^= 1,
+                _ => changed.fingerprint[0] ^= 1,
+            }
+            assert_eq!(
+                check_audit_head(&changed, &state).unwrap_err(),
+                "offline issuance audit head differs from verified store"
+            );
+        }
     }
 }

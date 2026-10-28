@@ -1,10 +1,16 @@
-# Native V1 Single-Node Engineering Runtime
+# Native V1 Engineering Runtime
 
-Status: M1 engineering implementation with a continuous single-node service.
-The real 24-hour observation and final offline replay remain required evidence;
-this document does not report their completion. The runtime is separate from
-the retained seven-node legacy network. It does not activate a public network
-or replace an existing database. Independent security review remains pending.
+Status: the continuous single-node service and native node-integration library
+are implemented engineering components. The library adds bounded admission,
+authenticated-stream protocol interfaces, full-proof synchronization,
+verified-work fork selection, wallet primitives and a public subsidy audit.
+Compilation and test execution of the new integration remain pending remote
+CI. The real 24-hour service observation and final
+offline replay remain separate required evidence; this document does not
+report their completion. No production hybrid-handshake provider or network
+service command is supplied. The runtime does not activate a public network,
+replace an existing database or change the retained seven-node legacy network.
+Independent security review remains pending.
 
 ## Scope
 
@@ -29,9 +35,11 @@ transaction proof and the independent settlement proof must verify before
 accepted state changes. Output commitments and the SI reward note are appended
 to the depth-40 commitment tree. Accepted snapshot identities expire after
 4096 canonical entries; an absent or removed identity is invalid even when
-another snapshot has the same root. Linear append/replay is implemented here;
-fork choice and the required 24-block reorganization limit remain network-stage
-work, not a claim established by a constant or snapshot-window test.
+another snapshot has the same root. The chain library verifies complete
+candidate branches and selects strictly greater cumulative verified work;
+advertised height or work is never authoritative. Equal work retains the
+current branch. A reorganization may detach at most 24 canonical blocks;
+a deeper divergence requires explicit recovery rather than automatic adoption.
 
 The fixed 576-row settlement relation reconstructs unused zero-fee rows from
 the network, block height, position count and row index with an explicit
@@ -52,6 +60,9 @@ automatically. There is no reset or migration operation. Replay reconstructs
 accepted state by verifying every stored block and checking its recorded state
 fingerprint. Each append commits the canonical block, accepted height and
 fingerprint in one durable database transaction before exposing the new state.
+Branch adoption uses one redb transaction for the replacement canonical rows,
+head, fingerprint and retained detached records. Detached blocks remain
+checksummed evidence and are never treated as accepted-chain authority.
 Missing rows, changed metadata, wrong-network data and failed proofs fail closed.
 Unclean databases requiring redb repair are preserved and refused pending
 explicit recovery review; automatic crash-repair tooling is not an M1 claim.
@@ -61,8 +72,94 @@ output encryption. It authenticates and reconstructs output commitments before
 proving. Reward recovery material is saved privately and synced before the
 accepted block is committed. A receipt contains the spending material and
 single-payment encapsulation opening needed to recover that reward; it must
-never be published. This engineering receipt mechanism is not a wallet backup,
-seed recovery or arbitrary ciphertext-scanning implementation.
+never be published. Service-produced rewards still use this receipt mechanism;
+they are not yet addressed to a seed-derived wallet. The separate wallet API
+below does not replace these receipts or establish durable wallet recovery.
+
+## Admission, synchronization and fork handling
+
+`runtime::Node` composes a persistent store, verified mempool, padding pool
+and one shared transport budget. Local wallet submission follows the same
+proof and sidecar checks as a remote identity. Admission inspects borrowed
+framing before copying proofs, resolves canonical snapshots, checks both
+nullifiers and all outputs, validates the sidecar against the transaction
+identity and fee commitment, then independently verifies the frozen relation.
+Verified entries are retained until canonical inclusion or explicit eviction;
+private fee sorting does not change canonical block ordering. Candidate
+assembly checks every opening and adds the private fee sum to the SI miner
+reward with checked integer arithmetic.
+
+The verified pool permits 512 MiB and 2,048 entries, with 16 MiB/64 entries
+per opaque peer and at most 4,096 peer identities. These are logical owned-byte
+bounds, not process RSS guarantees. The API distinguishes cryptographic
+invalidity from local resource unavailability. Isolated verifier workers,
+unverified ingress queues and the planned abuse caches are not implemented
+by this in-process pool.
+
+The streaming protocol binds network, genesis and frozen verifier manifest
+before role-specific requests. A session requires an `Authenticated` channel
+from an in-crate hybrid provider; no production provider is implemented and
+no plaintext or classical fallback constructor is public. The provider must
+supply reviewed X25519 + ML-KEM key exchange, dual Ed25519/ML-DSA identity
+binding, transcript/key confirmation, authenticated records, nonce/sequence
+limits, rekeying, deadlines and secret cleanup. Current TCP helpers cannot
+establish production sessions until that provider exists. Session failure
+requires fresh authentication on reconnect.
+
+The library serves bounded block batches, transaction envelopes with private
+sidecars and compact references. Synchronization pins peer identity, ancestor,
+request sequence and continuation to one attempt; a canonical change invalidates
+that attempt. Downloaded candidates are replayed through the common transition
+before adoption. Compact recovery uses statement and proof digests together,
+requests no more than 16 missing transactions, and does not disclose sidecars
+in block-recovery responses. Network activation and deployed-listener failure
+tests remain outstanding.
+
+Missing-proof requests and exact-proof response validation are exposed as a
+bounded helper. The compact announcement handler accepts a complete local
+reconstruction or returns unavailability; the connection scheduler must still
+orchestrate missing-proof requests or a full-proof retry. A missing reference
+is not a cryptographic invalidity verdict.
+
+One shared 640-MiB logical transport budget covers retained receive buffers,
+with at most 16 handshakes and a 4-MiB aggregate handshake allowance. Candidate
+validation additionally defaults to 32 blocks, 640 MiB of logical state/body
+accounting and 1 GiB of retained detached evidence. Reconstructing a non-tip
+ancestor is limited to height 4,096 because it currently replays from genesis;
+this guard is local resource policy, not a checkpoint or consensus horizon.
+Beyond it, reorganization returns resource unavailability until a qualified
+checkpoint/replay mechanism is provided. Extending the current tip does not
+require this ancestor reconstruction. Detached retention does not implement
+the required three-day proof deletion lifecycle.
+
+## Wallet and public subsidy audit
+
+The wallet API derives separate spend, deterministic ML-KEM view and 256-bit
+sender-change keys from a supplied 32-byte seed, network and account index.
+After independently replaying a complete supplied canonical history, it
+checks authenticated recipient/change ciphertexts and reconstructed note
+commitments, derives spent status and atomically replaces private receipts.
+Replaying a replacement chain removes orphan receipts and restores orphan
+spends. The wallet can prepare fixed two-input/three-output SI or issued-asset
+transfers, pay standard or priority fees only in SI, recheck all output
+encodings before proving and return the transaction, matching sidecar and
+private payment opening. Seed bytes and supported private buffers are erased
+on drop; dependency-internal and native-field copies are outside that guarantee.
+
+These APIs accept seeds rather than implement mnemonic backup. Protected
+seed/payment-opening persistence, valid-chain funding into seed-derived
+addresses, issuance admission, wallet transport and recovery from pruned
+public-history segments remain separate work. A native-proof test using
+synthetic funding is not full-chain M2 acceptance.
+
+The `audit` command acquires the engineering-directory lease and independently
+replays canonical proof-carrying blocks. It checks each height's integer SI
+subsidy and direct/locked development-fund credits against accepted counters,
+then binds its report to the exact height, tip and state fingerprint. Output
+contains only public subsidy/fund-credit records. It does not audit asset
+issuance or fund spending, and it does not validate local reward recovery
+receipts; the report explicitly marks these scope limits. Complete issuance
+and signed fund-spending audits remain blocked on those node transitions.
 
 ## Engineering commands
 
@@ -76,6 +173,7 @@ mkdir -p .local/native-engineering
 .local/native-runtime-release/bin/siworld-native-node init .local/native-engineering/network-a 0
 .local/native-runtime-release/bin/siworld-native-node mine .local/native-engineering/network-a 64
 .local/native-runtime-release/bin/siworld-native-node check .local/native-engineering/network-a
+.local/native-runtime-release/bin/siworld-native-node audit .local/native-engineering/network-a
 .local/native-runtime-release/bin/siworld-native-node status .local/native-engineering/network-a
 ```
 
@@ -115,7 +213,9 @@ identities, inputs, outputs and bytes. The service produces 64-position blocks
 and replenishes the queue during work search, subject to its 128-entry and
 65-MiB limits. Expired, orphaned or conflicting snapshot entries are removed;
 consumed reservations prevent candidate reuse. The queue size and position
-classifications are not exported. Real-wallet admission is not implemented.
+classifications are not exported. This continuous service remains a
+padding-only observation service. Wallet admission and candidate composition
+are separate library APIs, not new commands on the observed service.
 
 The service remains running after its observation timer reaches 24 hours. The
 following commands read the private export or request an explicit run-bound
@@ -198,9 +298,16 @@ cargo test --locked --manifest-path crates/native-node/Cargo.toml --lib
 cargo clippy --locked --manifest-path crates/native-node/Cargo.toml --all-targets -- -D warnings
 ```
 
-The explicit proof-compatibility and full-block tests are separately selected
-release tests. They are correctness checks, not target-hardware performance or
-sustained-load acceptance records.
+The new integration suite includes invalid-envelope and sidecar rejection,
+wrong-network/framing and reconnect behavior, multi-batch synchronization,
+verified-work branch choice, depth-24/depth-25 reorganization boundaries,
+atomic failure, detached-record reopen, wallet rescan and public-audit checks.
+Some tests use deterministic synthetic verifiers to isolate state and transport
+behavior. Separately selected native-proof tests exercise frozen proving and
+verification; the wallet proof test uses synthetic funding history. The new
+suite awaits compilation and test execution in remote CI. None of these
+correctness checks substitutes for actual hybrid-provider tests,
+target-hardware performance or sustained-load acceptance.
 
 M1 does not implement issuance admission. The testnet fee is fixed at 50 SI
 (5,000,000,000 atoms), entirely credited to a dedicated development-fund
@@ -208,9 +315,11 @@ account. That account is not configured, so issuance remains closed and fails
 closed. Destination configuration, atomic fee consumption/fund credit and
 issuance resource bounds remain implementation gates; the mainnet fee remains
 undecided. Unsupported operations are absent from the wire codec.
-It also does not implement P2P transport, mempool isolation, compact blocks,
-reorganizations, pruning, checkpoints, three-day retention, hybrid identity
-handshakes, Dandelion++, fund payout execution, wallet durability or panel
-controls. Those gates remain in the [node/network plan](v1-node-network-plan.md).
+Production hybrid identity/record protection, a listening network service,
+verifier-worker isolation, pruning/checkpoint bootstrap, real three-day
+retention, Dandelion++, fund payout execution, mnemonic/protected wallet
+persistence and panel controls remain incomplete. The library interfaces and
+candidate limits above must not be treated as deployment qualification.
+Those gates remain in the [node/network plan](v1-node-network-plan.md).
 The retained seven-node legacy network and its keys/data are not inputs to this
 runtime.
