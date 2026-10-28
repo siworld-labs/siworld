@@ -10,5 +10,5 @@ repository = "https://github.com/siworld-labs/siworld"
 [workspace]
 
 [dependencies]
-sp1-zkvm = "=6.9.0"
+sp1-zkvm = "=6.10.0"
 siworld-bench-common = { path = "../../common" }
