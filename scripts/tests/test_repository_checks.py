@@ -10,6 +10,33 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("audit_registry", ROOT / "scripts/check-audit-registry.py")
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
+repository_spec = importlib.util.spec_from_file_location("repository_manifest", ROOT / "scripts/check-repository.py")
+repository = importlib.util.module_from_spec(repository_spec)
+repository_spec.loader.exec_module(repository)
+
+
+class RepositoryManifestTests(unittest.TestCase):
+    def test_removed_sp1_workspace_is_outside_publication_boundary(self):
+        for name in (
+            "Cargo.toml", "Cargo.lock", "README.md",
+            "script/Cargo.toml", "script/build.rs", "script/src/main.rs",
+            "program/Cargo.toml", "program/Cargo.lock", "program/src/main.rs",
+            "aggregate/Cargo.toml", "aggregate/Cargo.lock", "aggregate/src/main.rs",
+        ):
+            path = Path("crates/bench-stark/sp1") / name
+            with self.subTest(path=path):
+                self.assertFalse(repository.allowed(path))
+
+    def test_remaining_plonky3_and_native_sources_are_allowed(self):
+        for name in (
+            "crates/bench-stark/Cargo.toml",
+            "crates/bench-stark/common/src/lib.rs",
+            "crates/bench-stark/plonky3/src/lib.rs",
+            "crates/bench-d8/src/common.rs",
+            "crates/bench-multi-asset/src/multi_asset_air.rs",
+        ):
+            with self.subTest(path=name):
+                self.assertTrue(repository.allowed(Path(name)))
 
 
 class AuditRegistryTests(unittest.TestCase):

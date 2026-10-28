@@ -1,6 +1,6 @@
 # Dependency Advisory Applicability and Remediation
 
-Status: runtime dependency update with targeted development-network regression coverage; experimental SP1 advisories remain open. Package-version comparisons and feature graphs establish the scope below. They do not establish an exhaustive vulnerability assessment or cryptographic approval.
+Status: runtime dependency update with targeted development-network regression coverage; the isolated SP1 experiments and their dependency graphs have been removed from the current source tree. Package-version comparisons and feature graphs establish the scope below. They do not establish an exhaustive vulnerability assessment or cryptographic approval.
 
 ## Node transport dependencies
 
@@ -17,22 +17,17 @@ The workspace selects `libp2p` 0.57.1 with default features disabled and only To
 
 The change preserves the selected Plonky3 package versions, source revisions and checksums. The independent native D8 and multi-asset lockfiles are not updated as part of this networking change. This update does not add the planned post-quantum hybrid handshake: the current transport remains Noise over TCP.
 
-## Isolated SP1 experiments
+## Removed experimental dependency graphs
 
-`crates/bench-stark/sp1`, its `program` guest and its `aggregate` guest are separate Cargo workspaces. They are excluded from the root and Plonky3 benchmark workspaces and are not dependencies of the default node. Their pinned SP1 6.9.0 stack retains the following advisory matches. Do not use this experimental stack as a deployment dependency or rely on its measurements as evidence of secure proof acceptance.
+The isolated SP1 6.9.0 host, single-slot guest and aggregation guest have been removed, together with all three lockfiles and their Dependabot entries. They were not dependencies of the default node. Their historical dependency graphs contained seven advisory matches across the three families below. Removal does not repair those upstream packages or change earlier commits and tags; historical experiments remain unsupported.
 
 | Advisory | Experimental packages | Disposition |
 |---|---|---|
-| [GHSA-vj64-rjf3-w3v7](https://github.com/advisories/GHSA-vj64-rjf3-w3v7) | `p3-challenger` 0.4.3-succinct in the host and both guest lockfiles. | Open. A suffixed fork release is not assumed to contain the upstream 0.4.3 fix. Confirm the fork's transcript/challenger implementation against the fix before selecting an SP1 release. |
-| [GHSA-3g92-f9ch-qjcm](https://github.com/advisories/GHSA-3g92-f9ch-qjcm) | `p3-symmetric` 0.4.3-succinct in the host and both guest lockfiles. | Open. Review the SP1 hashing domains, fixed-length assumptions and upstream remediation. Do not substitute an unrelated Plonky3 version into SP1 without native/guest compatibility validation. |
-| [GHSA-rhfx-m35p-ff5j](https://github.com/advisories/GHSA-rhfx-m35p-ff5j) | `lru` 0.12.5 in the SP1 host lockfile. | Open. Select an SP1 dependency chain that supports `lru` 0.16.3 or newer, or review and pin an equivalent upstream fix; a forced incompatible transitive override is insufficient. |
+| [GHSA-vj64-rjf3-w3v7](https://github.com/advisories/GHSA-vj64-rjf3-w3v7) | `p3-challenger` 0.4.3-succinct in the removed host and both guest lockfiles. | Removed from the current source tree. Historical fork code is not assumed to contain the upstream fix. |
+| [GHSA-3g92-f9ch-qjcm](https://github.com/advisories/GHSA-3g92-f9ch-qjcm) | `p3-symmetric` 0.4.3-succinct in the removed host and both guest lockfiles. | Removed from the current source tree. Historical hashing domains and fixed-length assumptions have not been qualified. |
+| [GHSA-rhfx-m35p-ff5j](https://github.com/advisories/GHSA-rhfx-m35p-ff5j) | `lru` 0.12.5 in the removed host lockfile. | Removed from the current source tree. No compatible upstream remediation is claimed for historical builds. |
 
-Remediation sequence for these experiments:
-
-1. Identify an SP1 release or maintained patch that addresses all three advisory families, including the actual fork source rather than version-string comparison alone.
-2. Upgrade the host SDK, build tool and both guest runtimes together. Preserve required upstream license notices and freeze guest artifact identifiers after rebuilding.
-3. Regenerate all three lockfiles, check the dependency graph, and execute host/guest proof generation, verification, negative witnesses, and aggregation compatibility tests in the required SP1 toolchain.
-4. Review hash input domains and challenger use against each advisory, record any justified non-applicability, and rerun dependency screening. Until those steps pass, retain the open disposition and keep SP1 isolated.
+The current source tree has no SP1 build or CI entry point. The publication manifest rejects the retired subtree. Byte-frozen native D8 sources retain historical comparison comments to preserve their measured source identity; they contain no SP1 dependency or guest implementation. The fixed native proof parameters, verifier artifacts and independent dependency lockfiles are unchanged.
 
 ## Validation and update coverage
 
@@ -55,6 +50,6 @@ cargo test --locked -p siworld-node --no-default-features --features development
 cargo test --locked -p siworld-node --no-default-features --features development --lib service::tests
 ```
 
-The targeted regressions pass: two loopback network tests, four codec tests and five service lifecycle tests. The development feature supplies forgeable test proofs; these commands validate network behavior and do not establish proof-system security. Release/default-feature builds and required CI must pass separately before publication is accepted as validated. No claim of a fully clean repository advisory dashboard follows from this table: the experimental matches above remain deliberately unresolved.
+The targeted regressions pass: two loopback network tests, four codec tests and five service lifecycle tests. The development feature supplies forgeable test proofs; these commands validate network behavior and do not establish proof-system security. Release/default-feature builds and required CI must pass separately before publication is accepted as validated. Hosting-service advisory status must be checked after the removal reaches the default branch; source removal alone does not establish that the dashboard has refreshed or that all dependencies are free of advisories.
 
-Dependabot monitors the root workspace, Plonky3 benchmark workspace, independent native D8 and multi-asset workspaces, all three SP1 workspaces, and GitHub Actions. Automated update proposals still require graph inspection, compatibility review and the relevant tests; they must not be merged blindly or change frozen proof dependencies without the parameter/source review required by the protocol specifications.
+Dependabot monitors the root workspace, Plonky3 benchmark workspace, independent native D8 and multi-asset workspaces, and GitHub Actions. Automated update proposals still require graph inspection, compatibility review and the relevant tests; they must not be merged blindly or change frozen proof dependencies without the parameter/source review required by the protocol specifications.

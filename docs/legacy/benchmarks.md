@@ -4,7 +4,7 @@
 
 ## Scope
 
-The separate `crates/bench-stark` workspace contains a native witness reference, Plonky3 AIR and recursion, and optional SP1 comparisons. The node prover imports the same accumulator circuits. Concatenated and chained modes are comparisons, not alternate node consensus modes.
+The separate `crates/bench-stark` workspace contains a native witness reference, Plonky3 AIR and recursion. The legacy node prover imports the same accumulator circuits. Concatenated and chained modes are comparisons, not alternate node consensus modes.
 
 No device-independent latency or throughput claim is made. Every published result requires revision, hardware, toolchain, dependency revisions, proof parameters, capacity, concurrency and sample count. Historical working measurements are not release evidence.
 
@@ -34,7 +34,7 @@ cargo run --release --locked -p siworld-bench-plonky3 \
 
 Exports contain public verification data, proof and statement. `--dump-root` supplies JSON to `scripts/proof_breakdown.py`; `leaf_params` compares leaf configurations. `scripts/set_hash_security.py` evaluates generic accumulator attacks under its stated assumptions.
 
-SP1 has its own workspace and toolchain prerequisites. Comparison reports must identify proof form and zero-knowledge properties. An unwrapped STARK result is not automatically a confidential node proof system.
+Comparison reports must identify proof form and zero-knowledge properties. An unwrapped STARK result is not automatically a confidential node proof system.
 
 ## Measurement requirements
 

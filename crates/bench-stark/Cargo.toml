@@ -1,10 +1,8 @@
-# STARK proof library comparison (Plonky3 primary candidate / SP1 baseline).
+# Plonky3 STARK benchmarks.
 # Standalone workspace: not part of the root workspace and not on the consensus path.
-# The SP1 part is a separate workspace under sp1/ (different dependency tree and toolchain).
 [workspace]
 resolver = "2"
 members = ["common", "plonky3"]
-exclude = ["sp1"]
 
 [workspace.package]
 version = "0.0.0"

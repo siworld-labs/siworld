@@ -1,8 +1,8 @@
 //! Native reference implementation of a slot-relation subset (Poseidon2 / KoalaBear,
 //! width 16) and witness generation.
 //!
-//! Both the Plonky3 AIR and the SP1 guest follow this module: they prove the same
-//! relation with the same hashes. This is an encoding for the library-selection
+//! The Plonky3 AIR follows this module's relation and hashes.
+//! This is an encoding for the library-selection
 //! experiment, not the final protocol (final parameters are open questions in docs/security-model.md).
 //!
 //! Relation subset (corresponding to `crates/circuits/src/relation.rs::check_slot`):
@@ -425,7 +425,7 @@ impl SlotWitness {
         }
     }
 
-    /// Native relation check: the constraints of the AIR and the SP1 guest must be equivalent to it.
+    /// Native relation check: the constraints of the Plonky3 AIR must be equivalent to it.
     pub fn check(&self, h: &Hasher) -> Result<PublicInputs, &'static str> {
         self.check_with_base_fee(h, FEE_BASE)
     }
@@ -668,7 +668,7 @@ pub fn with_base_fee(mut w: SlotWitness, base_fee: u64) -> SlotWitness {
     w
 }
 
-/// u32 word-stream encoding of the witness (read by the SP1 guest). Field elements are stored
+/// u32 word-stream encoding of the witness. Field elements are stored
 /// in canonical form; a u64 is split into (low, high).
 impl SlotWitness {
     pub fn to_words(&self) -> Vec<u32> {

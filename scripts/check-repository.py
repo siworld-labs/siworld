@@ -45,6 +45,8 @@ NON_ENGLISH = re.compile(
 
 def allowed(path):
     name = path.as_posix()
+    if path.parts[:3] == ("crates", "bench-stark", "sp1"):
+        return False
     if len(path.parts) == 1:
         return name in ROOT_FILES
     if path.parts[0] == "docs":
