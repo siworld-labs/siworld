@@ -10,7 +10,7 @@ repository = "https://github.com/siworld-labs/siworld"
 [workspace]
 
 [dependencies]
-sp1-zkvm = { version = "=6.9.0", features = ["verify"] }
+sp1-zkvm = { version = "=6.10.0", features = ["verify"] }
 sha2 = "0.10.8"
 
 # As in the official SP1 examples: sha2 uses the precompile.
