@@ -5,7 +5,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
-const MAGIC: &[u8; 8] = b"SWNDv1\0\0";
+const MAGIC: &[u8; 8] = b"SWNDv2\0\0";
+const CONFIG_BYTES: usize = 8 + 90;
 const CONFIG_FILE: &str = "engineering-network.bin";
 const MAX_REWARD_SECRET: usize = 4096;
 pub fn hex(bytes: &[u8]) -> String {
@@ -87,12 +88,25 @@ fn sync_directory(path: &Path) -> Result<(), String> {
         .map_err(|_| "directory durability failed".into())
 }
 pub fn initialize(path: &Path, work_bits: u8) -> Result<Config, String> {
-    if work_bits > 24 {
-        return Err("engineering work bits exceed 24".into());
-    }
     let mut network = [0; 32];
     getrandom::fill(&mut network).map_err(|_| "OS entropy unavailable")?;
-    let config = Config::development(network, work_bits)?;
+    initialize_config(path, Config::development(network, work_bits)?)
+}
+pub fn initialize_asert(
+    path: &Path,
+    genesis_timestamp: u64,
+    target: Hash,
+    pow_iterations: u64,
+) -> Result<Config, String> {
+    let mut network = [0; 32];
+    getrandom::fill(&mut network).map_err(|_| "OS entropy unavailable")?;
+    initialize_config(
+        path,
+        Config::asert_development(network, genesis_timestamp, target, pow_iterations)?,
+    )
+}
+fn initialize_config(path: &Path, config: Config) -> Result<Config, String> {
+    config.validate()?;
     let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
     {
@@ -104,8 +118,7 @@ pub fn initialize(path: &Path, work_bits: u8) -> Result<Config, String> {
         .map_err(|_| "initialization requires a new directory with an existing parent")?;
     let mut file = private_new(&path.join(CONFIG_FILE))?;
     file.write_all(MAGIC)
-        .and_then(|_| file.write_all(&config.network))
-        .and_then(|_| file.write_all(&[config.work_bits]))
+        .and_then(|_| file.write_all(&config.encode_rules()))
         .and_then(|_| file.sync_all())
         .map_err(|_| "configuration durability failed")?;
     sync_directory(path)?;
@@ -118,21 +131,17 @@ pub fn initialize(path: &Path, work_bits: u8) -> Result<Config, String> {
 }
 pub fn load(path: &Path) -> Result<Config, String> {
     check_directory(path)?;
-    let file = regular_read(&path.join(CONFIG_FILE), true, 41)?;
-    let mut bytes = Vec::with_capacity(41);
-    file.take(42)
+    let file = regular_read(&path.join(CONFIG_FILE), true, CONFIG_BYTES)?;
+    let mut bytes = Vec::with_capacity(CONFIG_BYTES);
+    file.take((CONFIG_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(|_| "cannot read engineering configuration")?;
-    if bytes.len() != 41 || &bytes[..8] != MAGIC {
-        return Err("unsupported engineering configuration".into());
+    if bytes.len() != CONFIG_BYTES || &bytes[..8] != MAGIC {
+        return Err("unsupported engineering configuration; no automatic migration".into());
     }
-    Config::development(
-        bytes[8..40]
-            .try_into()
-            .map_err(|_| "invalid network width")?,
-        bytes[40],
-    )
+    Config::decode_rules(&bytes[8..])
 }
+
 fn reward_path(path: &Path, id: &Hash) -> PathBuf {
     path.join(format!("reward-{}.secret", hex(id)))
 }

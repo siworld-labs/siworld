@@ -84,3 +84,20 @@ fn nonprivate_directory_and_receipt_permissions_are_rejected() {
     assert!(read_reward(&path, &[7; 32]).is_err());
     std::fs::remove_dir_all(path).unwrap();
 }
+
+#[test]
+fn asert_configuration_roundtrips_and_refuses_legacy_without_rewrite() {
+    let path = directory();
+    let config = initialize_asert(&path, 1_700_000_000, [0x7f; 32], 100).unwrap();
+    assert_eq!(load(&path).unwrap(), config);
+    let original = std::fs::read(path.join(CONFIG_FILE)).unwrap();
+    assert!(initialize_asert(&path, 1_700_000_001, [0x7f; 32], 100).is_err());
+    assert_eq!(std::fs::read(path.join(CONFIG_FILE)).unwrap(), original);
+    let mut legacy = b"SWNDv1\0\0".to_vec();
+    legacy.extend_from_slice(&[9; 32]);
+    legacy.push(0);
+    std::fs::write(path.join(CONFIG_FILE), &legacy).unwrap();
+    assert!(load(&path).is_err());
+    assert_eq!(std::fs::read(path.join(CONFIG_FILE)).unwrap(), legacy);
+    std::fs::remove_dir_all(path).unwrap();
+}

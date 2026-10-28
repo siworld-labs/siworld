@@ -336,6 +336,8 @@ jobs:
         run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib
       - name: Actual proof block, restart and private reward recovery
         run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib producer::tests::actual_block_persists_replays_and_recovers_the_reward -- --ignored --exact
+      - name: Actual resident service lifecycle and final independent replay
+        run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib service::tests::actual_continuous_service_exports_stops_and_replays -- --ignored --exact
       - name: Controlled native runtime package and CPU admission
         run: |
           python3 scripts/build-native-runtime.py --output .local/native-runtime-release

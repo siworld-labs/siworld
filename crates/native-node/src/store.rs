@@ -14,8 +14,8 @@ use std::fs::{File, Metadata, OpenOptions};
 use std::io::ErrorKind;
 use std::path::Path;
 
-const META: TableDefinition<&str, &[u8]> = TableDefinition::new("native-store-meta-v1");
-const BLOCKS: TableDefinition<u64, &[u8]> = TableDefinition::new("canonical-blocks-v1");
+const META: TableDefinition<&str, &[u8]> = TableDefinition::new("native-store-meta-v2");
+const BLOCKS: TableDefinition<u64, &[u8]> = TableDefinition::new("canonical-blocks-v2");
 const HEAD_BYTES: usize = 72;
 const FINGERPRINT_BYTES: usize = 32;
 
@@ -52,7 +52,7 @@ impl Store {
         verifier: &impl BlockVerifier,
         create_allowed: bool,
     ) -> Result<Self, String> {
-        let _ = Config::development(config.network, config.work_bits)?;
+        config.validate()?;
         let (file, created) = open_regular_file(path, create_allowed)?;
         let mut builder = Database::builder();
         builder.set_cache_size(32 * 1024 * 1024);
@@ -302,10 +302,9 @@ fn validate_tables(
 
 fn configuration(config: &Config) -> Vec<u8> {
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(b"SWNS\x01\0");
+    bytes.extend_from_slice(b"SWNS\x02\0");
     bytes.extend_from_slice(native::codec::SUITE_ID);
-    bytes.extend_from_slice(&config.network);
-    bytes.push(config.work_bits);
+    bytes.extend_from_slice(&config.encode_rules());
     bytes.extend_from_slice(&config.genesis_id());
     bytes
 }

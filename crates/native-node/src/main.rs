@@ -1,14 +1,15 @@
-//! Disposable single-node engineering CLI. No peer service or retained network adapter.
+//! Disposable native engineering CLI. No retained-network adapter or reset.
 use siworld_native_node::{
     local, producer,
     proofs::{NativeProver, NativeVerifier},
+    service,
     state::Config,
     store::Store,
 };
 use std::path::Path;
 fn help() {
     println!(
-        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a new network; default work bits 0\nstatus DIRECTORY           Replay and show accepted public state\ncheck DIRECTORY            Replay proofs and check local reward recovery\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nNo reset, migration, peer networking, issuance admission, or public-network activation is provided."
+        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, peer networking, issuance admission, or public-network activation is provided."
     );
 }
 fn cpu_admission() -> Result<(), String> {
@@ -21,6 +22,13 @@ fn cpu_admission() -> Result<(), String> {
 fn config(path: &Path) -> Result<Config, String> {
     local::load(path)
 }
+fn exact(args: &[String]) -> Result<(), String> {
+    if args.len() != 2 {
+        Err("unexpected argument".into())
+    } else {
+        Ok(())
+    }
+}
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.is_empty() || args == ["--help"] || args == ["-h"] {
@@ -32,13 +40,33 @@ fn run() -> Result<(), String> {
         return Err("expected command and explicit engineering directory; use --help".into());
     }
     let path = Path::new(&args[1]);
-    let verifier = NativeVerifier::new()?;
     match args[0].as_str() {
-        "init" => {
-            let bits = args
-                .get(2)
-                .map_or(Ok(0), |x| x.parse::<u8>().map_err(|_| "invalid work bits"))?;
-            let config = local::initialize(path, bits)?;
+        "run" => {
+            exact(&args)?;
+            service::run(path)?;
+        }
+        "stop" => {
+            exact(&args)?;
+            service::request_stop(path)?;
+            println!("graceful stop requested for the exported service run");
+        }
+        "service-status" => {
+            exact(&args)?;
+            println!("{}", service::exported_status(path)?);
+        }
+        "init" | "init-service" => {
+            let config = if args[0] == "init-service" {
+                exact(&args)?;
+                let (timestamp, target, iterations) = service::calibrate()?;
+                local::initialize_asert(path, timestamp, target, iterations)?
+            } else {
+                let bits = args
+                    .get(2)
+                    .map_or(Ok(0), |x| x.parse::<u8>().map_err(|_| "invalid work bits"))?;
+                local::initialize(path, bits)?
+            };
+            let _lease = service::Lease::acquire(path)?;
+            let verifier = NativeVerifier::new()?;
             let store = Store::open(path.join("chain.redb"), config, &verifier)?;
             println!(
                 "initialized isolated engineering network: height={}, tip={}",
@@ -47,9 +75,13 @@ fn run() -> Result<(), String> {
             );
         }
         "status" | "check" => {
-            if args.len() != 2 {
-                return Err("unexpected argument".into());
+            exact(&args)?;
+            if args[0] == "status" && path.join(service::STATUS_FILE).exists() {
+                println!("{}", service::exported_status(path)?);
+                return Ok(());
             }
+            let _lease = service::Lease::acquire(path)?;
+            let verifier = NativeVerifier::new()?;
             let store = Store::open_existing(path.join("chain.redb"), config(path)?, &verifier)?;
             if args[0] == "check" {
                 for height in 1..=store.state().height {
@@ -73,6 +105,8 @@ fn run() -> Result<(), String> {
             if !(64..=576).contains(&slots) || !slots.is_multiple_of(16) {
                 return Err("slot count must be 64..576 in groups of 16".into());
             }
+            let _lease = service::Lease::acquire(path)?;
+            let verifier = NativeVerifier::new()?;
             let mut store =
                 Store::open_existing(path.join("chain.redb"), config(path)?, &verifier)?;
             let prover = NativeProver::new()?;

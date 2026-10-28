@@ -6,6 +6,7 @@
 pub mod codec;
 pub mod issuance;
 pub mod params;
+pub mod pow;
 pub mod types;
 
 pub use types::*;

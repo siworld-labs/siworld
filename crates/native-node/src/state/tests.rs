@@ -55,10 +55,12 @@ fn candidate(state: &State, seed: u32) -> Block {
         });
     }
     transactions.sort_by_key(|tx| tx.record.statement_id(&state.config.network));
-    Block {
+    let mut block = Block {
         network: state.config.network,
         height: state.height + 1,
         parent: state.tip,
+        timestamp: state.timestamp() + state.config.target_interval,
+        target: state.next_target(),
         nonce: 0,
         transactions,
         reward: RewardRecord {
@@ -66,7 +68,15 @@ fn candidate(state: &State, seed: u32) -> Block {
             ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
         },
         settlement_proof: vec![1],
+    };
+    let seed = block.pow_seed().unwrap();
+    while !siworld_core::pow::meets_target(
+        &siworld_core::pow::pow_hash(&seed, block.nonce, state.config.pow_iterations),
+        &block.target,
+    ) {
+        block.nonce += 1;
     }
+    block
 }
 #[test]
 fn producer_and_validator_apply_the_same_transition() {
@@ -215,4 +225,158 @@ fn incremental_tree_matches_native_merkle_paths() {
             );
         }
     }
+}
+
+#[test]
+fn asert_configuration_is_genesis_bound_and_fixture_mode_is_explicit() {
+    let config = Config::asert_development([6; 32], 1_700_000_000, [0x7f; 32], 100).unwrap();
+    assert_eq!(config.target_interval, 300);
+    assert!(!config.fixture);
+    let id = config.genesis_id();
+    for change in 0..5 {
+        let mut changed = config.clone();
+        match change {
+            0 => changed.genesis_timestamp += 1,
+            1 => changed.genesis_target[31] ^= 1,
+            2 => changed.pow_iterations += 1,
+            3 => changed.target_interval += 1,
+            _ => changed.fixture = true,
+        }
+        assert_ne!(changed.genesis_id(), id);
+    }
+    assert!(Config::asert_development([6; 32], 0, [0x7f; 32], 100).is_err());
+    assert!(Config::asert_development([6; 32], 1, [0; 32], 100).is_err());
+    assert!(Config::asert_development([6; 32], 1, [0x7f; 32], 0).is_err());
+    assert!(Config::asert_development([6; 32], 1, [0x7f; 32], 1_000_001).is_err());
+    assert!(Config::development([6; 32], 0).unwrap().fixture);
+}
+#[test]
+fn timestamp_window_and_cumulative_work_survive_shared_transitions() {
+    let mut state = State::new(Config::development([8; 32], 0).unwrap()).unwrap();
+    let initial = state.config.genesis_timestamp;
+    let mut expected_work = siworld_core::pow::Work::zero();
+    for height in 1..=12u32 {
+        let block = candidate(&state, 400000 + height * 100000);
+        expected_work += siworld_core::pow::block_work(&block.target);
+        state.apply(&block, &TestVerifier).unwrap();
+    }
+    assert_eq!(state.timestamps.len(), 11);
+    assert_eq!(state.timestamp(), initial + 12 * 300);
+    assert_eq!(state.median_time_past(), initial + 7 * 300);
+    assert_eq!(state.cumulative_work, expected_work);
+    let before = state.fingerprint();
+    state.timestamps[0] += 1;
+    assert_ne!(state.fingerprint(), before);
+    state.timestamps[0] -= 1;
+    state.cumulative_work += siworld_core::pow::Work::one();
+    assert_ne!(state.fingerprint(), before);
+}
+#[test]
+fn asert_header_failures_precede_proof_checks_and_are_atomic() {
+    struct NoProofCalls;
+    impl BlockVerifier for NoProofCalls {
+        fn transaction(
+            &self,
+            _: &PublicTransaction,
+            _: &ProofContext,
+            _: &Digest,
+            _: &Digest,
+            _: &[u8],
+        ) -> Result<(), String> {
+            panic!("header failure reached transaction verifier")
+        }
+        fn settlement(
+            &self,
+            _: &[Digest],
+            _: u64,
+            _: u64,
+            _: Hash,
+            _: Hash,
+            _: &Digest,
+            _: &[u8],
+        ) -> Result<(), String> {
+            panic!("header failure reached settlement verifier")
+        }
+    }
+    let state = State::new(Config::development([7; 32], 1).unwrap()).unwrap();
+    let valid = candidate(&state, 300000);
+    for kind in 0..3 {
+        let mut invalid = valid.clone();
+        match kind {
+            0 => invalid.timestamp = state.median_time_past(),
+            1 => invalid.target[31] ^= 1,
+            _ => {
+                let seed = invalid.pow_seed().unwrap();
+                while siworld_core::pow::meets_target(
+                    &siworld_core::pow::pow_hash(&seed, invalid.nonce, state.config.pow_iterations),
+                    &invalid.target,
+                ) {
+                    invalid.nonce += 1;
+                }
+            }
+        }
+        let mut next = state.clone();
+        let before = next.fingerprint();
+        assert!(next.apply(&invalid, &NoProofCalls).is_err());
+        assert_eq!(next.fingerprint(), before);
+    }
+}
+
+#[test]
+fn early_parent_changes_the_next_asert_target_and_old_target_is_rejected() {
+    let mut state = State::new(Config::development([10; 32], 0).unwrap()).unwrap();
+    let mut early = candidate(&state, 2000000);
+    early.timestamp = state.timestamp() + 1;
+    let seed = early.pow_seed().unwrap();
+    while !siworld_core::pow::meets_target(
+        &siworld_core::pow::pow_hash(&seed, early.nonce, state.config.pow_iterations),
+        &early.target,
+    ) {
+        early.nonce += 1;
+    }
+    state.apply(&early, &TestVerifier).unwrap();
+    assert!(state.next_target() < state.config.genesis_target);
+    let mut stale = candidate(&state, 2100000);
+    stale.target = state.config.genesis_target;
+    let before = state.fingerprint();
+    assert!(
+        state
+            .apply(&stale, &TestVerifier)
+            .unwrap_err()
+            .contains("ASERT")
+    );
+    assert_eq!(state.fingerprint(), before);
+}
+
+#[test]
+fn future_time_is_local_admission_only_not_a_replay_clock_rule() {
+    let mut state = State::new(Config::development([11; 32], 0).unwrap()).unwrap();
+    let mut block = candidate(&state, 2200000);
+    block.timestamp = u64::MAX;
+    assert!(siworld_core::pow::beyond_future_limit(
+        block.timestamp,
+        1_700_000_000
+    ));
+    let seed = block.pow_seed().unwrap();
+    while !siworld_core::pow::meets_target(
+        &siworld_core::pow::pow_hash(&seed, block.nonce, state.config.pow_iterations),
+        &block.target,
+    ) {
+        block.nonce += 1;
+    }
+    state.apply(&block, &TestVerifier).unwrap();
+    assert_eq!(state.timestamp(), u64::MAX);
+}
+
+#[test]
+fn configuration_codec_rejects_noncanonical_modes_and_rule_changes() {
+    let config = Config::asert_development([12; 32], 1_700_000_000, [0xff; 32], 64).unwrap();
+    let encoded = config.encode_rules();
+    assert_eq!(Config::decode_rules(&encoded).unwrap(), config);
+    for index in [32, 33, 74] {
+        let mut invalid = encoded;
+        invalid[index] = 2;
+        assert!(Config::decode_rules(&invalid).is_err());
+    }
+    assert!(Config::decode_rules(&encoded[..89]).is_err());
 }

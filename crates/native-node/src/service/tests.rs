@@ -1,0 +1,242 @@
+use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
+static NEXT: AtomicU64 = AtomicU64::new(0);
+struct Directory(PathBuf);
+impl Directory {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "siworld-native-service-test-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        Self(path)
+    }
+}
+impl Drop for Directory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+#[test]
+fn lifetime_lease_is_exclusive_and_released_on_drop() {
+    let directory = Directory::new();
+    let first = Lease::acquire(&directory.0).unwrap();
+    assert!(Lease::acquire(&directory.0).is_err());
+    drop(first);
+    assert!(Lease::acquire(&directory.0).is_ok());
+}
+#[cfg(unix)]
+#[test]
+fn lease_refuses_symlinks_without_changing_evidence() {
+    use std::os::unix::fs::symlink;
+    let directory = Directory::new();
+    let target = directory.0.join("evidence");
+    std::fs::write(&target, b"preserved").unwrap();
+    symlink(&target, directory.0.join(LEASE_FILE)).unwrap();
+    assert!(Lease::acquire(&directory.0).is_err());
+    assert_eq!(std::fs::read(target).unwrap(), b"preserved");
+}
+#[test]
+fn wall_clock_changes_cannot_manufacture_monotonic_completion() {
+    let mut clock = ClockGuard::new(1_000_000);
+    clock.observe(1_005_000, 5000).unwrap();
+    assert!(clock.observe(999_000, 6000).is_err());
+    assert!(clock.observe(100_000_000, 6000).is_err());
+    assert!(!observation_complete(86_399_999));
+    assert!(observation_complete(86_400_000));
+}
+#[test]
+fn resume_uses_new_run_identity_and_does_not_trust_saved_elapsed() {
+    let first = RunIdentity::new([3; 32], "a".repeat(64), "b".repeat(64), 100).unwrap();
+    let resumed = RunIdentity::new([3; 32], "a".repeat(64), "b".repeat(64), 200).unwrap();
+    assert_ne!(first.run_id, resumed.run_id);
+    let status = Status::new(&resumed);
+    assert_eq!(status.observation_elapsed_ms(Instant::now()), 0);
+    assert!(
+        !status.to_json(&resumed, Instant::now(), 0).unwrap()["observation_complete"]
+            .as_bool()
+            .unwrap()
+    );
+}
+#[test]
+fn atomic_export_failure_preserves_destination_and_cleans_temporary() {
+    let directory = Directory::new();
+    let destination = directory.0.join("status.json");
+    std::fs::create_dir(&destination).unwrap();
+    assert!(atomic_json(&destination, &serde_json::json!({"ready":true})).is_err());
+    assert!(destination.is_dir());
+    assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+}
+#[test]
+fn status_exposes_work_progress_without_private_positions() {
+    let identity = RunIdentity::new([4; 32], "a".repeat(64), "b".repeat(64), 100).unwrap();
+    let status = Status::new(&identity);
+    let value = status.to_json(&identity, Instant::now(), 7).unwrap();
+    for key in [
+        "phase",
+        "pow_attempts",
+        "progress_sequence",
+        "last_progress_elapsed_ms",
+        "state_fingerprint",
+        "sequence",
+    ] {
+        assert!(value.get(key).is_some());
+    }
+    for key in [
+        "pool_count",
+        "padding_count",
+        "real_count",
+        "nullifier",
+        "fee",
+        "peer",
+        "address",
+    ] {
+        assert!(value.get(key).is_none());
+    }
+}
+#[test]
+fn immutable_receipts_and_run_bound_stop_requests() {
+    let directory = Directory::new();
+    let identity = RunIdentity::new([5; 32], "a".repeat(64), "b".repeat(64), 100).unwrap();
+    write_run_receipt(&directory.0, &identity).unwrap();
+    assert!(write_run_receipt(&directory.0, &identity).is_err());
+    assert!(!stop_requested(&directory.0, &identity.run_id).unwrap());
+    write_stop_request(&directory.0, &identity.run_id).unwrap();
+    assert!(stop_requested(&directory.0, &identity.run_id).unwrap());
+    let other = RunIdentity::new([5; 32], "a".repeat(64), "b".repeat(64), 200).unwrap();
+    assert!(!stop_requested(&directory.0, &other.run_id).unwrap());
+}
+
+#[test]
+fn calibration_uses_integer_hash_rate_and_rejects_empty_measurements() {
+    assert!(calibration_target(0, 1).is_err());
+    assert!(calibration_target(8, 0).is_err());
+    let slow = calibration_target(8, 250_000_000).unwrap();
+    let fast = calibration_target(16, 250_000_000).unwrap();
+    assert!(slow > fast);
+    assert_ne!(fast, [0; 32]);
+}
+#[test]
+fn service_worker_settings_reject_implicit_or_oversubscribed_hiding() {
+    assert!(check_workers(None, None).is_err());
+    assert!(check_workers(Some("4"), Some("2")).is_ok());
+    assert!(check_workers(Some("8"), Some("2")).is_err());
+    assert!(check_workers(Some("4"), Some("4")).is_err());
+}
+
+#[test]
+fn stopping_freezes_observation_before_offline_replay() {
+    let identity = RunIdentity::new([6; 32], "a".repeat(64), "b".repeat(64), 100).unwrap();
+    let mut status = Status::new(&identity);
+    let start = Instant::now();
+    status.observation_started = Some(start);
+    status.observation_stopped = Some(start + Duration::from_secs(1));
+    assert_eq!(
+        status.observation_elapsed_ms(start + Duration::from_secs(86_400)),
+        1000
+    );
+    assert!(
+        !status
+            .to_json(&identity, start + Duration::from_secs(86_400), 1)
+            .unwrap()["observation_complete"]
+            .as_bool()
+            .unwrap()
+    );
+}
+#[test]
+#[ignore = "bounded actual resident-service lifecycle with native proofs; not 24-hour acceptance"]
+fn actual_continuous_service_exports_stops_and_replays() {
+    check_workers(
+        std::env::var("RAYON_NUM_THREADS").ok().as_deref(),
+        std::env::var("SIWORLD_COMPOSITION_HIDING_WORKERS")
+            .ok()
+            .as_deref(),
+    )
+    .unwrap();
+    let directory = Directory::new();
+    let network = directory.0.join("network");
+    let timestamp = wall_ms().unwrap() / 1000;
+    let config = local::initialize_asert(&network, timestamp, [0xff; 32], 1).unwrap();
+    let verifier = NativeVerifier::new().unwrap();
+    let store = Store::open(network.join("chain.redb"), config.clone(), &verifier).unwrap();
+    drop(store);
+    let service_directory = network.clone();
+    let worker = std::thread::spawn(move || run(&service_directory));
+    let observed = (|| {
+        let deadline = Instant::now() + Duration::from_secs(600);
+        loop {
+            if worker.is_finished() {
+                return Err("resident service exited before a verified block".to_owned());
+            }
+            if let Ok(status) = exported_status(&network) {
+                if status["phase"] == "error" {
+                    return Err("resident service exported an error".to_owned());
+                }
+                if status["height"].as_u64().unwrap_or(0) >= 1 && status["state_available"] == true
+                {
+                    if status["pow_attempts"].as_u64().unwrap_or(0) == 0 {
+                        return Err("no actual work was exported".to_owned());
+                    }
+                    if status["observation_complete"] != false
+                        || status["observation_target_ms"] != OBSERVATION_TARGET_MS
+                    {
+                        return Err("bounded test manufactured observation acceptance".to_owned());
+                    }
+                    return Ok(status);
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err("bounded service lifecycle exceeded its deadline".to_owned());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    })();
+    if let Ok(status) = exported_status(&network) {
+        write_stop_request(&network, status["run_id"].as_str().unwrap()).unwrap();
+    }
+    let finished = worker.join().expect("resident service panicked");
+    let observed = observed.unwrap();
+    finished.unwrap();
+    let final_status = exported_status(&network).unwrap();
+    assert_eq!(final_status["run_id"], observed["run_id"]);
+    assert_eq!(final_status["phase"], "stopped");
+    assert_eq!(final_status["observation_complete"], false);
+    assert_eq!(final_status["state_available"], true);
+    let run_id = final_status["run_id"].as_str().unwrap();
+    assert_eq!(
+        read_json(&network.join("service-runs").join(run_id).join("final.json")).unwrap(),
+        final_status
+    );
+    let _lease = Lease::acquire(&network).unwrap();
+    let replayed = Store::open_existing(network.join("chain.redb"), config, &verifier).unwrap();
+    assert_eq!(final_status["tip"], local::hex(&replayed.state().tip));
+    assert_eq!(
+        final_status["state_fingerprint"],
+        local::hex(&replayed.state().fingerprint())
+    );
+    for height in 1..=replayed.state().height {
+        let block = replayed.block(height).unwrap();
+        let id = block.id().unwrap();
+        producer::validate_reward_secret(&block, &local::read_reward(&network, &id).unwrap())
+            .unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn cleanup_never_removes_a_replacement_at_an_owned_temporary_name() {
+    let directory = Directory::new();
+    let temporary = directory.0.join("owned.tmp");
+    let original = new_file(&temporary).unwrap();
+    let identity = original.metadata().unwrap();
+    std::fs::remove_file(&temporary).unwrap();
+    std::fs::write(&temporary, b"replacement evidence").unwrap();
+    remove_owned_temporary(&temporary, &identity);
+    assert_eq!(std::fs::read(&temporary).unwrap(), b"replacement evidence");
+}

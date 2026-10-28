@@ -23,8 +23,8 @@ pub const REWARD_CIPHERTEXT_BYTES: usize = 1313;
 pub const SIDECAR_BYTES: usize = 78;
 pub const TX_PREFIX_BYTES: usize = 4 + 2 + 27 + 32 + 40 + PUBLIC_BYTES + 48 + 4;
 pub const MAX_ENVELOPE_BYTES: usize = TX_PREFIX_BYTES + MAX_TX_PROOF;
-pub const BLOCK_VERSION: u16 = 1;
-pub const BLOCK_HEADER_BYTES: usize = 4 + 2 + 27 + 32 + 8 + 32 + 8 + 2;
+pub const BLOCK_VERSION: u16 = 2;
+pub const BLOCK_HEADER_BYTES: usize = 4 + 2 + 27 + 32 + 8 + 32 + 8 + 32 + 8 + 2;
 pub const BLOCK_FIXED_BYTES: usize = BLOCK_HEADER_BYTES + 48 + REWARD_CIPHERTEXT_BYTES + 4;
 pub const MAX_BLOCK_BYTES: usize =
     BLOCK_FIXED_BYTES + MAX_SLOTS * (4 + MAX_ENVELOPE_BYTES) + MAX_SETTLEMENT_PROOF;
@@ -192,6 +192,8 @@ pub struct Block {
     pub network: Hash,
     pub height: u64,
     pub parent: Hash,
+    pub timestamp: u64,
+    pub target: Hash,
     pub nonce: u64,
     pub transactions: Vec<Transaction>,
     pub reward: RewardRecord,
@@ -200,6 +202,9 @@ pub struct Block {
 
 impl Block {
     pub fn validate_shape(&self) -> Result<(), String> {
+        if self.timestamp == 0 || self.target == [0; 32] {
+            return Err("invalid engineering block time or target".into());
+        }
         validate_slots(self.transactions.len())?;
         validate_proof_len(
             self.settlement_proof.len(),
@@ -236,18 +241,22 @@ impl Block {
     pub fn encode(&self) -> Result<Vec<u8>, String> {
         self.validate_shape()?;
         let mut bytes = Vec::with_capacity(self.encoded_len()?);
-        self.emit_encoding(&mut |part| bytes.extend_from_slice(part));
+        self.emit_encoding(true, &mut |part| bytes.extend_from_slice(part));
         Ok(bytes)
     }
 
-    fn emit_encoding(&self, emit: &mut impl FnMut(&[u8])) {
+    fn emit_encoding(&self, include_nonce: bool, emit: &mut impl FnMut(&[u8])) {
         emit(BLOCK_MAGIC);
         emit(&BLOCK_VERSION.to_le_bytes());
         emit(SUITE_ID);
         emit(&self.network);
         emit(&self.height.to_le_bytes());
         emit(&self.parent);
-        emit(&self.nonce.to_le_bytes());
+        emit(&self.timestamp.to_le_bytes());
+        emit(&self.target);
+        if include_nonce {
+            emit(&self.nonce.to_le_bytes());
+        }
         emit(&(self.transactions.len() as u16).to_le_bytes());
         for tx in &self.transactions {
             emit(&((TX_PREFIX_BYTES + tx.proof.len()) as u32).to_le_bytes());
@@ -279,6 +288,11 @@ impl Block {
         }
         let height = reader.u64()?;
         let parent = reader.array()?;
+        let timestamp = reader.u64()?;
+        let target = reader.array()?;
+        if timestamp == 0 || target == [0; 32] {
+            return Err("invalid engineering block time or target".into());
+        }
         let nonce = reader.u64()?;
         let count = usize::from(reader.u16()?);
         validate_slots(count)?;
@@ -322,6 +336,8 @@ impl Block {
             network: found_network,
             height,
             parent,
+            timestamp,
+            target,
             nonce,
             transactions,
             reward,
@@ -350,15 +366,24 @@ impl Block {
         *hash.finalize().as_bytes()
     }
 
-    /// Block identity includes the full canonical proof-carrying block encoding.
-    /// This deliberately differs from a proof-independent transaction identity.
-    pub fn id(&self) -> Result<Hash, String> {
+    /// Hash all canonical header/body/proof bytes except nonce exactly once.
+    /// A mining search caches this seed; it never rehashes proof bodies per try.
+    pub fn pow_seed(&self) -> Result<Hash, String> {
         self.validate_shape()?;
-        let mut hash =
-            blake3::Hasher::new_derive_key("siworld native engineering block identity v1");
-        self.emit_encoding(&mut |part| {
+        let mut hash = blake3::Hasher::new_derive_key("siworld native engineering pow seed v2");
+        self.emit_encoding(false, &mut |part| {
             hash.update(part);
         });
+        Ok(*hash.finalize().as_bytes())
+    }
+
+    /// Authenticate the proof-carrying header/body seed and the final nonce.
+    /// Transaction identity remains proof-independent under its existing domain.
+    pub fn id(&self) -> Result<Hash, String> {
+        let mut hash =
+            blake3::Hasher::new_derive_key("siworld native engineering block identity v2");
+        hash.update(&self.pow_seed()?);
+        hash.update(&self.nonce.to_le_bytes());
         Ok(*hash.finalize().as_bytes())
     }
 }
@@ -542,6 +567,8 @@ mod tests {
             network,
             height: 12,
             parent: [8; 32],
+            timestamp: 3601,
+            target: [0xff; 32],
             nonce: 21,
             transactions,
             reward: RewardRecord {
@@ -704,8 +731,9 @@ mod tests {
         );
         assert_eq!(original.statement_ids().len(), MIN_SLOTS);
         let mut reference =
-            blake3::Hasher::new_derive_key("siworld native engineering block identity v1");
-        reference.update(&bytes);
+            blake3::Hasher::new_derive_key("siworld native engineering block identity v2");
+        reference.update(&original.pow_seed().unwrap());
+        reference.update(&original.nonce.to_le_bytes());
         assert_eq!(original.id().unwrap(), *reference.finalize().as_bytes());
     }
 
@@ -938,5 +966,39 @@ mod tests {
         assert!(bad.check_opening(&record, &network).is_err());
         assert!(sidecar.check_opening(&record, &[8; 32]).is_err());
         assert!(decode_digest(&record.fee_commit).is_ok());
+    }
+
+    #[test]
+    fn pow_seed_binds_header_and_body_but_excludes_nonce() {
+        let original = block();
+        let seed = original.pow_seed().unwrap();
+        let id = original.id().unwrap();
+        let mut changed = original.clone();
+        changed.nonce += 1;
+        assert_eq!(changed.pow_seed().unwrap(), seed);
+        assert_ne!(changed.id().unwrap(), id);
+        for kind in 0..6 {
+            let mut changed = original.clone();
+            match kind {
+                0 => changed.timestamp += 1,
+                1 => changed.target[31] ^= 1,
+                2 => changed.parent[0] ^= 1,
+                3 => changed.transactions[0].proof[0] ^= 1,
+                4 => changed.reward.ciphertext[0] ^= 1,
+                _ => changed.settlement_proof[0] ^= 1,
+            }
+            assert_ne!(changed.pow_seed().unwrap(), seed, "binding {kind}");
+            assert_ne!(changed.id().unwrap(), id, "identity {kind}");
+        }
+        let mut bytes = original.encode().unwrap();
+        bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
+        assert!(Block::decode(&bytes, &original.network).is_err());
+        for mut invalid in [original.clone(), original] {
+            invalid.target = [0; 32];
+            assert!(invalid.encode().is_err());
+            invalid.target = [0xff; 32];
+            invalid.timestamp = 0;
+            assert!(invalid.encode().is_err());
+        }
     }
 }

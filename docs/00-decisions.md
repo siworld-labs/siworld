@@ -264,10 +264,15 @@ transactions. The AIR balances every private asset independently; fees are
 paid only in SI. Issuance publishes declared supply, name and precision and
 uses a domain-separated ML-DSA-65 signature verified natively by the node.
 The isolated native implementation covers ID derivation and fixed-supply issuance-to-note binding in
-[the multi-asset design](v1-multi-asset.md). The SI issuance-fee amount/destination,
-asset-aware minimum output rule, metadata/note limits and per-block issuance
-byte/CPU budget remain open protocol values; do not settle them implicitly in
-consensus code. All remain implementation/review gates rather than enabled rules.
+[the multi-asset design](v1-multi-asset.md). Testnet asset issuance requires
+exactly **50 SI (5,000,000,000 atoms)**, credited entirely to a dedicated
+development-fund account. That account is not yet configured: issuance admission
+must remain closed and fail closed until its authenticated destination and the
+atomic fee-payment consumption transition are implemented and configured.
+An absent destination must not select a default account or waive the fee.
+The mainnet issuance fee remains undecided. Asset-aware minimum outputs,
+metadata/note limits and per-block issuance byte/CPU budgets remain open
+protocol values; do not settle them implicitly in consensus code.
 No private transfer asset ID or holding is published. The unresolved values
 and qualification evidence are recorded in [the open-question register](11-risks-open-questions.md).
 
@@ -308,8 +313,8 @@ identities; the three-note shape does not adopt a protocol issuance note limit.
 See [reproduction](native-proof-profiles.md). No performance rerun or node
 activation is implied by reproducing these public keys.
 Independent verifier CPU/memory qualification,
-full valid-block timings, node admission/decoder integration, issuance-fee
-policy and durable issuance transitions remain separate gates. A successful
+full valid-block timings, node admission/decoder integration, configured testnet
+issuance-fee collection and durable issuance transitions remain separate gates. A successful
 standalone proof does not activate consensus or establish testnet acceptance.
 
 
@@ -322,10 +327,34 @@ window and an atomic append/replay transition. It creates independent disposable
 engineering directories and imports no retained chain, key or wallet data.
 The frozen native relation keys and parameters are unchanged.
 
-The explicit engineering nonce-work parameter and existing subsidy/fee helper
-reuse do not adopt production PoW, difficulty, epoch recalibration or a public
-genesis. Unsupported issuance operations remain absent until the open fee and
-resource policies are decided. Networking, reorganizations, pruning, checkpoint
-bootstrap, wallet durability, transport privacy and sustained acceptance remain
+Continuous production uses a new independent ASERT engineering directory with
+configuration format v2, fresh network identity and genesis, immutable
+initially calibrated work rules and a 300-second target interval. Producer and
+validator share the integer-only timestamp, ASERT target and sequential BLAKE3
+work checks. A resident prover and bounded private pre-generation queue supply
+64-position blocks. Existing engineering directories and the retained
+seven-node network are not migrated or changed. Public genesis activation and
+epoch recalibration remain separate decisions.
+
+Before the first development-network deployment stage, require one genuine
+24-hour single-node observation on the frozen binary and configuration, without
+abnormal exit, OOM, proof failure, state inconsistency or stalled actual work.
+The observer independently measures monotonic time, checks process ownership
+and reads private exports without opening the live database. A stochastic long
+block interval below two hours is permitted with fresh PoW progress. Once
+ready, two hours without accepted-height progress makes the observation
+incomplete independently of hashing progress. This operational threshold is not
+a consensus validity rule or a deterministic block-interval guarantee. Any restart or evidence
+gap invalidates continuity; prior elapsed wall time cannot complete a new
+window. Completion also requires graceful shutdown and an independent offline
+full replay/reward-recovery check matching the final accepted state. This
+document records the requirement, not a completed observation or deployment.
+The 72-hour maximum-load and seven-day independent-host acceptance requirements
+remain additional gates.
+
+Unsupported issuance operations remain absent until the dedicated testnet
+fund account, atomic fee collection and resource bounds are configured and
+implemented. Networking, reorganizations, pruning, checkpoint bootstrap,
+wallet durability, transport privacy and sustained network acceptance remain
 separate implementation gates. A linear single-node proof/replay test does not
 establish those properties.

@@ -7,9 +7,7 @@
 //! results; the future-time limit is a relay policy instead of a validity rule.
 
 use primitive_types::U512;
-use siworld_core::params::{
-    ChainParams, ASERT_HALF_LIFE, MAX_FUTURE_BLOCK_TIME, MEDIAN_TIME_PAST_WINDOW,
-};
+use siworld_core::params::ChainParams;
 use siworld_core::{Digest, Header, Height};
 use siworld_state::ChainState;
 
@@ -18,19 +16,12 @@ use crate::transition::BlockError;
 /// The work for one nonce: `x = BLAKE3(seed ‖ nonce)`, then `iterations` more
 /// sequential BLAKE3 hashes of `x`.
 pub fn pow_hash(seed: &Digest, nonce: u64, iterations: u64) -> [u8; 32] {
-    let mut first = [0u8; 40];
-    first[..32].copy_from_slice(seed.as_bytes());
-    first[32..].copy_from_slice(&nonce.to_le_bytes());
-    let mut x = *blake3::hash(&first).as_bytes();
-    for _ in 0..iterations {
-        x = *blake3::hash(&x).as_bytes();
-    }
-    x
+    siworld_core::pow::pow_hash(seed.as_bytes(), nonce, iterations)
 }
 
 /// True when the work, read big-endian, is below the target.
 pub fn meets_target(work: &[u8; 32], target: &[u8; 32]) -> bool {
-    work < target
+    siworld_core::pow::meets_target(work, target)
 }
 
 /// ASERT: the target of the block after one at `parent_height` and
@@ -40,38 +31,13 @@ pub fn asert_target(
     parent_height: Height,
     parent_timestamp: u64,
 ) -> [u8; 32] {
-    if parent_height == 0 {
-        return params.genesis_target;
-    }
-    // midstate computes in i64 and U256; i128 and U512 give the same results
-    // without overflow at extreme heights and timestamps.
-    let ideal = i128::from(parent_height) * i128::from(params.target_block_time);
-    let actual = i128::from(parent_timestamp) - i128::from(params.genesis_timestamp);
-    let exponent = (actual - ideal) * 65536 / i128::from(ASERT_HALF_LIFE);
-    let shifts = exponent >> 16;
-    let frac = exponent & 0xFFFF;
-    // 2^frac ≈ 1 + 0.693·f + 0.240·f² + 0.0556·f³ in 16-bit fixed point.
-    let factor = 65536
-        + ((frac * 45426) >> 16)
-        + ((frac * frac * 15746) >> 32)
-        + ((frac * frac * frac * 3643) >> 48);
-
-    let factor = U512::from(u64::try_from(factor).expect("factor is in [2^16, 2^17)"));
-    let mut target = (U512::from_big_endian(&params.genesis_target) * factor) >> 16;
-    let s = usize::try_from(shifts.unsigned_abs().min(255)).expect("at most 255");
-    if shifts > 0 {
-        target <<= s;
-    } else {
-        target >>= s;
-    }
-    let ceiling = U512::from_big_endian(&[0xff; 32]);
-    if target > ceiling {
-        target = ceiling;
-    } else if target.is_zero() {
-        target = U512::one();
-    }
-    let bytes = target.to_big_endian();
-    bytes[32..].try_into().expect("below the ceiling")
+    siworld_core::pow::asert_target(
+        &params.genesis_target,
+        params.genesis_timestamp,
+        params.target_block_time,
+        parent_height,
+        parent_timestamp,
+    )
 }
 
 /// The target the next block's header must carry.
@@ -83,7 +49,7 @@ pub fn next_target(state: &ChainState, params: &ChainParams) -> [u8; 32] {
 /// nonces tried to meet it, ⌊2^256 / (target + 1)⌋. At most 2^255 (target 1),
 /// so a branch's sum fits in 512 bits.
 pub fn block_work(target: &[u8; 32]) -> U512 {
-    (U512::one() << 256usize) / (U512::from_big_endian(target) + U512::one())
+    siworld_core::pow::block_work(target)
 }
 
 /// Lower bound a new timestamp must exceed: the median of the last
@@ -94,13 +60,7 @@ pub fn median_time_past(state: &ChainState) -> u64 {
 
 /// `timestamps` are the parent's, oldest first; the last is the parent's own.
 fn median_of(timestamps: &[u64]) -> u64 {
-    let n = timestamps.len();
-    if n < MEDIAN_TIME_PAST_WINDOW {
-        return *timestamps.last().expect("genesis records its timestamp");
-    }
-    let mut recent = timestamps[n - MEDIAN_TIME_PAST_WINDOW..].to_vec();
-    recent.sort_unstable();
-    recent[MEDIAN_TIME_PAST_WINDOW / 2]
+    siworld_core::pow::median_time_past(timestamps).expect("genesis records its timestamp")
 }
 
 pub fn check_timestamp(state: &ChainState, timestamp: u64) -> Result<(), BlockError> {
@@ -179,13 +139,14 @@ pub fn mine_some(header: &mut Header, iterations: u64, tries: u64) -> Option<boo
 /// local clock reaches `timestamp - MAX_FUTURE_BLOCK_TIME`. Validity never
 /// reads a clock, so nodes with different clocks agree on every block.
 pub fn beyond_future_limit(timestamp: u64, now: u64) -> bool {
-    timestamp.saturating_sub(now) > MAX_FUTURE_BLOCK_TIME
+    siworld_core::pow::beyond_future_limit(timestamp, now)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use primitive_types::U256;
+    use siworld_core::params::{ASERT_HALF_LIFE, MAX_FUTURE_BLOCK_TIME, MEDIAN_TIME_PAST_WINDOW};
 
     fn mainnet() -> ChainParams {
         ChainParams {

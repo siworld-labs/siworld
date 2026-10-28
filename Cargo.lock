@@ -4073,6 +4073,7 @@ name = "siworld-core"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "primitive-types",
 ]
 
 [[package]]

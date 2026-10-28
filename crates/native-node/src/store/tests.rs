@@ -102,10 +102,12 @@ fn candidate(state: &State, seed: u32) -> Block {
         });
     }
     transactions.sort_by_key(|tx| tx.record.statement_id(&state.config.network));
-    Block {
+    let mut block = Block {
         network: state.config.network,
         height: state.height + 1,
         parent: state.tip,
+        timestamp: state.timestamp() + state.config.target_interval,
+        target: state.next_target(),
         nonce: 0,
         transactions,
         reward: RewardRecord {
@@ -113,7 +115,15 @@ fn candidate(state: &State, seed: u32) -> Block {
             ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
         },
         settlement_proof: vec![1],
+    };
+    let seed = block.pow_seed().unwrap();
+    while !siworld_core::pow::meets_target(
+        &siworld_core::pow::pow_hash(&seed, block.nonce, state.config.pow_iterations),
+        &block.target,
+    ) {
+        block.nonce += 1;
     }
+    block
 }
 fn populated(path: &Path) -> (Block, Hash) {
     let mut store = Store::open(path, config(), &TestVerifier::default()).unwrap();
@@ -382,7 +392,7 @@ fn invalid_public_config_is_not_persisted() {
             dir.db(),
             Config {
                 network: [0; 32],
-                work_bits: 0
+                ..config()
             },
             &TestVerifier::default()
         )
@@ -402,4 +412,53 @@ fn symlinks_and_nonregular_paths_are_rejected_without_following_them() {
     assert!(Store::open(dir.db(), config(), &TestVerifier::default()).is_err());
     assert_eq!(std::fs::read(target).unwrap(), b"original evidence");
     assert!(Store::open(&dir.0, config(), &TestVerifier::default()).is_err());
+}
+
+#[test]
+fn asert_rules_and_replayed_work_are_durable_and_wrong_rules_fail_closed() {
+    let dir = TestDir::new();
+    let base = Config::asert_development([93; 32], 1_700_000_000, [0xff; 32], 1).unwrap();
+    let mut store = Store::open(dir.db(), base.clone(), &TestVerifier::default()).unwrap();
+    let block = candidate(store.state(), 1);
+    store.append(&block, &TestVerifier::default()).unwrap();
+    let work = store.state().cumulative_work;
+    let timestamps = store.state().timestamps.clone();
+    drop(store);
+    for field in 0..4 {
+        let mut changed = base.clone();
+        match field {
+            0 => changed.genesis_timestamp += 1,
+            1 => changed.genesis_target[31] ^= 1,
+            2 => changed.pow_iterations += 1,
+            _ => changed.target_interval += 1,
+        }
+        assert!(Store::open_existing(dir.db(), changed, &TestVerifier::default()).is_err());
+    }
+    let reopened = Store::open_existing(dir.db(), base, &TestVerifier::default()).unwrap();
+    assert_eq!(reopened.state().cumulative_work, work);
+    assert_eq!(reopened.state().timestamps, timestamps);
+    assert_eq!(reopened.block(1).unwrap().target, block.target);
+    assert_eq!(reopened.block(1).unwrap().timestamp, block.timestamp);
+}
+#[test]
+fn old_store_configuration_is_rejected_without_reinitialization() {
+    let dir = TestDir::new();
+    populated(&dir.db());
+    let mut legacy = b"SWNS\x01\0".to_vec();
+    legacy.extend_from_slice(native::codec::SUITE_ID);
+    legacy.extend_from_slice(&config().network);
+    legacy.push(0);
+    legacy.extend_from_slice(&[0; 32]);
+    tamper(&dir.db(), |txn| {
+        txn.open_table(META)
+            .unwrap()
+            .insert("config", legacy.as_slice())
+            .unwrap();
+    });
+    assert!(Store::open_existing(dir.db(), config(), &TestVerifier::default()).is_err());
+    let db = Database::open(dir.db()).unwrap();
+    let txn = db.begin_read().unwrap();
+    let meta = txn.open_table(META).unwrap();
+    assert_eq!(meta.get("config").unwrap().unwrap().value(), legacy);
+    assert_eq!(txn.open_table(BLOCKS).unwrap().len().unwrap(), 1);
 }

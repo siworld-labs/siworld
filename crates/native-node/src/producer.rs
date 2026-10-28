@@ -1,8 +1,9 @@
 //! Local block preparation for a disposable native engineering network.
 //! Candidate blocks still require the shared durable state transition.
 
+use crate::pool::Padding;
 use crate::proofs::NativeProver;
-use crate::state::{State, base_fee, satisfies_work, subsidy_split, tail_slots};
+use crate::state::{State, base_fee, subsidy_split, tail_slots};
 use crate::wire::{Block, GROUP, MAX_SLOTS, MIN_SLOTS, PublicRecord, RewardRecord, Transaction};
 use native::codec::{ProofContext, PublicTransaction, decode_digest, encode_digest};
 use native::confidential_fees::{FeeOpening, SettlementSlot};
@@ -12,8 +13,8 @@ use native::encryption::{
     encrypt_payment_with_opening,
 };
 use native::multi_asset::{
-    AccWitness, AnchorTree, Digest, F, Hasher, InputWitness, Note, OutputWitness, SI_ASSET_ID,
-    SlotWitness, TREE_DEPTH,
+    AccWitness, AnchorTree, F, Hasher, InputWitness, Note, OutputWitness, SI_ASSET_ID, SlotWitness,
+    TREE_DEPTH,
 };
 use native::settlement::FixedSettlementWitness;
 use p3_field::{PrimeCharacteristicRing, PrimeField32};
@@ -36,8 +37,9 @@ struct PreparedTransaction {
     record: PublicRecord,
     opening: FeeOpening,
 }
+#[cfg(test)]
 impl PreparedTransaction {
-    fn opening_commitment(&self) -> Digest {
+    fn opening_commitment(&self) -> native::multi_asset::Digest {
         Hasher::new().fee_commit(self.opening.fee, &self.opening.blind)
     }
 }
@@ -334,63 +336,78 @@ pub fn validate_reward_secret(block: &Block, secret: &[u8]) -> Result<(), String
     Ok(())
 }
 
-/// Generate actual fixed-profile native proofs for fresh zero-value positions.
-/// Preparation, encryption and proving are serialized; no fixture RNG or mock
-/// proof backend is reachable from this runtime entry point.
-pub fn produce(
+/// Generate one complete native proof with fresh OS entropy and real output
+/// encryption. The caller must independently verify it before queue admission.
+pub fn prepare_padding(state: &State, prover: &NativeProver) -> Result<Padding, String> {
+    let roots = state.recent_roots()?.tree(&Hasher::new());
+    let prepared = prepare_empty(state, &roots)?;
+    let proof = prover.transaction(&prepared.witness, &prepared.public, &context(state))?;
+    Ok(Padding {
+        transaction: Transaction {
+            record: prepared.record,
+            proof,
+        },
+        opening: prepared.opening,
+    })
+}
+
+/// Assemble current-height settlement around previously verified, move-only
+/// positions. Transaction proofs and snapshot identities are preserved.
+pub fn assemble(
     state: &State,
     prover: &NativeProver,
-    count: usize,
+    mut positions: Vec<Padding>,
+    timestamp: u64,
 ) -> Result<ProducedBlock, String> {
-    check_count(count)?;
+    check_count(positions.len())?;
+    if timestamp <= state.median_time_past() {
+        return Err("candidate timestamp must exceed median time past".into());
+    }
     let height = state
         .height
         .checked_add(1)
         .ok_or("engineering block height exhausted")?;
-    if state.config.work_bits > 24 {
-        return Err("invalid engineering work configuration".into());
-    }
+    let count = positions.len();
     let h = Hasher::new();
-    let roots = state.recent_roots()?.tree(&h);
-    let mut prepared = Vec::with_capacity(count);
+    positions
+        .sort_unstable_by_key(|value| value.transaction.record.statement_id(&state.config.network));
     let mut spends = BTreeSet::new();
     let mut commitments = BTreeSet::new();
-    for _ in 0..count {
-        let transaction = prepare_empty(state, &roots)?;
-        for nf in transaction.public.nf {
+    let mut identities = BTreeSet::new();
+    let mut slots = Vec::with_capacity(MAX_SLOTS);
+    let mut transactions = Vec::with_capacity(count);
+    for value in positions {
+        state.snapshot(value.transaction.record.snapshot)?;
+        let public = PublicTransaction::decode(&value.transaction.record.body)
+            .map_err(|_| "invalid prepared transaction public fields")?;
+        for nf in public.nf {
             let nf = encode_digest(&nf);
             if state.spent.contains(&nf) || !spends.insert(nf) {
-                return Err("fresh position nullifier collision".into());
+                return Err("prepared position nullifier collision".into());
             }
         }
-        for cm in transaction.public.cm {
+        for cm in public.cm {
             let cm = encode_digest(&cm);
             if state.commitments.contains(&cm) || !commitments.insert(cm) {
-                return Err("fresh position output commitment collision".into());
+                return Err("prepared position output collision".into());
             }
         }
-        prepared.push(transaction);
-    }
-    prepared.sort_unstable_by_key(|tx| tx.record.statement_id(&state.config.network));
-    if prepared.windows(2).any(|pair| {
-        pair[0].record.statement_id(&state.config.network)
-            == pair[1].record.statement_id(&state.config.network)
-    }) {
-        return Err("fresh position statement identity collision".into());
-    }
-    let mut transactions = Vec::with_capacity(count);
-    let mut slots = Vec::with_capacity(MAX_SLOTS);
-    for transaction in prepared {
-        let proof =
-            prover.transaction(&transaction.witness, &transaction.public, &context(state))?;
+        if !identities.insert(value.transaction.record.statement_id(&state.config.network)) {
+            return Err("prepared position identity collision".into());
+        }
+        let commitment = h.fee_commit(value.opening.fee, &value.opening.blind);
+        if value.opening.fee != 0
+            || !value.opening.dummy
+            || value.opening.priority
+            || encode_digest(&commitment) != value.transaction.record.fee_commit
+        {
+            return Err("prepared position opening mismatch".into());
+        }
         slots.push(SettlementSlot {
-            commitment: transaction.opening_commitment(),
-            opening: transaction.opening,
+            commitment,
+            opening: value.opening,
         });
-        transactions.push(Transaction {
-            record: transaction.record,
-            proof,
-        });
+        transactions.push(value.transaction);
     }
     slots.extend(tail_slots(state.config.network, height, count)?);
     let reward = prepare_reward(state)?;
@@ -398,6 +415,8 @@ pub fn produce(
         network: state.config.network,
         height,
         parent: state.tip,
+        timestamp,
+        target: state.next_target(),
         nonce: 0,
         transactions,
         reward: reward.record,
@@ -416,17 +435,55 @@ pub fn produce(
     };
     block.settlement_proof = prover.settlement(&witness)?;
     block.validate_shape()?;
-    while !satisfies_work(&block.id()?, state.config.work_bits) {
-        block.nonce = block
-            .nonce
-            .checked_add(1)
-            .ok_or("engineering nonce space exhausted")?;
-    }
     validate_reward_secret(&block, &reward.secret)?;
     Ok(ProducedBlock {
         block,
         reward_secret: reward.secret,
     })
+}
+
+/// One-shot fixture/engineering operation. Continuous production instead reuses
+/// a resident prover and queue and exports work progress while hashing.
+pub fn produce(
+    state: &State,
+    prover: &NativeProver,
+    count: usize,
+) -> Result<ProducedBlock, String> {
+    check_count(count)?;
+    let mut prepared = Vec::with_capacity(count);
+    for _ in 0..count {
+        prepared.push(prepare_padding(state, prover)?);
+    }
+    let timestamp = if state.config.fixture {
+        state
+            .timestamp()
+            .checked_add(1)
+            .ok_or("engineering timestamp exhausted")?
+    } else {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "system clock precedes epoch")?
+            .as_secs()
+            .max(
+                state
+                    .median_time_past()
+                    .checked_add(1)
+                    .ok_or("engineering timestamp exhausted")?,
+            )
+    };
+    let mut produced = assemble(state, prover, prepared, timestamp)?;
+    let seed = produced.block.pow_seed()?;
+    while !siworld_core::pow::meets_target(
+        &siworld_core::pow::pow_hash(&seed, produced.block.nonce, state.config.pow_iterations),
+        &produced.block.target,
+    ) {
+        produced.block.nonce = produced
+            .block
+            .nonce
+            .checked_add(1)
+            .ok_or("engineering nonce space exhausted")?;
+    }
+    Ok(produced)
 }
 
 #[cfg(test)]
@@ -504,6 +561,8 @@ mod tests {
             network: state.config.network,
             height: 1,
             parent: state.tip,
+            timestamp: state.timestamp() + 1,
+            target: state.next_target(),
             nonce: 0,
             transactions: Vec::new(),
             reward: reward.record,

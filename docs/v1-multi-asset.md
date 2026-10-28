@@ -143,15 +143,22 @@ resource policy, ML-DSA-65 signature, ciphertext counts and byte hashes, and
 the issuance proof. Acceptance additionally requires a caller-provided
 verifier for an actual SI fee payment bound to that declaration digest.
 Merely supplying the claimed fee amount does not satisfy this gate.
-Permissionless issuance, SI-denominated issuance fees and public supply are
-the selected design; the fee amount and its accounting destination remain
-unresolved protocol parameters.
+Permissionless issuance and public supply are the selected design. Testnet
+issuance costs exactly **50 SI (5,000,000,000 atoms)**, with the entire fee
+credited to a dedicated development-fund account. This account has not been
+configured, so issuance admission remains closed. A missing or invalid
+destination fails closed; it cannot waive the fee, select an implicit account
+or redirect any amount to the miner. The mainnet issuance fee remains
+undecided.
 
 The reference registry checks sequence, asset-ID and commitment reuse before
 mutation. This is an isolated atomicity model, not the node database
 transition. Node integration must verify every gate and atomically append the
 issuance record, registry entry and minted notes in one storage transaction,
-with equivalent reorg and duplicate-acceptance handling. Later transfers prove
+with the verified SI payment's one-time consumption and dedicated fund credit,
+and equivalent reorg and duplicate-acceptance handling. Configuration of the
+destination and this durable transition remain implementation gates; the
+isolated caller-provided payment verifier does not satisfy them. Later transfers prove
 ordinary ownership, membership and private asset conservation. Additional
 minting and burning are not implicitly enabled.
 
@@ -181,8 +188,9 @@ issuance wire decoder.
 
 The caller currently supplies note-count, metadata and per-note ciphertext
 limits through an explicit policy. Canonical metadata limits, issuance
-record/proof limits, fee destination and per-block issuance byte/CPU limits
-must be adopted before network acceptance. Until those limits and actual
+record/proof limits and per-block issuance byte/CPU limits must be adopted
+before network acceptance. The selected testnet fee destination must also be
+configured and its atomic accounting qualified. Until those limits and actual
 database overhead are fixed, the permanent-position ledger cannot establish
 a finite worst-case total for every protocol record.
 
