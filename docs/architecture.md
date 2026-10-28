@@ -9,16 +9,16 @@ runnable recursive implementation.
 
 | Component | Present scope | Native V1 boundary |
 | --- | --- | --- |
-| `crates/bench-multi-asset` | Transaction, issuance and settlement AIRs, native proof tools and codecs | Native integration imports these relations; economic changes require new profile qualification |
+| `crates/bench-multi-asset` | Transaction, issuance and settlement AIRs, native proof tools and codecs | Source-bound economic profiles; public-key reproduction and full CI remain release checks |
 | `crates/bench-d8` | Earlier two-output native proof baseline and dependency adapter | Diagnostic baseline; does not activate the three-output profile |
 | `core`, `crypto`, `state` | Shared integer monetary reference and legacy cryptographic/state primitives | Native integration explicitly binds types, network identity and economic state |
-| `crates/native-node` | Isolated codec, shared transition, admission, sync/forks, wallet and audit interfaces | Revised economics, live transport and deployment require dedicated validation |
+| `crates/native-node` | Isolated codec, shared transition, admission, sync/forks, wallet and audit interfaces | Atomic economic state and audit are implemented; live transport and deployment remain unqualified |
 | `circuits`, `prover`, `bench-stark` | Legacy recursive proof route and pinned keys | Retained runtime and paused V2 review surface |
 | `consensus`, `storage`, `node` | Legacy block production/validation, persistent full-block replay, libp2p and local RPC | Native block codec, common transition, admission, retention and transport remain milestones |
 | `tools/control-panel` | Local operational interface for retained engineering nodes | It is outside consensus and is not native V1 deployment evidence |
 
-The pre-economic-revision transaction profile pins parameters, source/dependency
-identities, security data and public verifier artifacts. The
+The `native-v1-economics-1` transaction profile pins parameters,
+source/dependency identities, security data and public verifier artifacts. The
 [three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
 also fixes public preprocessing identities for 576-position settlement and
 three-initial-note issuance. Those shapes do not adopt broader issuance policy
@@ -36,8 +36,11 @@ Miners assemble 64–576 positions in groups of 16. The isolated native codec an
 shared transition enforce strictly ascending proof-independent BLAKE3 statement
 IDs and reject equality. Proof bytes, proof lengths/randomness and fee sidecars
 do not affect those IDs. A separate settlement proof binds ordered commitments
-and all mode-dependent SIP reward notes. The [economic revision](v1-economics.md)
-requires new source-bound proofs and state-transition qualification.
+and all one/five mode-dependent SIP reward notes. The [monetary transition](v1-economics.md)
+updates the Holder pool, cumulative burn and independent fund entitlements,
+vesting and signed spending atomically with the block. Native production binds
+an explicit Voyager/Holder preference at template creation. Deployment
+qualification remains separate from the revised proof measurements.
 
 Production, validation and historical application must use one deterministic,
 integer-only, atomic transition. Compact relay references accepted transaction

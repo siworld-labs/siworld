@@ -1,19 +1,18 @@
 # Confidential Fee Settlement for Route A V1
 
-Status: selected V1 design with an isolated native AIR/prover implementation. The
-[monetary revision](v1-economics.md) reopens settlement and transaction profile
-qualification; the earlier fixed-key measurements below are baseline evidence. This
-document specifies Scheme B, a confidential settlement mechanism for the
-native, non-recursive transaction route. The direction is selected for V1, but
-it is not an activated consensus rule. The prior
-[transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-used b7/q41/g20 with a 655,360-byte body cap; the prior independent settlement
-used b8/q36/g20 with its own 524,288-byte cap. Their
+Status: selected V1 confidential settlement with engineering-frozen native
+proof parameters for the [revised monetary relation](v1-economics.md).
+Scheme B is native and non-recursive; no network activation is implied.
+The [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+is b7/q41/g20 with a 655,360-byte cap. The separate fixed-576 settlement uses
+b8/q36/g20 and a 524,288-byte cap. The
 [source-bound manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-records exactly 576 positions and the earlier public preprocessing key.
-Revised one/five-note reward settlement needs fresh key, security and resource
-evidence. Every revised reward commitment must bind its SIP asset and unlock
-height inside the AIR. See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md).
+binds the revised public preprocessing identities and actual-AIR reports.
+Settlement binds the public mode, trusted consensus reward plan and one/five
+reward notes, including SIP asset and unlock height. The node independently
+validates pool, burn and fund transitions. Fresh measurements are recorded in the
+[actual multi-asset evaluation](v1-multi-asset-evaluation.md). Required CI and
+public-key reproduction remain release checks.
 Independent review and node integration remain activation gates, and the
 retained seven-node network is unchanged.
 
@@ -177,11 +176,14 @@ integration tests remain activation gates.
 
 For a block with `M` fixed positions, the miner supplies fee openings for
 every position, including generated padding. The public statement binds the
-network/suite identity, block height, public Voyager/Holder mode, canonical
-pre-block pool context, ordered transaction identity/fee-commitment digest,
-and every reward-note commitment. Validators derive this context using the
-[shared integer monetary transition](v1-economics.md). Peer-provided subsidy or
-pool figures cannot override accepted state.
+network/suite identity, block height, public Voyager/Holder mode, reward
+allocation amounts and unlock heights, ordered transaction identity/fee-
+commitment digest, and every reward-note commitment. Validators recompute this
+reward plan from the canonical parent state using the
+[shared integer monetary transition](v1-economics.md). The AIR does not receive
+or independently update the pool balance, cumulative burn or fund state; the
+node validates those transitions before reconstructing the proof statement.
+Peer-provided plans or pool figures cannot override accepted state.
 
 Let `R[j]` be the deterministic subsidy-plus-pool-claim amounts produced by
 that transition: one note for Voyager and five for Holder. The AIR proves:
@@ -264,8 +266,10 @@ production codec ledger and qualified transaction/576-position settlement
 measurements. The
 [node integration plan](v1-node-network-plan.md) specifies the proposed
 2,184-byte envelope prefix, 78-byte sidecar and initial local byte/CPU policies.
-Its new reward-note AIR must bind the reserved SIP asset ID inside the circuit;
-the diagnostic four-block assetless reward commitment is not the new relation.
+The revised AIR binds the reserved SIP asset ID and every reward unlock
+height inside the circuit. Its extracted shape is 1,024 base rows, 581 main
+columns, 609 preprocessed columns, 7,050 public values and 19,703 degree-three
+constraints. Earlier assetless reward commitments do not describe this relation.
 
 ## Mempool and block validation flow
 
@@ -371,11 +375,12 @@ confirmed transaction; no fee opening is retained in the permanent record.
 
 ## Revised profile and activation gates
 
-The economic revision supersedes earlier single-reward-note qualification.
-Re-screen revised transaction, settlement and issuance AIRs with pinned
-`p3-security`, regenerate source-bound public keys and run three resource
-measurements per selected profile. The old artifacts below remain unchanged
-pre-revision evidence and cannot satisfy these new gates.
+The engineering freeze includes revised transaction, settlement and issuance
+AIRs, pinned `p3-security=0.9.0-rc.2` reports and 39 distinct fresh process-tree
+measurements. Settlement uses three four-worker and three one-worker processes;
+its one-worker verification timing is measured inside setup/prove/verify, not
+an independent verifier-only process. Earlier single-note measurements do not
+qualify this revised reward relation.
 
 The engineering transaction-profile freeze records the implemented AIR,
 parameters, public preprocessing commitment, fixed implementation/dependency
@@ -413,11 +418,15 @@ milestones. Clear fee limbs in the older recursive AIR remain measurement
 fixtures and are not the native V1 settlement statement. No part of this work
 is enabled on the retained network.
 
-The selected multi-asset transaction profile is b7/q41/g20; all three qualified
-four-worker generation trials complete within two seconds. Its 655,360-byte
-cap has at least 10% margin over the largest observed body. The independent
-settlement b8/q36/g20 profile retains a 524,288-byte body cap, SIP reward-asset
-constraints and the five-block reward commitment. The
+The selected transaction b7/q41/g20 profile has a 1.462877730-second
+four-worker generation median; every trial is below two seconds. Its
+655,360-byte cap is 11.2983% above the largest selected body across both worker
+groups. Fixed-576 settlement b8/q36/g20 generates in 5.523829281 seconds median
+(maximum 5.616304295), with bodies no larger than 520,203 bytes and a maximum
+charged process-tree peak of 3,161,432,064 bytes. Its one-worker verification
+median is 19.914259 ms; quantum-halved Johnson challenge union is
+81.983705354 bits. The separate 524,288-byte settlement cap and complete
+mode-selected one/five-note SIP reward relation remain fixed. The
 [multi-asset evaluation](v1-multi-asset-evaluation.md) records actual dimensions,
 all transaction scan trials, security terms and separate settlement evidence.
 These engineering profiles are not cryptographic approval or activated

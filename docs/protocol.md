@@ -1,10 +1,10 @@
 # Native V1 Protocol Requirements
 
-The [selected monetary revision](v1-economics.md) supersedes the earlier reward
-split and reopens all affected native proof profiles. Input unlock heights must
-not exceed the trusted referenced snapshot height. Settlement must bind the
-public Voyager/Holder mode and every deterministic SIP reward note. Earlier
-profile measurements and keys below remain baseline evidence only.
+The [selected monetary rules](v1-economics.md) are implemented under relation
+revision `native-v1-economics-1`. The revised transaction, settlement and
+issuance AIRs have source-bound security and reference-host measurement
+records. Public-key reproduction and complete CI remain release gates;
+engineering proof qualification does not activate a network.
 
 Status: selected native V1 requirements and isolated proof implementations.
 [Current decisions](00-decisions.md) are authoritative. The complete native
@@ -32,9 +32,12 @@ The transaction profile is b7/q41 with 20-bit query/batch grinding, zero
 commitment grinding, binary folding and final-polynomial log length zero.
 Its engineering cap is **655,360 bytes (640 KiB)**; settlement and issuance have
 separate **524,288-byte** caps. The [relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-records the pre-economic-revision freeze of this transaction shape, exactly 576-position settlement and
-exactly three-initial-note issuance with source-bound public keys. This does not
-adopt an issuance note limit or qualify other capacities. See
+records the economic transaction shape, exactly 576-position settlement and
+exactly three-initial-note issuance with source-bound public keys. The transaction
+AIR has 256 base rows, 1,392 main columns, 247 preprocessed columns and 101
+public values. The selected reference trials satisfy the two-second generation
+target; the largest selected proof across one- and four-worker trials is
+588,832 bytes. This does not adopt an issuance note limit or qualify other capacities. See
 [profile reproduction](native-proof-profiles.md) and [measurements](v1-multi-asset-evaluation.md).
 
 **Engineering target ≥80-bit quantum security, pending independent review.**
@@ -53,7 +56,11 @@ terms ≥80 bits after halving; and selected BHT commitment collision resistance
 | Identity inputs | Canonical network, suite, snapshot identity, public body and fee commitment; exclude proof bytes/length/randomness and sidecars |
 | Nullifiers | Validate every input and reject repeated or previously spent values |
 | Fees | Standard/priority anchored schedules, on-chain commitments, private validated openings, SIP-only payment |
-| Settlement | Independent native proof binds ordered fee commitments, canonical height/mode/pool context and all one or five SIP miner reward notes |
+| Settlement | Independent native proof binds ordered fee commitments, height/mode, a node-recomputed consensus reward plan and all one or five SIP miner reward notes; the shared node transition independently validates pool/burn/fund state |
+| Subsidy | Nominal 87% miner / 10% independent development-fund entitlements / 3% Holder pool; fees remain entirely with the miner |
+| Reward mode | Explicit Voyager or Holder selection per block template; no default or mid-template change |
+| Reward locks | Initial note matures after 24 blocks; Holder adds four height-locked notes; input unlocks use the trusted selected snapshot height |
+| Economic state | Pool deposits/draws, cumulative burn and independent fund vesting/spending roll back atomically |
 | State application | One deterministic integer-only atomic transition for production, validation and replay |
 | Reorganization | Local `MAX_REORG_DEPTH=24`; deeper recovery requires an explicit procedure |
 | Network capacity | Conditional minimum 43-Mbps uplink; 100 Mbps recommended |
@@ -61,7 +68,7 @@ terms ≥80 bits after halving; and selected BHT commitment collision resistance
 The isolated native block codec and shared transition enforce strict BLAKE3
 ordering and duplicate-ID rejection. Maintain swapped-ID, duplicate-ID,
 proof-replacement and sidecar-independence tests. This implementation does not
-by itself establish deployed-network or revised-economics acceptance.
+by itself establish deployed-network acceptance.
 
 The native public position ledger is 2,115 bytes: the 2,027-byte three-output
 body, 48-byte fee commitment and 40-byte snapshot selector. Complete envelope

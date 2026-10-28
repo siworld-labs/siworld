@@ -1,10 +1,13 @@
 # Native Transaction Proof Design
 
-The [monetary revision](v1-economics.md) reopens transaction, settlement and
-issuance proof qualification. Notes bind unlock heights; every input must be
-unlocked at its trusted referenced snapshot height. Settlement binds the public
-Voyager/Holder mode, one or five SIP reward notes, pool claims and fee allocation.
-Retained profiles and numerical measurements are pre-revision baselines.
+The [monetary revision](v1-economics.md) is included in the engineering-frozen
+transaction, fixed-576 settlement and three-note issuance profiles. Notes bind
+unlock heights; each nonzero input must be unlocked at its trusted referenced
+snapshot height. Settlement binds public Voyager/Holder mode, the trusted
+reward plan, one/five SIP reward notes and fee allocation. Nodes recompute that
+plan and independently validate pool, burn and fund transitions. Required CI,
+public-key reproduction, independent
+review and complete node/network acceptance remain separate gates.
 
 Status: selected native two-input/three-output transaction design,
 with isolated codec, issuance and SIP-reward settlement implementations in
@@ -348,36 +351,35 @@ deterministic and atomic. Invalid input leaves state unchanged. Proof inputs
 must never select an untrusted verification key. Use synthetic fixtures and
 independent network identities.
 
-## Pre-revision transaction profile and revised capacity gate
+## Revised transaction profile and capacity gate
 
-The pre-economic-revision scan measured log blowups 5, 6, 7 and 8 with query and batch
-grinding 20 or 24, using the minimum query count passing the actual-AIR
-80-bit screen. All eight configurations receive three fresh four-worker
-measurements on the EPYC 7763, Ubuntu 24.04, two-exposed-core/four-vCPU
-reference class. Four Rayon workers and two hiding workers are fixed.
-Prover setup is separate; generation includes the complete native proof.
-Three samples do not establish a latency-tail guarantee.
+The revised actual-AIR scan measures log blowups 5–8 and query/opening-batch
+grinding 20/24, using each coordinate's minimum query count passing the 80-bit
+screen. All eight configurations have three fresh four-worker processes on an
+EPYC 7763 Ubuntu 24.04 two-exposed-core/four-vCPU reference VM. Four Rayon
+workers and two hiding workers are fixed. Setup is separately timed; generation
+includes the complete native proof. Three samples do not bound grinding tails.
 
-Require every generation trial to be at most two seconds, then choose the
-smallest maximum observed proof body among passing configurations. The
-selected profile is log blowup 7, 41 queries, query/batch grinding 20,
-commitment grinding zero, binary folding and final polynomial log length
-zero. Its three generation times are 1.332143/1.315662/1.316440 seconds and
-maximum cgroup peak is 531,668,992 bytes, including setup, proof, verification
-and descendants. The actual security ledger has quantum-halved Johnson
-challenge union 81.692219 bits; full errors and geometry are recorded in the
-[profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json).
+The selected profile is log blowup 7, 41 queries, query/opening-batch grinding
+20, zero commitment grinding, binary folding and final-polynomial log length
+zero. Its generation trials are 1.531155438 / 1.429902190 / 1.462877730 seconds,
+with a 1.462877730-second median. Four-worker proof bodies are 581,392–585,808
+bytes and the maximum charged process-tree peak is 525,234,176 bytes. Separate
+one-worker verification has a 17.006900-ms median; that process also prepares
+and generates a proof, so its memory is not an independent verifier bound.
+The [profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+records the 1,392-main-column AIR, complete errors, source and key identity.
+Quantum-halved Johnson challenge union is 81.692218869 bits, classical
+conjectured union is 185 bits and selected W24 BHT ledger is 123.333333333 bits.
 
-Retain **655,360 bytes (640 KiB)** as the provisional multi-asset
-`MAX_LEAF_PROOF_LEN` target. The earlier relation's largest sample was
-584,848 bytes, with 12.056% margin at that cap; this does not establish margin
-for the revised lock/reward relation. Fresh selected-profile measurements must
-confirm the cap and sample headroom before refreezing. An admission cap is not
-a deterministic proof-length theorem. Reject an oversized encoding;
-never reduce security or accept truncated data to meet the cap. Settlement
-and issuance keep separate 524,288-byte caps. The old two-output decoder and
-its frozen 512-KiB limit remain unchanged; prepare and qualify the new
-multi-asset shape/decoder before node activation.
+`MAX_LEAF_PROOF_LEN` remains **655,360 bytes (640 KiB)**. The largest selected
+body across all six four-/one-worker measurements is 588,832 bytes, leaving
+11.2983% margin. The cap rounds up the required 10% margin to 64 KiB; it is
+an admission policy, not a deterministic proof-length theorem. Reject an
+oversized encoding; never weaken security or truncate data. Settlement and
+issuance retain separate 524,288-byte caps. The old two-output decoder's
+512-KiB limit is unchanged and cannot admit the revised shape. Native decoder,
+wallet and standalone-verifier resource qualification precede activation.
 
 The canonical public body remains 2,027 bytes, with 48 fee-commitment bytes
 and a 40-byte snapshot selector: 2,115 permanent bytes per position. The
@@ -509,9 +511,10 @@ transaction AIR, encrypted plaintext, statement digest and trusted verifier key.
 The isolated implementation includes the actual three-output codec, per-asset
 balance AIR, native fixed-supply issuance proof with ML-DSA-65 verification, and
 a SIP-only reward constraint inside the settlement AIR. The two-output baseline
-is unchanged. The pre-economic-revision transaction engineering profile was frozen after the
-qualified three-trial generation scan; complete integration, independent
-review and sustained testnet acceptance remain outstanding.
+is unchanged. The revised unlock-height and economic reward relations have
+fresh actual-AIR reports and a 39-scope EPYC measurement record. Their
+engineering parameter freeze does not complete required CI/key reproduction,
+node/wallet integration, independent review or sustained testnet acceptance.
 
 See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md),
 [V1 Multi-Asset Transaction Format](v1-multi-asset.md), and

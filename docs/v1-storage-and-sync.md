@@ -4,8 +4,8 @@ Status: selected retention policy and conditional component model for the
 [V1 economic revision](v1-economics.md). The tables use the explicit
 `--economic-rewards` planning mode: five reward notes and two current native
 fund-payout slots are covered by a provisional 32-KiB permanent block-record
-allowance. This is not measured database overhead or renewed qualification of
-the changed AIR. Final issuance limits, persistent records and long-run
+allowance. The `native-v1-economics-1` proof profiles have fresh reference-host
+evidence; the record allowances are not measured database overhead. Final issuance limits, persistent records and long-run
 whole-node resource qualification remain incomplete. Transaction, settlement
 and issuance proof limits are independent.
 
@@ -88,7 +88,7 @@ codecs implement these wire encodings; final persistent record layout and
 measured database overhead remain integration work.
 
 Use decimal GB, 365-day years, 288 target blocks/day and 576 positions/block.
-Use the retained provisional **655,360-byte (640-KiB) transaction proof cap** independently
+Use the engineering-frozen **655,360-byte (640-KiB) transaction proof cap** independently
 of the 524,288-byte settlement and issuance caps, plus 78-byte sidecars. The nominal rolling window
 is 888 blocks; it does not accumulate again each year. A larger proof cap adds
 rolling storage while the permanent 2,115-byte position ledger is unchanged.
@@ -109,7 +109,8 @@ proof/block beyond ordinary positions. The total rolling allowance is
 **336.180 GB**. This overcounts if issuance occupies an ordinary transaction
 position. The retained cap sizes rolling storage; new lock fields fit the
 fixed note/body padding, so permanent per-position bytes are unchanged.
-Fresh revised proof measurements must confirm all proof caps independently.
+The revised measurements fit all three independent proof caps. This does not
+bound future randomized proof sizes or qualify the persistent record model.
 
 Permanent position records add 128.061 GB/year at maximum load. To include
 the other categories explicitly, the revised planning scenario uses:
@@ -227,22 +228,26 @@ One real three-day-after-finality lifecycle is required by
 
 ## Supply audit implementation requirement
 
-Provide an integer-only height-by-height SIP issuance auditor using the shared
-subsidy schedule and [monetary transition](v1-economics.md). Recompute nominal
-87/10/3 nominal allocations and the adopted independent fund-wallet ratios, mode-specific rewards, Holder pool deposits/claims,
+The native integer-only height-by-height SIP auditor uses the shared subsidy
+schedule and [monetary transition](v1-economics.md). It replays nominal 87/10/3
+allocations and explicit independent fund-wallet ratios, mode-specific rewards,
+Holder pool deposits/claims,
 cumulative burn, locked subsidy schedules, per-credit fund maturity/vesting,
 valid ML-DSA expenditures and counters, and cumulative SIP emission against
 the curve. Check supply conservation at every height. Public lock/circulation
 figures are scheduled subsidy measures, not private unspent holdings. Transfers and fee recycling are not new issuance.
-Verify public asset declarations and the native issuance-to-note supply
-relation separately; do not infer private holdings or reveal fee openings.
+The native audit includes signed fund spending but not integrated asset
+issuance admission. Public asset declarations and the native issuance-to-note
+supply relation require separate integration; do not infer private holdings
+or reveal fee openings.
 
 Authenticate audit inputs through the permanent record/checkpoint manifest.
 Report the first bad height and reproducible cumulative totals. Tests must
 reject altered subsidy, fund credits, payout signatures/counters, duplicate
-issuance and over-minting, and reconcile reorganization rollback. The tool is
-an implementation gate; a size table or an unauthenticated JSON sum does not
-constitute a supply audit.
+issuance and over-minting, and reconcile reorganization rollback. The native
+subsidy/fund audit does not close the asset-issuance audit, authenticated
+checkpoint-input or deployed recovery gates. A size table or unauthenticated
+JSON sum does not constitute a supply audit.
 
 ## Backup checkpoint freshness
 

@@ -2,10 +2,11 @@
 
 Status: engineering acceptance requirements for the independent native-proof
 testnet. The two-input/three-output transaction, fixed-576 settlement and
-three-initial-note issuance proof relations have a pre-economic-revision
-source-bound baseline. The [selected monetary revision](v1-economics.md)
-reopens their freeze and requires new keys, actual-AIR reports and resource
-measurements. Earlier generation measurements are separate baseline evidence.
+three-initial-note issuance proof relations have source-bound
+`native-v1-economics-1` profiles, fresh actual-AIR reports and 39 EPYC 7763
+reference trials. Public-key reproduction and complete CI remain release
+checks. Earlier generation measurements and pre-revision service observations
+are separate baseline evidence.
 The earlier single-asset freeze is an unchanged diagnostic baseline; node,
 wallet, transport, independent-verifier and recovery integration remain incomplete. A passed
 standalone benchmark is not testnet acceptance. Operating thresholds below
@@ -32,9 +33,9 @@ work. N=32 and retained-history verifier migration are excluded.
 
 ## Gate 1: proof identity and independent review
 
-Generate new source-bound keys and actual-AIR reports after implementing the
-economic revision; old artifact checks must reject changed sources. To inspect
-the unchanged baseline, reproduce the [three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+Reproduce the economic source-bound public keys and actual-AIR reports;
+artifact checks must reject changed sources. Verify the
+[three-relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
 using [the fixed profile procedure](native-proof-profiles.md). Its shapes are
 exactly two-input/three-output transaction, 576-position settlement and
 three-initial-note issuance. This does not adopt issuance policy or qualify
@@ -62,8 +63,8 @@ Require classical conjectured security of at least 128 bits, quantum-halved
 Johnson Fiat–Shamir terms of at least 80 bits including enforced grinding,
 challenge-domain terms of at least 80 bits after halving, and at least
 80-bit BHT commitment collision resistance. Apply the screen to each native
-AIR and review their protocol composition. The approximately 81.9-bit
-diagnostic ledger and [BHT conversion](bht-security-accounting.md) are model
+AIR and review their protocol composition. The selected transaction's approximately 81.692-bit quantum-halved Johnson
+ledger and 123.333-bit [BHT conversion](bht-security-accounting.md) are model
 accounting, not independent cryptographic approval. Review application hashes,
 transcript binding, hiding, fee privacy, dependency changes and wallet key
 lifecycle separately. Close security-limiting findings before public launch.
@@ -82,7 +83,7 @@ amount/fee carries, issuance and partial-failure rollback.
 
 Validate complete ordered blocks at 64, 80, 544 and 576 positions. Reject
 counts outside the range or not divisible by 16. Bind each statement exactly
-once to settlement and the miner reward commitment. Derive the fixed AIR's
+once to settlement and all mode-dependent miner reward commitments. Derive the fixed AIR's
 unused internal tails canonically; do not add extra chain positions. Verify
 transaction proofs independently of settlement, with private anchored fee
 schedules and no public fee total or miner amount.
@@ -180,10 +181,13 @@ settings, process-tree limits, CPU quota/throttling, peak charged memory,
 individual values, medians and maxima. No OOM, restart or silent retry passes.
 
 The selected transaction-generation gate is at most two seconds in all three
-four-worker trials on the qualified reference. The earlier b7/q41/g20 profile
-passed only its pre-economic-revision gate; revised AIRs must pass anew. Transaction proof bodies must fit 655,360 bytes;
+four-worker trials on the qualified reference. The economic b7/q41/g20
+transaction trials range from 1.429902190 to 1.531155438 seconds, with a
+1.462877730-second median. Their maximum charged process-tree peak is
+525,234,176 bytes. Transaction proof bodies must fit 655,360 bytes;
 settlement and issuance bodies retain separate 524,288-byte caps. The 640-KiB
-transaction cap gives at least 10% margin over the selected measured maximum;
+transaction cap gives more than 10% margin over the 588,832-byte selected
+maximum across one- and four-worker measurements;
 it is not a deterministic size theorem. Measure independent transaction and
 settlement verification separately. Cold start and readiness are separate timing markers; startup
 memory remains inside the lifetime resource boundary.
@@ -205,9 +209,10 @@ Height equality or a cached busy response is insufficient.
 
 At the 43-Mbps uplink floor, the capped multi-asset three-copy transaction
 and settlement payload requires 30.345178 Mbps. The
-[complete wire model](v1-network-budget.md) requires 36.501639 Mbps after
-control, transport, reciprocal ACK, bounded issuance, retransmission and
-recovery costs. The floor leaves 15.112% capacity unused; recommend 100 Mbps.
+[complete economic wire model](v1-network-budget.md) requires 36.51260160 Mbps
+after control, transport, reciprocal ACK, bounded issuance, all five reward
+records, two signed fund payout slots, retransmission and recovery costs.
+The floor leaves 15.086973% capacity unused; recommend 100 Mbps.
 Reconcile every assumption against packet/application counters and qualify
 both bandwidth profiles using the actual hybrid listener, concurrent ingress,
 losses, missing bodies and handshake churn. Report overload without silently
@@ -333,7 +338,9 @@ The following scope is required; this list does not claim tests have passed.
 Re-screen every affected actual AIR for classical conjectured security at
 least 128 bits, quantum-halved Johnson/challenge terms at least 80 bits and
 selected BHT collision resistance at least 80 bits. Report all three measured
-four-worker generation trials, body bytes, standalone verification, charged
-peak memory and events. Retain a two-second transaction generation target,
+four-worker generation trials, body bytes, one-worker verifier-call timing,
+charged process-tree peak memory and events. Require a separate
+verification-only process before qualifying verifier memory or CPU guards;
+the completed setup/prove/verify scopes do not supply that evidence. Retain a two-second transaction generation target,
 655,360-byte body cap and 576 positions. Reconcile complete network/storage
 bytes, preserving at least the agreed measurement margin before refreezing.

@@ -1,10 +1,12 @@
 # Native V1 Monetary Rules
 
-Status: selected consensus requirements under implementation. The native
-accounting reference is `crates/core/src/v1_economics.rs`; the legacy issuance
-module and retained seven-node network keep their existing rules. The economic
-revision reopens the native proof freeze. No old measurement or verifier key
-qualifies the revised transaction, settlement or issuance relation.
+Status: selected native monetary rules with implemented integer accounting,
+revised proof relations and engineering-frozen proof parameters. The accounting
+reference is `crates/core/src/v1_economics.rs`. Fresh actual-AIR reports and EPYC
+measurements qualify the revised isolated profiles; required CI, public-key
+reproduction, durable wallet/network integration and independent review remain
+separate gates. The legacy issuance module and retained seven-node network
+keep their existing rules.
 
 ## Units and emission
 
@@ -83,8 +85,8 @@ unlock height must fail validation.
 ## Locked-note spending
 
 Every note commitment and encrypted note plaintext bind the u64 unlock height.
-Ordinary unrestricted notes use zero. For every input the transaction AIR
-requires `unlock_height <= snapshot_height`, where the height comes from the
+Ordinary unrestricted notes use zero. For each nonzero input the transaction
+AIR requires `unlock_height <= snapshot_height`, where the height comes from the
 trusted canonical snapshot referenced by that proof. Membership, ownership,
 asset balance, fee and nullifier checks remain mandatory under their existing
 rules. A note cannot be unlocked early by changing its ciphertext, witness,
@@ -225,13 +227,32 @@ atomic reorganization tests; tail-threshold tests; and a deterministic
 Publish actual results and source-bound reports after execution. No result is
 implied by listing this acceptance scope.
 
-Re-screen the actual revised AIRs with pinned `p3-security`, conjectured
-classical security at least 128 bits and quantum-halved Johnson/challenge terms
-at least 80 bits, with selected BHT commitment collision resistance at least
-80 bits. Measure each candidate three times on the four-vCPU EPYC 7763 profile.
-The transaction requirement remains at most two seconds per generation trial,
-a 655,360-byte proof body and 576 positions per block. Retain at least 10% body
-cap margin; report new complete wire/storage costs before lowering any budget.
-Independent review includes the unlock relation, mode-dependent settlement,
-Holder pool/burn, fund vesting/spending, recursion-free composition and hiding
-implementation. Previous keys and measurements are baseline evidence only.
+The [revised actual-AIR scan](v1-multi-asset-evaluation.md) uses pinned
+`p3-security=0.9.0-rc.2` and 39 fresh EPYC 7763 process-tree scopes. Selected
+transaction b7/q41/g20 generates in 1.531155438 / 1.429902190 / 1.462877730
+seconds with four workers. Quantum-halved Johnson challenge union is
+81.692218869 bits, classical conjectured union is 185 bits and selected W24
+BHT collision ledger is 123.333333333 bits. The 655,360-byte body cap is
+11.2983% above the largest selected body, 588,832 bytes across both worker
+groups. The maximum charged process-tree peak is 525,234,176 bytes; one-worker
+verification median is 17.006900 ms. This is not independent verifier-memory
+or whole-node acceptance.
+
+Fixed-576 revised settlement generates in 5.523829281 seconds median with four
+workers, maximum body 520,203 bytes and charged peak 3,161,432,064 bytes.
+Three-note issuance generates in 0.639979907 seconds median, maximum
+four-worker body 280,401 bytes and charged peak 211,423,232 bytes. Both retain
+independent 524,288-byte caps and pass their own 80-bit quantum screens.
+The current source-bound reports replace earlier baseline qualification;
+required CI and deterministic public-key reproduction remain release checks.
+
+Keep 576 positions, two-second transaction trials, at least 80 quantum-halved
+Johnson/challenge bits, classical conjectured security at least 128 bits and
+selected BHT collision resistance at least 80 bits. Any parameter/layout
+revision requires fresh screening and equivalent measurements. Unchanged proof
+caps preserve the complete conditional 43-Mbps uplink and rolling-storage
+budgets; do not lower them solely from smaller sampled bodies. Independent
+review includes snapshot-height locks, mode-dependent settlement, Holder
+pool/burn, fund vesting/spending, recursion-free composition and hiding.
+Launch fund recipients/weights remain unconfigured; the current native codec
+supports two key slots and must fail closed without explicit allocation.

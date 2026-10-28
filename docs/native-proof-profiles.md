@@ -1,21 +1,21 @@
 # Native Proof Profile Reproduction
 
-Status: reproduction of the pre-economic-revision native proof baseline. The
-[monetary revision](v1-economics.md) changes input-lock and settlement relations
-and invalidates qualification of these keys for revised V1. Earlier source-bound
-artifacts remain unchanged historical evidence. Revised sources must fail their
-old source-binding check; reproduce the old artifacts only at their recorded
-source revision. New reports, keys and measurements must be generated from the
-revised sources before a new freeze. This is not cryptographic approval or
-network activation.
+Status: engineering-frozen native proof parameters for relation revision
+`native-v1-economics-1`. Schema-two artifacts bind the revised snapshot-height
+input locks and reward relations to measured sources, actual-AIR reports and
+public preprocessing keys. The transaction scan contains 24 four-worker grid
+trials, three selected one-worker transaction trials and 12 settlement/issuance
+trials split across one/four-worker processes: 39 trials in total. Engineering
+freeze is separate from release validation, cryptographic approval, native
+node/network activation and integrated resource acceptance.
 
 ## Fixed relation scope
 
 | Relation | Fixed shape | FRI profile | Proof-body admission requirement |
 | --- | --- | --- | ---: |
-| Transaction | Two inputs, three outputs; per-asset balance and SIP-only fees | Blowup 7, 41 queries | 655,360 bytes |
-| Fee settlement | 576 ordered positions; reward asset is SIP | Blowup 8, 36 queries | 524,288 bytes |
-| Asset issuance | Three initial notes; fixed public supply | Blowup 8, 36 queries | 524,288 bytes |
+| Transaction | Two inputs, three outputs; per-asset balance, SIP-only fees and snapshot-height input locks | Blowup 7, 41 queries | 655,360 bytes |
+| Fee settlement | 576 ordered positions; SIP reward asset and one/five mode-dependent reward notes | Blowup 8, 36 queries | 524,288 bytes |
+| Asset issuance | Three initial unlocked notes; fixed public supply | Blowup 8, 36 queries | 524,288 bytes |
 
 All use KoalaBear D8, Poseidon2 W24, twelve-element digests, query and opening-
 batch grinding of 20 bits, zero commitment grinding, binary folding and final
@@ -26,10 +26,11 @@ own preprocessing identities; this manifest freezes the maximum-capacity shape.
 
 The [relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
 records deterministic public preprocessing keys, actual-AIR security reports,
-parameters and fixed capacities. It binds the unchanged
+parameters and fixed capacities. It binds the current
 [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json),
-which already pins native source files, dependency identities and the measured
-transaction selection. Each new key uses the offline `SWMP-v1` encoding:
+which pins native source files, dependency identities, the measured transaction
+selection and repeated one/four-worker measurements for all three relations.
+Each new key uses the offline `SWMP-v1` encoding:
 `magic[4]`, little-endian version `u16`, relation kind `u8`, capacity `u32`, six
 FRI parameter `u32` values, preprocessing width `u32`, degree bits `u32`,
 commitment byte length `u32`, and the canonical dependency-encoded commitment.
@@ -39,12 +40,18 @@ it does not register a consensus envelope or permit peer-supplied keys.
 
 The security reports pass the selected instance-specific accounting model.
 External review must assess the implementation, hiding, application hashes and
-protocol composition. Existing diagnostic measurements are not new full-block,
-standalone-verifier or sustained-load qualification.
+protocol composition. The measured transaction shape has 256 base rows,
+1,392 main columns, 247 preprocessed columns and 101 public values. Its selected
+quantum Johnson ledger is 81.692 bits. The hosted process-tree measurements do
+not establish standalone-verifier memory, full-block or sustained-load
+qualification.
 
 ## Reproduce the public keys
 
-Use the pinned Rust toolchain and Python 3.11 or newer. The commands below
+Use the pinned Rust toolchain and Python 3.11 or newer. The reproduction tool
+reads the selected parameters from the transaction profile at compile time.
+Rebuild it after changing or restoring that profile; an executable compiled with
+an earlier profile does not reproduce a later freeze. The commands below
 target Linux x86_64, where the repository release baseline requires AVX2 and
 operating-system AVX state support. Compile the CPU admission checker directly
 with the generic x86-64 baseline, independently of Cargo target flags. It must
@@ -85,7 +92,7 @@ python3 scripts/check-native-proof-profiles.py \
 Do not substitute downloaded or peer-provided keys. `--check` alone validates
 the recorded manifest and source binding; `--reproduced` additionally compares
 the regenerated keys and complete security reports. The transaction commitment
-must also match the existing frozen transaction key. Public preprocessing is
+must also match the current frozen transaction key. Public preprocessing is
 performed serially to avoid unnecessary concurrent memory pressure.
 
 ## Generate and verify synthetic proofs
@@ -121,8 +128,11 @@ it does not consume an actual on-chain fee payment. Production issuance must
 use `IssuanceProver::verify_signed` with authenticated network/policy context and
 atomic exactly-once SIP-payment consumption. Transactions require a verifier-
 selected canonical snapshot and reconstructed public statement. Settlement
-requires the ordered transaction/fee list, subsidy, height and network context
-from the candidate block. The standalone diagnostics supply none of the durable
+requires the ordered transaction/fee list and an authenticated consensus reward
+plan, including mode, allocation amounts and unlock heights. The node derives
+that plan from the canonical parent state, subsidy schedule and height; a
+peer-supplied plan is not authoritative. Network and transaction-list identities
+are also bound to the candidate block. The standalone diagnostics supply none of the durable
 node state transitions, compact relay or wallet recovery required for launch.
 
 ## Ordering and integration boundary

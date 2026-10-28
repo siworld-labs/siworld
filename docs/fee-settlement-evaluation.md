@@ -1,18 +1,57 @@
 # Confidential Fee Settlement Evaluation
 
-The measurements in this document predate the [monetary revision](v1-economics.md).
-They are retained reproducible baseline evidence only. Input lock constraints,
-mode-dependent reward notes and revised settlement context require fresh AIR
-security reports, source-bound keys and performance/memory measurements.
-No earlier sampled result qualifies the revised V1 relation.
+Status: engineering-frozen fixed-576 settlement proof profile for the
+[revised monetary relation](v1-economics.md). The
+[source-bound manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+records parameters, actual-AIR reports and public preprocessing identities.
+Fresh EPYC measurements cover the public mode, reward-plan binding, SIP asset
+and one/five reward-note relation. The benchmark uses synthetic plan allocations;
+nodes must recompute the plan from trusted state and independently validate
+pool, burn and fund transitions. Required CI, key reproduction,
+complete native integration, independent verifier resources and independent
+review remain separate gates. No network activation is implied.
 
-Status: selected Route A V1 settlement design with an isolated native AIR and
-measured proof implementation. It is not an activated consensus rule. Native
-block integration, resource qualification and independent review remain gates.
-The [source-bound manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-records the pre-revision fixed-576 settlement shape, parameters and
-public preprocessing key; it does not qualify revised reward settlement. Smaller-capacity keys require separate identities.
-The transaction profile and earlier diagnostic tables remain separate evidence.
+## Revised fixed-576 measurement
+
+[Hosted run 40746559683, attempt 2](https://github.com/siworld-labs/siworld/actions/runs/40746559683/attempts/2)
+measured source `7eecc60b9a1b0e7d6b348952daae06cd145abf3a` on Ubuntu 24.04,
+AMD EPYC 7763, two exposed physical cores and four vCPUs. The release baseline
+is `x86-64-v3`. Settlement uses blowup 8, 36 queries, 20-bit query/opening-batch
+grinding, zero commitment grinding, binary folding and final-polynomial log
+length zero. Its body cap remains 524,288 bytes.
+
+| Extracted AIR dimension | Value |
+| --- | ---: |
+| Base rows | 1,024 |
+| Main columns | 581 |
+| Preprocessed columns | 609 |
+| Public values | 7,050 |
+| Constraints | 19,703 |
+| Maximum degree | 3 |
+| Classical conjectured union (bits) | 185.000000 |
+| Classical Johnson union (bits) | 163.974037303 |
+| Quantum-halved Johnson challenge union (bits) | 81.983705354 |
+| Selected W24 BHT collision ledger (bits) | 123.333333333 |
+
+| Workers | Three generation times (s) | Generation median (s) | Verification median (ms) | Observed proof bytes | Maximum charged peak (bytes) |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 4 | 5.523829281 / 5.616304295 / 5.424077424 | 5.523829281 | 20.130663 | 514,635–520,203 | 3,161,432,064 |
+| 1 | 11.954381874 / 11.282064820 / 11.290169489 | 11.290169489 | 19.914259 | 499,130–516,699 | 3,158,740,992 |
+
+All six fresh process-tree scopes completed with `memory.max=5368709120`,
+`memory.swap.max=0` and zero recorded memory-event deltas. Setup is separately
+timed. Charged peaks cover complete setup/prove/verify processes, descendants
+and recorder. The one-worker verifier timer is not a verifier-only process,
+and its peak cannot establish independent verifier memory. No per-phase
+charged-memory peak is inferred. The 5-GiB scope is a diagnostic boundary,
+not a miner hardware requirement.
+
+The [complete evaluation](v1-multi-asset-evaluation.md) records setup and process
+wall medians, all three proof relations and the full transaction grid. The
+current native fund codec supports two key slots; launch recipients and fund
+weights remain unconfigured. This measurement supplies no production allocation
+or proof of complete-block processing. The old two-output tables below remain
+explicitly diagnostic evidence only.
 
 ## Fixed requirements
 
@@ -43,10 +82,12 @@ The settlement relation is a native, non-recursive STARK. For every fixed
 position it checks the commitment opening and adds fees with checked integer
 carries. The transaction proof enforces the private anchor's fee schedule and
 zero-fee padding rule; settlement must not impose the current fee schedule on
-an older anchored transaction. It binds the resulting private sum to the
-SIP miner reward note. The proof binds the ordered compact references and the
-capacity, so an omitted, duplicated, or reordered transaction cannot be
-settled by reusing a valid proof.
+an older anchored transaction. All fees enter reward note zero; the AIR binds
+the public mode, node-recomputed consensus reward plan and every one/five SIP
+reward note, including its unlock height. Pool, burn and fund updates are
+independently checked by the shared node transition. The proof binds ordered
+compact references and capacity,
+so an omitted, duplicated or reordered transaction cannot reuse a valid proof.
 
 Transaction, settlement and native issuance proofs and private fee-opening
 sidecars are retained for three elapsed days after final confirmation, then
@@ -61,10 +102,12 @@ with a zero fee and a dummy transaction with a nonzero fee are invalid.
 
 ## Required measurements
 
-The settlement AIR must be instantiated at capacities 64, 128, 256, 384, 512,
-and 576 positions. The 576-position result is the V1 upper-capacity gate.
-Each capacity is measured three times on the qualified target host after
-one-time circuit setup, key generation, and dependency loading have completed.
+The revised settlement AIR has fixed capacity 576, including deterministic
+internal zero-fee rows when a block has fewer active positions. The fresh
+576-position profile above is the maximum-capacity isolated measurement.
+Workload evaluations with 64, 128, 256, 384 and 512 active positions remain
+separate evidence; they do not select different public keys. Measure each
+workload three times after one-time setup and dependency loading.
 The report records the median and all three samples for:
 
 * AIR rows, main columns, preprocessed columns, constraint count and maximum
@@ -83,16 +126,16 @@ visible in the result rather than silently omitted. The report must retain the
 exact suite, verifier key hash, compiler profile, worker count, capacity, and
 input digest list used by each sample.
 
-The repository validator prints the required private-bundle schema with
-`python3 scripts/check-fee-settlement-evaluation.py --schema` and validates a
-completed bundle without launching a prover. It requires all six capacities,
-exactly three trials per capacity, and SHA-256 references for the AIR, key,
-and executable artifacts.
+The earlier variable-capacity diagnostic validator prints its private-bundle
+schema with `python3 scripts/check-fee-settlement-evaluation.py --schema`.
+It requires six capacities and three trials per capacity, with AIR/key/binary
+identities. That schema validates the older diagnostic series below; current
+economic-profile qualification uses the source-bound transaction/relation
+manifest and the 39-scope measurement record linked above.
 
-The logical witness work before a concrete AIR is frozen is one fee-opening
-hash, four 16-bit fee limbs, one tier flag, one dummy flag, and one checked
-sum per position, followed by one miner-note commitment. These counts are
-planning quantities only; they are not AIR row or proof-size measurements.
+Use the extracted revised dimensions and measurements above for the current
+relation. Older diagnostic witness counts and variable-capacity AIRs below do
+not describe its mode-dependent reward statement or fixed public key.
 
 ## Two-output diagnostic baseline
 
@@ -165,9 +208,9 @@ The reference model and native AIR tests exercise the four required rejection
 cases: a commitment sum different from the miner reward fee component, a
 forged opening that does not recompute the published commitment, a padding
 position with a nonzero fee, and a real position with a zero fee. Until
-qualified-host memory measurements and the remaining review gates are
-available, Scheme B remains a V1 evaluation candidate and must not be
-described as production-ready or activated on the retained network.
+the revised relation's complete integration and review gates are satisfied,
+these two-output samples remain historical diagnostics. They are not
+production-readiness or activation evidence for the current profile.
 
 No qualified EPYC 7763 Ubuntu 24.04 cgroup result is included in this
 two-output baseline table. Current-profile measurements are recorded separately

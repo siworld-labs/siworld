@@ -1,225 +1,242 @@
 # Native Multi-Asset Proof Profile and Measurements
 
-The measurements in this document predate the [monetary revision](v1-economics.md).
-They are retained reproducible baseline evidence only. Input lock constraints,
-mode-dependent reward notes and revised settlement context require fresh AIR
-security reports, source-bound keys and performance/memory measurements.
-No earlier sampled result qualifies the revised V1 relation.
+Status: engineering-frozen proof parameters for the revised native V1
+transaction, fixed-576 settlement and three-note issuance relations. These
+relations include trusted snapshot-height input locks and Voyager/Holder
+reward settlement. The [profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+and [relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+bind source, parameters, actual-AIR security and public preprocessing identities.
+Reproduce those identities using [the public procedure](native-proof-profiles.md).
+Required CI, independent review and node/network acceptance remain distinct
+release gates. No public-network activation or whole-system approval is implied.
 
-Status: pre-economic-revision native transaction baseline with reproducible
-instance-specific security and performance evidence. This is not independent
-cryptographic approval, network activation or whole-node acceptance. The
-D8/W24/12-element relations run natively without recursion.
+The suite is KoalaBear D8, standard Poseidon2 W24 and twelve-element digests.
+All three relations run natively without recursive aggregation.
 
 ## Selected transaction profile
 
-The [engineering profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-selects `log_blowup=7`, 41 queries, 20-bit query grinding, 20-bit batch
-grinding, zero commitment grinding, binary folding and final polynomial log
-length zero. All three four-worker generation trials on the qualified EPYC
-7763 reference profile complete within two seconds. Among the profiles that
-meet that rule, this profile has the smallest maximum observed proof body.
+The selected profile is `log_blowup=7`, 41 queries, 20-bit query grinding,
+20-bit opening-batch grinding, zero commitment grinding, binary folding and
+final-polynomial log length zero. Each of its three four-worker generation
+trials is below two seconds. It minimizes the largest observed proof body
+among the measured profiles passing the generation and body-size limits.
 
 | Selected-profile measurement | Value |
 | --- | ---: |
-| Generation trials, seconds | 1.332143 / 1.315662 / 1.316440 |
-| Generation median, seconds | 1.316440 |
-| Observed proof body, bytes | 583,552--584,848 |
+| Four-worker generation trials, seconds | 1.531155438 / 1.429902190 / 1.462877730 |
+| Four-worker generation median, seconds | 1.462877730 |
+| Four-worker proof bodies, bytes | 581,392–585,808 |
+| One-worker proof bodies, bytes | 585,520–588,832 |
+| Maximum body across both worker groups, bytes | 588,832 |
 | Body admission cap, bytes | 655,360 (640 KiB) |
-| Cap above maximum observed body | 12.0565% |
-| Maximum process-tree charged memory, bytes | 531,668,992 |
-| Verification median in a four-worker process, milliseconds | 16.9034 |
-| Classical conjectured union, bits | 185.0000 |
-| Classical Johnson union, bits | 163.3846 |
-| Quantum-halved Johnson challenge union, bits | 81.6922 |
-| Selected W24 commitment BHT ledger, bits | 123.3333 |
+| Cap above maximum observed body | 11.2983% |
+| Maximum charged process-tree memory across both groups, bytes | 525,234,176 |
+| One-worker verification median, milliseconds | 17.006900 |
+| Classical conjectured union, bits | 185.000000 |
+| Classical Johnson union, bits | 163.384583911 |
+| Quantum-halved Johnson challenge union, bits | 81.692218869 |
+| Selected W24 commitment BHT ledger, bits | 123.333333333 |
 
-The cap is at least 10% above the largest observed body and is rounded up to
-64 KiB. It is an admission limit, not a mathematical maximum-size theorem for
-all randomized valid proofs. The new multi-asset wallet/envelope/decoder and
-node admission must enforce it before activation. The unchanged two-output
-`bench-d8` baseline retains its own 512-KiB decoder and proof profile.
+The cap is at least 10% above the maximum selected body from all six processes,
+rounded up to 64 KiB. It is an enforced admission policy, not a mathematical
+upper bound for every randomized valid proof. Reject oversized encodings;
+never truncate a proof or reduce security to fit. Settlement and issuance have
+independent 524,288-byte caps. The earlier two-output `bench-d8` decoder retains
+its own 512-KiB limit and does not admit this revised relation.
 
-Three successful trials do not establish a worst-case proving-time bound:
-hash grinding has probabilistic runtime, and shared-host load varies. No
-security setting, 576-position block limit or capacity is reduced to meet the
-performance criterion. Circuit-width and query-opening optimization follows a
-[separate structural plan](multi-asset-air-optimization.md); replacement
-parameters or lower bandwidth requirements need new evidence and an explicit
-profile revision.
+Three samples do not bound grinding tails or shared-host contention. The
+576-position maximum and security requirements are unchanged. A smaller cap,
+different parameters or lower bandwidth requirement needs a new measured,
+source-bound revision.
 
 ## Reference execution and measurement scope
 
-[Hosted run 40465519899, attempt 2](https://github.com/siworld-labs/siworld/actions/runs/40465519899/attempts/2)
-measured source commit `46b793e24ed42495d6c0c4c051e5a06fb4d56b13`.
-The runner reported Ubuntu 24.04, AMD EPYC 7763, two exposed physical cores
-and four vCPUs under Microsoft virtualization. Four CPUs were available in the
-worker affinity mask. AVX2 was present and AVX-512 was absent. This establishes
-the exposed reference hardware profile, not identity with a previous ephemeral
-VM or exclusive access to the physical host.
+[Hosted run 40746559683, attempt 2](https://github.com/siworld-labs/siworld/actions/runs/40746559683/attempts/2)
+measured source commit `7eecc60b9a1b0e7d6b348952daae06cd145abf3a`.
+The runner reported Ubuntu 24.04, AMD EPYC 7763, two exposed physical cores,
+four vCPUs and four affinity CPUs under Microsoft virtualization. AVX2 was
+present; AVX-512 was absent. This is the exposed reference profile, not a
+claim of exclusive access to the physical host or a reserved persistent VM.
 
-The release uses the repository x86-64-v3 baseline, four Rayon workers and two
-internal hiding workers, fixed dependencies and the startup CPU guard. All 24
-fresh process-tree trials exited successfully under
-`memory.max=5368709120`, `memory.swap.max=0`. Every `memory.events` delta,
-including `max`, `oom`, `oom_kill` and `oom_group_kill`, was zero. Visible scope
-and parent `cpu.max` values were `max 100000`; no finite visible quota reduced
-the four-worker process.
+The release uses fixed `x86-64-v3`, pinned dependencies and the CPU admission
+guard. Grid processes use four Rayon workers and two hiding workers; separate
+one-worker processes use one Rayon worker and one hiding worker. All 39 distinct
+fresh process-tree scopes completed under `memory.max=5368709120` and
+`memory.swap.max=0`. All recorded `memory.events` deltas, including `max`,
+`oom`, `oom_kill`, `oom_group_kill` and the optional `sock_throttled` counter,
+were zero. Visible scope and parent `cpu.max` values were `max 100000`.
 
-Generation times measure the actual native proof generation after one-time
-preprocessing. Preparation is separately timed and must occur at service
-startup and remain resident in the integrated wallet/prover. The reported
-charged-memory peak covers the whole fresh setup/prove/verify process tree,
-including descendants and the recorder. It is not a standalone verifier-memory
-bound or a miner hardware requirement. The 5-GiB scope is a diagnostic boundary.
-Verification in this scan uses the same four-worker process; single-worker
-verification and malformed-proof resource limits for this selected profile
-remain separate qualification work.
+The 39 scopes comprise 24 transaction-grid trials, three selected-transaction
+one-worker trials, six settlement trials and six issuance trials. The selected
+four-worker transaction group reuses its three grid trials. It is not three
+additional measurements.
+
+Generation times cover complete native proof generation after separately
+timed one-time preprocessing. Integrated service readiness must prepare and
+retain that state. Charged memory covers each whole fresh setup/prove/verify
+process tree, descendants and recorder. One-worker verification timings are
+from one-worker processes that also set up and generate a fresh proof. They
+are not isolated verifier-only processes, so their charged peaks do not
+establish verifier-only memory bounds. The 5-GiB diagnostic scope is not a
+miner RAM requirement. Malformed-input, concurrent-verifier and sustained
+whole-node qualification remain outstanding.
 
 ## Complete eight-profile scan
 
-Every row uses the minimum query count passing the actual-instance security
-screen for the indicated blowup and grinding. Query and batch grinding have
-the same value; commitment grinding is zero, folding is binary and final
-polynomial log length is zero. Each row contains three fresh four-worker
-processes; proof ranges and peak charged memory cover those three processes.
-The selection requires every generation trial to be at or below two seconds,
-then minimizes the maximum observed proof body. Median-only qualification is
-not used.
+Every row uses the minimum query count passing the actual-AIR screen at the
+specified blowup and grinding. Query and opening-batch grinding match;
+commitment grinding is zero, folding is binary and final-polynomial log length
+is zero. All rows have classical conjectured union 185 bits and selected W24
+BHT collision ledger 123.333333 bits. The profile retains complete raw security
+terms for every coordinate. Proof ranges and charged peaks cover each row's
+three four-worker processes.
 
-| log blowup | Queries | Query/batch grinding | Three generation times (s) | Observed proof bytes | Maximum cgroup peak (bytes) | Quantum Johnson union (bits) | All three <=2 s |
-| ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |
-| 5 | 57 | 20 | 0.347746 / 0.431773 / 0.315287 | 685,631--693,071 | 143,482,880 | 81.1698 | Yes |
-| 5 | 55 | 24 | 4.687113 / 9.904237 / 5.536282 | 674,707--676,387 | 143,736,832 | 80.6726 | No |
-| 6 | 47 | 20 | 0.753690 / 0.842322 / 0.717343 | 616,467--624,964 | 272,478,208 | 80.4338 | Yes |
-| 6 | 46 | 24 | 2.049190 / 3.087182 / 5.130963 | 615,278--619,838 | 273,338,368 | 80.9352 | No |
-| 7 | 41 | 20 | 1.332143 / 1.315662 / 1.316440 | 583,552--584,848 | 531,668,992 | 81.6922 | Yes |
-| 7 | 39 | 24 | 4.084397 / 2.223029 / 1.694906 | 562,020--574,500 | 531,169,280 | 80.1951 | No |
-| 8 | 36 | 20 | 2.238902 / 2.298781 / 2.315131 | 551,539--556,963 | 1,049,620,480 | 81.9492 | No |
-| 8 | 35 | 24 | 11.778875 / 4.021280 / 4.217235 | 536,477--550,973 | 1,050,329,088 | 81.9506 | No |
+| log blowup | Queries | Query/batch grinding | Three generation times (s) | Observed proof bytes | Maximum cgroup peak (bytes) | Classical Johnson union (bits) | Quantum Johnson union (bits) | All three <=2 s | All bodies <=655,360 B |
+| ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 5 | 57 | 20 | 0.381136980 / 0.330040015 / 0.597747517 | 673,870–682,175 | 141,983,744 | 162.339544 | 81.169759 | Yes | No |
+| 5 | 55 | 24 | 6.565152268 / 2.450732438 / 2.887922762 | 663,955–670,435 | 142,503,936 | 161.345174 | 80.672578 | No | No |
+| 6 | 47 | 20 | 0.656968671 / 0.786891786 / 0.789807081 | 616,660–618,099 | 270,434,304 | 160.867694 | 80.433832 | Yes | Yes |
+| 6 | 46 | 24 | 2.093739935 / 8.442857996 / 2.039747374 | 599,629–602,989 | 269,934,592 | 161.870509 | 80.935233 | No | Yes |
+| 7 | 41 | 20 | 1.531155438 / 1.429902190 / 1.462877730 | 581,392–585,808 | 525,234,176 | 163.384584 | 81.692219 | Yes | Yes |
+| 7 | 39 | 24 | 3.568666051 / 3.083717843 / 7.587626991 | 551,460–564,996 | 525,758,464 | 160.390214 | 80.195081 | No | Yes |
+| 8 | 36 | 20 | 2.422350935 / 2.596701033 / 2.834584320 | 547,987–560,131 | 1,036,673,024 | 163.898659 | 81.949155 | No | Yes |
+| 8 | 35 | 24 | 4.896359696 / 3.367161692 / 5.419455035 | 537,725–544,205 | 1,036,406,784 | 163.901474 | 81.950563 | No | Yes |
 
-All eight profiles satisfy the selected 80-bit quantum screen. The four
-24-bit-grinding profiles and the blowup-8/20-bit profile fail the three-trial
-generation criterion. Blowups 5, 6 and 7 with 20-bit grinding qualify; blowup 7
-has the smallest observed proof body among them. The old 524,288-byte
-transaction limit is not a selection constraint for this engineering profile.
-Settlement and issuance retain independent 524,288-byte body caps.
+All eight profiles pass the selected 80-bit quantum security screen. Blowup
+5 with grinding 20 passes time but exceeds the transaction body limit. The
+24-bit-grinding profiles and blowup 8/grinding 20 fail the three-trial time
+criterion. Blowups 6 and 7 with grinding 20 pass both time and raw body limits;
+blowup 7 has the smaller maximum body and retains the required admission margin.
+Median-only qualification is not used.
 
 ## Actual relation shapes and permanent encoding
 
-Dimensions are extracted from the complete AIR with pinned `p3-security`
-0.9.0-rc.2. Hiding padding depends on the query count.
+Dimensions are extracted from the complete revised AIRs with pinned
+`p3-security=0.9.0-rc.2`. Base rows are distinct from the committed hiding domain.
 
-| Relation/profile | Base rows | Main columns | Preprocessing columns | Public values | Constraints | Degree |
+| Relation/profile | Base rows | Main columns | Preprocessed columns | Public values | Constraints | Maximum degree |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Selected transaction, b7/q41/g20 | 256 | 1,420 | 243 | 97 | 2,940 | 3 |
-| Settlement, 576 positions, b8/q36/g20 | 1,024 | 516 | 587 | 6,964 | 7,720 | 3 |
-| Issuance, three notes, b8/q36/g20 | 128 | 438 | 10 | 72 | 573 | 3 |
+| Transaction, b7/q41/g20 | 256 | 1,392 | 247 | 101 | 2,898 | 3 |
+| Settlement, 576 positions, b8/q36/g20 | 1,024 | 581 | 609 | 7,050 | 19,703 | 3 |
+| Issuance, three notes, b8/q36/g20 | 128 | 438 | 10 | 72 | 577 | 3 |
 
-The selected transaction instance has eight quotient chunks, 3,486 batched
-functions and committed trace log length 9. The challenge-field floor is
-247 bits and the selected classical commitment-collision floor is 185 bits.
-The body codec encodes 2,027 public bytes; its 48-byte fee commitment and
-40-byte snapshot selector bring permanent bytes per position to 2,115.
-Envelope, sidecar, block and issuance records are additional components.
+The selected transaction has eight quotient chunks, 3,438 batched functions and
+committed trace log length 9. The challenge-field floor is 247 bits and selected
+classical commitment-collision floor is 185 bits. The public body remains
+2,027 bytes; adding its 48-byte fee commitment and 40-byte snapshot selector
+gives 2,115 permanent bytes per position. Unlock fields fit existing note and
+ciphertext padding. Envelope, sidecar, reward, fund and issuance records are
+separate components.
 
 ## Complete selected-profile security ledger
 
-The following are the selected profile's raw error exponents in bits. Error
-probabilities are combined before reporting union exponents. The quantum
-ledger halves every Johnson Fiat--Shamir challenge exponent, including
-query/grinding and batch-combination terms, and accounts for the folding-round
-union. The [profile artifact](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-retains every actual shape and raw term for all eight measured profiles,
-source/dependency identities and the public preprocessing commitment.
+The following values are raw error exponents in bits. Error probabilities are
+combined before reporting union exponents. The quantum ledger halves every
+Johnson Fiat–Shamir challenge exponent, including query/enforced grinding and
+batch combination, and accounts for the folding-round union.
 
 | Report/model | Error term | Bits |
 | --- | --- | ---: |
-| Classical conjectured | `air-composition` | 235.478400 |
+| Classical conjectured | `air-composition` | 235.499158 |
 | Classical conjectured | `deep-ali` | 234.829762 |
 | Classical conjectured | `ldt-query-phase` | 305.011966 |
 | Classical conjectured | `ldt-commit-phase` | 230.999978 |
-| Classical conjectured | `batch-combination` | 239.233057 |
+| Classical conjectured | `batch-combination` | 239.253066 |
 | Classical conjectured | `commitment-collision` | 185.000000 |
-| Classical Johnson | `air-composition` | 223.975585 |
+| Classical Johnson | `air-composition` | 223.996343 |
 | Classical Johnson | `deep-ali` | 223.326947 |
 | Classical Johnson | `low-degree-test` | 163.384584 |
-| Classical Johnson | `batch-combination` | 206.806754 |
+| Classical Johnson | `batch-combination` | 206.826763 |
 | Classical Johnson | `commitment-collision` | 185.000000 |
 | Johnson FRI | `fri-folding` | 198.573697 |
 | Johnson FRI | `fri-query` | 163.384584 |
 | Challenge-domain ledger | `ood-deep-ali-domain` | 223.326947 |
 | Challenge-domain ledger | `fri-folding-domain` | 191.929841 |
 
-The FRI query term is the weakest challenge term. The `fri-folding-domain`
-entry includes the folding-round adjustment before quantum halving; it must
-not be counted as a second independent folding error. The classical
-conjectured union is 184.99999999999997 bits, classical Johnson union
-163.38458391106965 bits and quantum Johnson challenge union
-81.69221886630498 bits. The selected Johnson list-decoding parameter is
-`m=256`; proof multiplicity is one. The selected W24 commitment-collision
-ledger converts its 185-bit classical collision term to
-`185 * 2 / 3 = 123.33333333333333` BHT bits.
+The FRI query term is the weakest challenge term. The folding-domain entry
+already includes its folding-round adjustment and is not a second independent
+folding error. The classical conjectured union is
+184.99999999999997 bits; classical Johnson union is
+163.38458391106965 bits; quantum Johnson challenge union is
+81.6922188692167 bits. Johnson uses `m=256` and proof multiplicity one.
+The selected W24 commitment ledger converts its 185-bit classical collision
+term to `185 * 2 / 3 = 123.33333333333333` BHT bits.
 
 External BLAKE3-256 ciphertext/asset-ID binding is separately modeled at 128
 classical collision bits and `256 / 3 = 85.33333333333333` nominal BHT bits.
-It is not the W24 digest calculation and is not included in raw
-`p3-security` output. The overall relation, application binding, hiding kernel
-and Fiat--Shamir accounting still require independent security review.
+Those application-hash quantities are not raw `p3-security` outputs. Transcript
+binding, hiding, application hashes and protocol composition still require
+independent security review.
 
-## Independent settlement and issuance evidence
+## Transaction, settlement and issuance measurements
 
-The settlement and three-note issuance diagnostics use `log_blowup=8`,
-36 queries, 20-bit query/batch grinding, zero commitment grinding and binary
-folding. Their parameters and 512-KiB caps are independent of the selected
-transaction profile. Issuance verifies real ML-DSA-65 signatures and encrypted
-note fixtures, but its benchmark SIP-payment callback is synthetic; real
-fee consumption and registry/note insertion need one durable atomic node
-transition.
+All six worker groups below contain three fresh measurements. Four-worker
+transaction results reuse the selected grid group. Settlement has fixed
+capacity 576 and binds the public mode, trusted reward plan, SIP asset and
+one/five reward notes. The benchmark supplies synthetic plan allocations; it
+is not an oracle for canonical pool accounting. Nodes derive the plan from
+trusted parent state and independently validate pool, burn and fund updates.
+Issuance has three initial notes and checks an actual
+ML-DSA-65 signature, but its benchmark SIP-payment callback remains synthetic.
+Actual issuance-fee consumption and registry/note insertion require one durable
+atomic node transition.
 
-[Hosted diagnostics 40458954984](https://github.com/siworld-labs/siworld/actions/runs/40458954984)
-used source `d546783c760d3c0910d838df82d43f8b2a5b691e` on an exposed EPYC
-7763 two-core/four-vCPU reference profile. The table uses three four-worker
-generation processes and three separate one-worker verification processes.
-Proof ranges and maximum charged memory cover all six processes; those
-one-worker processes also prepare and generate a proof, so their memory does
-not establish an independent verifier bound.
+| Relation | Workers | Three generation times (s) | Generation median (s) | Verification median (ms) | Observed proof bytes | Maximum cgroup peak (bytes) |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| Transaction | 4 | 1.531155438 / 1.429902190 / 1.462877730 | 1.462877730 | 17.076357 | 581,392–585,808 | 525,234,176 |
+| Transaction | 1 | 2.728648957 / 2.810005525 / 2.519086686 | 2.728648957 | 17.006900 | 585,520–588,832 | 523,964,416 |
+| Settlement | 4 | 5.523829281 / 5.616304295 / 5.424077424 | 5.523829281 | 20.130663 | 514,635–520,203 | 3,161,432,064 |
+| Settlement | 1 | 11.954381874 / 11.282064820 / 11.290169489 | 11.290169489 | 19.914259 | 499,130–516,699 | 3,158,740,992 |
+| Issuance | 4 | 0.601598109 / 0.639979907 / 0.717943136 | 0.639979907 | 8.641459 | 274,353–280,401 | 211,423,232 |
+| Issuance | 1 | 1.686880130 / 1.161136898 / 1.241751044 | 1.241751044 | 8.528751 | 270,177–285,585 | 210,460,672 |
 
-| Relation/profile | Observed proof bytes | Four-worker generation median (s) | One-worker verification median (ms) | Maximum cgroup peak (bytes) |
-| --- | ---: | ---: | ---: | ---: |
-| 576-position settlement b8/q36/g20 | 485,115--498,747 | 4.6014 | 16.0873 | 2,976,501,760 |
-| Three-note issuance b8/q36/g20 | 272,673--282,609 | 0.7320 | 8.4428 | 210,628,608 |
+Setup, generation and verification below are separately timed phases; process
+wall time additionally includes fixture preparation and recorder overhead.
+Only whole-process-tree charged-memory peaks are measured. Do not infer or
+add independent phase-memory values from these overlapping lifetimes.
 
-| Security ledger (bits) | Settlement | Three-note issuance |
-| --- | ---: | ---: |
-| Classical conjectured union | 185.000 | 185.000 |
-| Classical Johnson union | 163.974 | 163.798 |
-| Quantum Johnson challenge union | 81.984 | 81.899 |
-| Selected W24 commitment BHT ledger | 123.333 | 123.333 |
+| Relation | Workers | Setup median (s) | Generation median (s) | Verification median (ms) | Process wall median (s) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Transaction | 4 | 0.156945554 | 1.462877730 | 17.076357 | 1.671611009 |
+| Transaction | 1 | 0.344289976 | 2.728648957 | 17.006900 | 3.122668811 |
+| Settlement | 4 | 2.944648847 | 5.523829281 | 20.130663 | 8.635607165 |
+| Settlement | 1 | 6.418153023 | 11.290169489 | 19.914259 | 17.907049265 |
+| Issuance | 4 | 0.018623985 | 0.639979907 | 8.641459 | 0.717024445 |
+| Issuance | 1 | 0.036971171 | 1.241751044 | 8.528751 | 1.318278895 |
+
+| Security ledger (bits) | Transaction | Settlement | Issuance |
+| --- | ---: | ---: | ---: |
+| Classical conjectured union | 185.000000000 | 185.000000000 | 185.000000000 |
+| Classical Johnson union | 163.384583911 | 163.974037303 | 163.797515631 |
+| Quantum Johnson challenge union | 81.692218869 | 81.983705354 | 81.898719983 |
+| Selected W24 commitment BHT ledger | 123.333333333 | 123.333333333 | 123.333333333 |
+
+The fresh run qualifies the selected isolated 576-position settlement proof;
+it does not establish measured active-capacity workloads at 64–512 positions,
+whole-block processing or an independent verifier-memory bound. The current
+native fund codec has two key slots. Launch recipients and independent fund
+weights remain unconfigured; the measurements select no production allocation.
 
 ## Network, retention and remaining gates
 
-At the selected 655,360-byte transaction cap and 576 positions, the conditional
-full-network ledger is **36.50164 Mbps** with three broadcasts and the bounded
-transport, control, recovery and issuance allowances in the
-[wire budget](v1-network-budget.md). A **43-Mbps minimum uplink** leaves at
-least 15% of link capacity unused in that model; deployment recommends
-**100 Mbps**. Qualification must still measure actual wire counters and
-queue growth. Unbounded issuance or bulk recovery is outside this finite
-allowance and needs explicit byte/work/rate limits.
+With unchanged proof caps and 576 positions, the explicit economic-record
+[wire model](v1-network-budget.md) charges 1,369,222,560 bytes per 300 seconds,
+or **36.51260160 Mbps**, including three relay copies and bounded transport,
+control, recovery and issuance allowances. A **43-Mbps minimum uplink** leaves
+15.086973% unused in that model; deployment recommends **100 Mbps**. These are
+conditional planning figures. Actual transport counters, queue growth and
+issuance byte/work/rate limits require separate qualification.
 
-The [storage ledger](v1-storage-and-sync.md) uses three elapsed days of proof,
-settlement, issuance-proof and sidecar retention after depth-24 finality,
-plus permanent public data. Database/WAL/compaction and issuance limits still
-require integrated measurements. No proof is pruned early to meet a device
-capacity target.
+The [storage ledger](v1-storage-and-sync.md) retains transaction, settlement
+and issuance proofs plus sidecars for three elapsed days after final
+confirmation; permanent public records are never pruned. Unchanged proof caps
+preserve the nominal 336.180-GB rolling allowance. Actual database, WAL,
+compaction, backup restoration, wallet recovery and elapsed three-day deletion
+remain integrated acceptance work.
 
-The engineering profile binds measured implementation/dependencies and a
-reproducible public preprocessing key. It does not activate a consensus suite
-or change the retained seven-node network. Canonical multi-asset envelopes,
-allocation-bounded decoding, standalone verification CPU/memory limits,
-concurrency/in-flight budgets, full-block validation, issuance fee/resource
-policy and node/wallet atomicity remain integration gates. Supply auditing,
-backup jobs, wallet restoration and actual elapsed three-day deletion
-acceptance follow that integration; isolated proof/CI success does not
-establish them.
+The engineering profile does not activate a new network or modify the retained
+seven-node network. Required CI and public-key reproduction, standalone
+verification CPU/memory and malformed-input limits, concurrency/in-flight
+budgets, complete valid-block processing, configured fund allocation and
+issuance-fee policy, durable wallet integration, hybrid transport and independent
+security review are separate gates.

@@ -1,9 +1,9 @@
 # Memory Measurement Budgets
 
-The [monetary revision](v1-economics.md) reopens affected proof qualification.
-Earlier source-bound reports, keys and numeric profiles are baseline evidence
-only; revised lock/reward relations require new actual-AIR screening and
-resource measurements. Separate optimization work does not waive this gate.
+The `native-v1-economics-1` [monetary profiles](v1-economics.md) have fresh
+actual-AIR and reference-host process-tree evidence. Public-key reproduction,
+complete CI and independent verifier-only resource qualification remain
+release or activation gates as specified below.
 
 Status: regression acceptance schema and checker. A declared ceiling does not
 implement an allocation bound or establish a limit on historical state growth.
@@ -65,9 +65,12 @@ See [proof composition](v2/proof-composition.md) for that research scope.
 ## Native V1 resource qualification
 
 The [multi-asset transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-records a maximum setup/prove/verify process-tree peak of 531,668,992 bytes
-for the selected b7/q41/g20 EPYC 7763 trials. Separate settlement and issuance
-measurements remain in the [evaluation](v1-multi-asset-evaluation.md). The old
+records a maximum setup/prove/verify process-tree peak of 525,234,176 bytes
+for the selected b7/q41/g20 EPYC 7763 trials. Four-worker fixed-576 settlement
+and three-note issuance peaks are 3,161,432,064 and 211,423,232 bytes,
+respectively. All include the recorder and fresh preparation; verification
+was not isolated into a verification-only memory scope. Separate measurements
+remain in the [evaluation](v1-multi-asset-evaluation.md). The old
 [baseline bundle](../crates/bench-d8/artifacts/v1-native-freeze.json) is unchanged.
 Hosted 5-GiB zero-swap scopes are measurement boundaries, not approved
 node/miner RAM requirements or independent verifier-memory bounds.

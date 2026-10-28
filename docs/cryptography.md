@@ -1,9 +1,10 @@
 # Native V1 Cryptographic Construction
 
-The [economic revision](v1-economics.md) reopens the affected source-bound proof
-profiles. Earlier b7/b8 selections and preprocessing identities below describe
-the baseline; new unlock-height, reward-mode and fund relations require fresh
-actual-AIR screening and implementation review.
+The [economic relations](v1-economics.md) use revision
+`native-v1-economics-1`. Actual-AIR screening and 39 reference-host trials
+cover the revised transaction, settlement and issuance relations. Public-key
+reproduction and complete CI remain release checks; independent review and
+network activation remain separate.
 
 Status: implemented isolated native proof relations and selected integration
 requirements. **Engineering target ≥80-bit quantum security, pending independent review.**
@@ -22,8 +23,9 @@ grinding, binary folding and final-polynomial log length zero. It binds
 source/dependency identities, public verifier data and actual-instance security
 and resource evidence. Settlement and issuance use separately measured
 b8/q36/g20 profiles. The [three-relation engineering manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-records the pre-economic-revision 576 settlement positions and three initial issuance notes with
-reproduced public preprocessing keys and complete actual-AIR reports. These
+records 576 settlement positions and three initial issuance notes with
+source-bound public preprocessing keys and complete actual-AIR reports.
+Independent key reproduction is required before release. These
 fixed scopes do not adopt issuance policy or qualify other capacity keys;
 independent approval and activation remain separate. See
 [reproduction](native-proof-profiles.md).
@@ -31,9 +33,11 @@ independent approval and activation remain separate. See
 The two-input/three-output transaction relation enforces per-asset integer
 conservation and SIP-only confidential fees. It checks anchor membership in a
 depth-12 recent-root tree, and binds ciphertext bytes, the accepted snapshot
-context and fee commitment. Native issuance constrains hidden minted supply;
-ML-DSA-65 verifies the declaration outside its AIR. Native settlement binds
-fee commitments to a SIP-only miner reward note. Node acceptance must
+context, input unlock heights and fee commitment. A real input's committed
+unlock height cannot exceed the trusted selected snapshot height. Native
+issuance constrains hidden minted supply; ML-DSA-65 verifies the declaration
+outside its AIR. Native settlement binds fee commitments to all one/five
+SIP-only miner reward notes, the public mode and trusted economic context. Node acceptance must
 reconstruct all trusted statements rather than accept peer-supplied roots,
 keys, subsidies or asset registry decisions.
 
@@ -44,7 +48,10 @@ and enforced-grinding terms must retain ≥80 bits after quantum halving;
 challenge-domain terms receive the same floor. Selected Merkle/commitment BHT
 collision terms must be ≥80 bits. Evaluate each AIR and protocol composition.
 The selected transaction ledger reports approximately 81.692 quantum-halved
-Johnson challenge bits; it is an estimator result for the fixed instance.
+Johnson challenge bits, approximately 185 conjectured classical bits and
+123.333 BHT commitment-collision bits; these are estimator results for the
+fixed instance. The 32-byte application BLAKE3 binding is separate from the
+Plonky3 estimator and has a nominal 85.333-bit BHT collision model requiring review.
 
 The [BHT ledger](bht-security-accounting.md) explains model and digest-capacity
 conversions. Raw classical estimator values, quantum conversions and

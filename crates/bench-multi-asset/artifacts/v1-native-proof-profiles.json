@@ -1,24 +1,26 @@
 {
-  "schema": 1,
+  "schema": 2,
   "status": "engineering-frozen-native-relations",
+  "relation_revision": "native-v1-economics-1",
   "suite": "KoalaBear-D8-Poseidon2-W24-digest12",
   "cryptographic_approval": false,
   "network_activation": false,
   "transaction_profile": "crates/bench-multi-asset/artifacts/v1-transaction-profile.json",
-  "transaction_profile_sha256": "291e5a042e8b6635cc086f4df2f8fe7e9feabe13792cb6b6ef590321e2313e08",
+  "transaction_profile_sha256": "db2c91b06befb11f43b7aad9086d75fb6ce8dd61355bf60bedecdd778b68c338",
   "tool_source_sha256": {
-    "scripts/check-native-proof-profiles.py": "5617c398bbce3188e9935f4c7ffaa33bb89c65e5049f51165800b12a2c6e32d1",
-    "scripts/native-proof-artifacts.rs": "748fe8a301d84e31199427f7c8f29e8f8a56adfd46085836a34c1d0f30477e14"
+    "scripts/check-native-proof-profiles.py": "d5163be57866ad4ae0f9a09fd90829fcbd16f5ce35a8114fa1efa146b5ab483b",
+    "scripts/native-proof-artifacts.rs": "413ac7df4d85a1ea1203603da0ead53466548aa246eae9965f341105b08899e8"
   },
   "scope": "transaction; settlement at 576 positions; issuance at three initial notes",
-  "resource_qualification": "existing isolated diagnostics; no new performance measurement",
+  "resource_qualification": "fresh three-trial measurements at one and four workers; complete profile-bound kernel evidence",
+  "verification_measurement": "single-worker verifier timing inside a one-worker setup/prove/verify process; memory includes all three phases; not an independent verifier memory measurement",
+  "verification_only_process": false,
   "node_integration": false,
   "relations": [
     {
       "capacity": 0,
-      "cryptographic_approval": false,
-      "kind": "transaction",
       "network_activation": false,
+      "cryptographic_approval": false,
       "parameters": {
         "batch_pow_bits": 20,
         "commit_pow_bits": 0,
@@ -31,179 +33,160 @@
       "public_verifier_key": {
         "degree_bits": 9,
         "encoding": "SWMP-v1",
-        "hex": "53574d5001000100000000070000002900000014000000000000001400000001000000f30000000900000061000000028105dd4d72cefd42fcd94118ed958268e5beef18c110012751088605ad507a5c70831b0e57d24c6ddf942a20173d591b3842cf3e18c5700ede5dde55c59492226678655bf3f4321aa6a83356d9fdaf27e9c57a0a2501c11494a7596316730b05",
-        "sha256": "c8e8357da2c8e494cd42ed0ce0c01c9d341494011e6a6b5816584a0a59b1c145",
-        "width": 243
+        "hex": "53574d5001000100000000070000002900000014000000000000001400000001000000f70000000900000061000000024caa9036bdc17f000261f26a7e2a8720d728662df8e6dc329adaa24c8069757821754e6128445b7c6bcf8755b3c29471506755375888a26c2436f61248d39375a1adea57d05ec969cdbe5c2b11780d107269f831d5af42353822f123a74c0710",
+        "sha256": "95f1062213f8475310d70e750662776f7c70c3aeea18a155511f16d91b4ae019",
+        "width": 247
       },
+      "kind": "transaction",
       "security": {
+        "p3_security_version": "0.9.0-rc.2",
         "accounting": "single-proof-johnson-halving-bht-v1",
-        "application_binding": {
-          "algorithm": "BLAKE3-256",
-          "digest_bytes": 32,
-          "included_in_p3_security_report": false,
-          "model_status": "nominal-collision-model-requires-review",
-          "nominal_bht_collision_bits": 85.33333333333333,
-          "nominal_classical_collision_bits": 128
+        "shape": {
+          "status": "actual-extracted",
+          "base_trace_rows": 256,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3438,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
         },
-        "application_binding_limitations": [
-          "BLAKE3-256 is an external application byte binding, excluded from raw p3-security terms",
-          "Nominal classical collision bits 128 and BHT bits 256/3 require model review",
-          "The complete relation/PCS/application-hash composition remains unreviewed"
-        ],
-        "challenge_domain_terms": [
-          {
-            "bits": 223.3269469320563,
-            "label": "ood-deep-ali-domain"
-          },
-          {
-            "bits": 191.92984074506288,
-            "label": "fri-folding-domain"
-          }
-        ],
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999997,
+          "classical_johnson_union_bits": 163.38458391106965,
+          "quantum_johnson_challenge_union_bits": 81.6922188692167,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
         "conjectured": {
-          "minimum_term_bits": 185.0,
-          "regime": "Conjectured",
           "terms": [
             {
-              "bits": 235.47839956027627,
-              "label": "air-composition"
+              "label": "air-composition",
+              "bits": 235.49915812044307
             },
             {
-              "bits": 234.82976194766334,
-              "label": "deep-ali"
+              "label": "deep-ali",
+              "bits": 234.82976194766334
             },
             {
-              "bits": 305.0119658664367,
-              "label": "ldt-query-phase"
+              "label": "ldt-query-phase",
+              "bits": 305.0119658664367
             },
             {
-              "bits": 230.99997798638864,
-              "label": "ldt-commit-phase"
+              "label": "ldt-commit-phase",
+              "bits": 230.99997798638864
             },
             {
-              "bits": 239.23305705924423,
-              "label": "batch-combination"
+              "label": "batch-combination",
+              "bits": 239.2530658636277
             },
             {
-              "bits": 185.0,
-              "label": "commitment-collision"
+              "label": "commitment-collision",
+              "bits": 185.0
             }
-          ],
-          "weakest_term": "commitment-collision"
+          ]
         },
-        "cryptographic_approval": false,
-        "fri": {
-          "batch_pow_bits": 20,
-          "commit_pow_bits": 0,
-          "log_blowup": 7,
-          "log_final_poly_len": 0,
-          "max_log_arity": 1,
-          "num_queries": 41,
-          "query_pow_bits": 20
-        },
-        "fri_folding_rounds": 10,
-        "grinding_sites": {
-          "batch_combination": 20,
-          "lookup_challenge": 0,
-          "out_of_domain": 0
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 223.99634310483603
+            },
+            {
+              "label": "deep-ali",
+              "bits": 223.3269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.38458436011078
+            },
+            {
+              "label": "batch-combination",
+              "bits": 206.82676279846532
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
         },
         "johnson_fri_terms": [
           {
-            "bits": 198.5736969348376,
-            "label": "fri-folding"
+            "label": "fri-folding",
+            "bits": 198.5736969348376
           },
           {
-            "bits": 163.38458436011078,
-            "label": "fri-query"
+            "label": "fri-query",
+            "bits": 163.38458436011078
           }
         ],
-        "network_activation": false,
-        "p3_security_version": "0.9.0-rc.2",
-        "proven_johnson": {
-          "minimum_term_bits": 163.38458436011078,
-          "regime": "ListDecoding { m: 256 }",
-          "terms": [
-            {
-              "bits": 223.97558454466923,
-              "label": "air-composition"
-            },
-            {
-              "bits": 223.3269469320563,
-              "label": "deep-ali"
-            },
-            {
-              "bits": 163.38458436011078,
-              "label": "low-degree-test"
-            },
-            {
-              "bits": 206.80675399408182,
-              "label": "batch-combination"
-            },
-            {
-              "bits": 185.0,
-              "label": "commitment-collision"
-            }
-          ],
-          "weakest_term": "low-degree-test"
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 223.3269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 191.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
         },
-        "proven_unique_decoding": {
-          "minimum_term_bits": 60.53789141811635,
-          "regime": "UniqueDecoding",
-          "terms": [
-            {
-              "bits": 235.47839956027627,
-              "label": "air-composition"
-            },
-            {
-              "bits": 234.82976194766334,
-              "label": "deep-ali"
-            },
-            {
-              "bits": 60.53789141811635,
-              "label": "low-degree-test"
-            },
-            {
-              "bits": 239.23305705924423,
-              "label": "batch-combination"
-            },
-            {
-              "bits": 185.0,
-              "label": "commitment-collision"
-            }
-          ],
-          "weakest_term": "low-degree-test"
+        "fri": {
+          "log_blowup": 7,
+          "num_queries": 41,
+          "query_pow_bits": 20,
+          "commit_pow_bits": 0,
+          "batch_pow_bits": 20,
+          "max_log_arity": 1,
+          "log_final_poly_len": 0
+        }
+      },
+      "performance": {
+        "4": {
+          "complete": true,
+          "trial_count": 3,
+          "generation_median_ns": 1462877730,
+          "generation_min_ns": 1429902190,
+          "generation_max_ns": 1531155438,
+          "verification_median_ns": 17076357,
+          "process_wall_median_ns": 1671611009,
+          "memory_peak_median_bytes": 524980224,
+          "memory_peak_max_bytes": 525234176,
+          "proof_bytes_min": 581392,
+          "proof_bytes_max": 585808
         },
-        "screen": {
-          "bht_collision_bits": 123.33333333333333,
-          "classical_conjectured_union_bits": 184.99999999999997,
-          "classical_johnson_union_bits": 163.38458391106965,
-          "johnson_m": 256,
-          "passes_selected_model": true,
-          "proof_multiplicity": 1,
-          "quantum_johnson_challenge_union_bits": 81.69221886630498
-        },
-        "setup_performed": false,
-        "shape": {
-          "base_trace_rows": 256,
-          "challenge_field_bits_floor": 247,
-          "classical_collision_bits_floor": 185,
-          "log_committed_trace_length": 9,
-          "main_width": 1420,
-          "max_constraint_degree": 3,
-          "num_batched_functions": 3486,
-          "num_constraints": 2940,
-          "num_quotient_chunks": 8,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "status": "actual-extracted"
+        "1": {
+          "complete": true,
+          "trial_count": 3,
+          "generation_median_ns": 2728648957,
+          "generation_min_ns": 2519086686,
+          "generation_max_ns": 2810005525,
+          "verification_median_ns": 17006900,
+          "process_wall_median_ns": 3122668811,
+          "memory_peak_median_bytes": 523685888,
+          "memory_peak_max_bytes": 523964416,
+          "proof_bytes_min": 585520,
+          "proof_bytes_max": 588832
         }
       }
     },
     {
       "capacity": 576,
-      "cryptographic_approval": false,
-      "kind": "settlement",
       "network_activation": false,
+      "cryptographic_approval": false,
       "parameters": {
         "batch_pow_bits": 20,
         "commit_pow_bits": 0,
@@ -216,179 +199,160 @@
       "public_verifier_key": {
         "degree_bits": 11,
         "encoding": "SWMP-v1",
-        "hex": "53574d50010002400200000800000024000000140000000000000014000000010000004b0200000b00000061000000023947133aa8bd3722644738443a317170448c5f20c8c0be26b84bf1313a51c90c779bf01ef1221b2b8aa9b86d9dcc2f24e29a597100de3e069e814e5f65f28b74be2d5035d7a6bf6f3633ed34535f445d4e9411744b597f310d24ad5aa272dd08",
-        "sha256": "e4e95948d453fcdda1cf697bc12892ec997a23023700b0a4a2f43dbb7f600f1e",
-        "width": 587
+        "hex": "53574d5001000240020000080000002400000014000000000000001400000001000000610200000b00000061000000027b37d36275d64d34f8b4676aaa32582fc569ac42391b5e15584bcf60ec5519575fd1fb2af8895634c02824717c41667ae8b92273779fb57b864e0c40fced5a26c10f6853d046dc2cfdf5e0098b807a0c2c1fad6e5ffa3e06f85aaa6101105f07",
+        "sha256": "121013f3aa709772c97bfb74f369e920e608818fc3d6abdafdeb385ef4ed440c",
+        "width": 609
       },
+      "kind": "settlement",
       "security": {
+        "p3_security_version": "0.9.0-rc.2",
         "accounting": "single-proof-johnson-halving-bht-v1",
-        "application_binding": {
-          "algorithm": "BLAKE3-256",
-          "digest_bytes": 32,
-          "included_in_p3_security_report": false,
-          "model_status": "nominal-collision-model-requires-review",
-          "nominal_bht_collision_bits": 85.33333333333333,
-          "nominal_classical_collision_bits": 128
+        "shape": {
+          "status": "actual-extracted",
+          "base_trace_rows": 1024,
+          "main_width": 581,
+          "preprocessed_width": 609,
+          "public_values": 7050,
+          "num_constraints": 19703,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 2540,
+          "log_committed_trace_length": 11,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
         },
-        "application_binding_limitations": [
-          "BLAKE3-256 is an external application byte binding, excluded from raw p3-security terms",
-          "Nominal classical collision bits 128 and BHT bits 256/3 require model review",
-          "The complete relation/PCS/application-hash composition remains unreviewed"
-        ],
-        "challenge_domain_terms": [
-          {
-            "bits": 218.8634912775598,
-            "label": "ood-deep-ali-domain"
-          },
-          {
-            "bits": 181.51481653058502,
-            "label": "fri-folding-domain"
-          }
-        ],
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999983,
+          "classical_johnson_union_bits": 163.97403730343973,
+          "quantum_johnson_challenge_union_bits": 81.98370535371576,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 1000,
+          "proof_multiplicity": 1
+        },
         "conjectured": {
-          "minimum_term_bits": 185.0,
-          "regime": "Conjectured",
           "terms": [
             {
-              "bits": 234.08561486784455,
-              "label": "air-composition"
+              "label": "air-composition",
+              "bits": 232.73387230774318
             },
             {
-              "bits": 232.82999672946553,
-              "label": "deep-ali"
+              "label": "deep-ali",
+              "bits": 232.82999672946553
             },
             {
-              "bits": 306.0514843810616,
-              "label": "ldt-query-phase"
+              "label": "ldt-query-phase",
+              "bits": 306.0514843810616
             },
             {
-              "bits": 227.9999972482802,
-              "label": "ldt-commit-phase"
+              "label": "ldt-commit-phase",
+              "bits": 227.9999972482802
             },
             {
-              "bits": 236.79237553177325,
-              "label": "batch-combination"
+              "label": "batch-combination",
+              "bits": 236.6899553203525
             },
             {
-              "bits": 185.0,
-              "label": "commitment-collision"
+              "label": "commitment-collision",
+              "bits": 185.0
             }
-          ],
-          "weakest_term": "commitment-collision"
+          ]
         },
-        "cryptographic_approval": false,
-        "fri": {
-          "batch_pow_bits": 20,
-          "commit_pow_bits": 0,
-          "log_blowup": 8,
-          "log_final_poly_len": 0,
-          "max_log_arity": 1,
-          "num_queries": 36,
-          "query_pow_bits": 20
-        },
-        "fri_folding_rounds": 12,
-        "grinding_sites": {
-          "batch_combination": 20,
-          "lookup_challenge": 0,
-          "out_of_domain": 0
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 218.76736685583745
+            },
+            {
+              "label": "deep-ali",
+              "bits": 218.8634912775598
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.97403797922846
+            },
+            {
+              "label": "batch-combination",
+              "bits": 197.37469685237983
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
         },
         "johnson_fri_terms": [
           {
-            "bits": 188.68474153202735,
-            "label": "fri-folding"
+            "label": "fri-folding",
+            "bits": 188.68474153202735
           },
           {
-            "bits": 163.97403797922846,
-            "label": "fri-query"
+            "label": "fri-query",
+            "bits": 163.97403797922846
           }
         ],
-        "network_activation": false,
-        "p3_security_version": "0.9.0-rc.2",
-        "proven_johnson": {
-          "minimum_term_bits": 163.97403797922846,
-          "regime": "ListDecoding { m: 1000 }",
-          "terms": [
-            {
-              "bits": 220.11910941593882,
-              "label": "air-composition"
-            },
-            {
-              "bits": 218.8634912775598,
-              "label": "deep-ali"
-            },
-            {
-              "bits": 163.97403797922846,
-              "label": "low-degree-test"
-            },
-            {
-              "bits": 197.47711706380056,
-              "label": "batch-combination"
-            },
-            {
-              "bits": 185.0,
-              "label": "commitment-collision"
-            }
-          ],
-          "weakest_term": "low-degree-test"
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 218.8634912775598
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 181.51481653058502
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
         },
-        "proven_unique_decoding": {
-          "minimum_term_bits": 55.79731887629211,
-          "regime": "UniqueDecoding",
-          "terms": [
-            {
-              "bits": 234.08561486784455,
-              "label": "air-composition"
-            },
-            {
-              "bits": 232.82999672946553,
-              "label": "deep-ali"
-            },
-            {
-              "bits": 55.79731887629211,
-              "label": "low-degree-test"
-            },
-            {
-              "bits": 236.79237553177325,
-              "label": "batch-combination"
-            },
-            {
-              "bits": 185.0,
-              "label": "commitment-collision"
-            }
-          ],
-          "weakest_term": "low-degree-test"
+        "fri": {
+          "log_blowup": 8,
+          "num_queries": 36,
+          "query_pow_bits": 20,
+          "commit_pow_bits": 0,
+          "batch_pow_bits": 20,
+          "max_log_arity": 1,
+          "log_final_poly_len": 0
+        }
+      },
+      "performance": {
+        "4": {
+          "complete": true,
+          "trial_count": 3,
+          "generation_median_ns": 5523829281,
+          "generation_min_ns": 5424077424,
+          "generation_max_ns": 5616304295,
+          "verification_median_ns": 20130663,
+          "process_wall_median_ns": 8635607165,
+          "memory_peak_median_bytes": 3161419776,
+          "memory_peak_max_bytes": 3161432064,
+          "proof_bytes_min": 514635,
+          "proof_bytes_max": 520203
         },
-        "screen": {
-          "bht_collision_bits": 123.33333333333333,
-          "classical_conjectured_union_bits": 184.99999999999983,
-          "classical_johnson_union_bits": 163.97403730344843,
-          "johnson_m": 1000,
-          "passes_selected_model": true,
-          "proof_multiplicity": 1,
-          "quantum_johnson_challenge_union_bits": 81.9837058281449
-        },
-        "setup_performed": false,
-        "shape": {
-          "base_trace_rows": 1024,
-          "challenge_field_bits_floor": 247,
-          "classical_collision_bits_floor": 185,
-          "log_committed_trace_length": 11,
-          "main_width": 516,
-          "max_constraint_degree": 3,
-          "num_batched_functions": 2366,
-          "num_constraints": 7720,
-          "num_quotient_chunks": 8,
-          "preprocessed_width": 587,
-          "public_values": 6964,
-          "status": "actual-extracted"
+        "1": {
+          "complete": true,
+          "trial_count": 3,
+          "generation_median_ns": 11290169489,
+          "generation_min_ns": 11282064820,
+          "generation_max_ns": 11954381874,
+          "verification_median_ns": 19914259,
+          "process_wall_median_ns": 17907049265,
+          "memory_peak_median_bytes": 3158732800,
+          "memory_peak_max_bytes": 3158740992,
+          "proof_bytes_min": 499130,
+          "proof_bytes_max": 516699
         }
       }
     },
     {
       "capacity": 3,
-      "cryptographic_approval": false,
-      "kind": "issuance",
       "network_activation": false,
+      "cryptographic_approval": false,
       "parameters": {
         "batch_pow_bits": 20,
         "commit_pow_bits": 0,
@@ -405,167 +369,149 @@
         "sha256": "c6c94e3d6f6261f82e504c44b5a92de65083f6b31e3ed9c668ccedaa404ef885",
         "width": 10
       },
+      "kind": "issuance",
       "security": {
+        "p3_security_version": "0.9.0-rc.2",
         "accounting": "single-proof-johnson-halving-bht-v1",
-        "application_binding": {
-          "algorithm": "BLAKE3-256",
-          "digest_bytes": 32,
-          "included_in_p3_security_report": false,
-          "model_status": "nominal-collision-model-requires-review",
-          "nominal_bht_collision_bits": 85.33333333333333,
-          "nominal_classical_collision_bits": 128
+        "shape": {
+          "status": "actual-extracted",
+          "base_trace_rows": 128,
+          "main_width": 438,
+          "preprocessed_width": 10,
+          "public_values": 72,
+          "num_constraints": 577,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 1056,
+          "log_committed_trace_length": 8,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
         },
-        "application_binding_limitations": [
-          "BLAKE3-256 is an external application byte binding, excluded from raw p3-security terms",
-          "Nominal classical collision bits 128 and BHT bits 256/3 require model review",
-          "The complete relation/PCS/application-hash composition remains unreviewed"
-        ],
-        "challenge_domain_terms": [
-          {
-            "bits": 224.82382441548944,
-            "label": "ood-deep-ali-domain"
-          },
-          {
-            "bits": 194.22259228711377,
-            "label": "fri-folding-domain"
-          }
-        ],
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999997,
+          "classical_johnson_union_bits": 163.79751563117227,
+          "quantum_johnson_challenge_union_bits": 81.89871998312678,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 128,
+          "proof_multiplicity": 1
+        },
         "conjectured": {
-          "minimum_term_bits": 185.0,
-          "regime": "Conjectured",
           "terms": [
             {
-              "bits": 237.8376086712431,
-              "label": "air-composition"
+              "label": "air-composition",
+              "bits": 237.82757249135452
             },
             {
-              "bits": 235.8294489646833,
-              "label": "deep-ali"
+              "label": "deep-ali",
+              "bits": 235.8294489646833
             },
             {
-              "bits": 306.0514843810616,
-              "label": "ldt-query-phase"
+              "label": "ldt-query-phase",
+              "bits": 306.0514843810616
             },
             {
-              "bits": 230.99997798638864,
-              "label": "ldt-commit-phase"
+              "label": "ldt-commit-phase",
+              "bits": 230.99997798638864
             },
             {
-              "bits": 240.95697271640546,
-              "label": "batch-combination"
+              "label": "batch-combination",
+              "bits": 240.95697271640546
             },
             {
-              "bits": 185.0,
-              "label": "commitment-collision"
+              "label": "commitment-collision",
+              "bits": 185.0
             }
-          ],
-          "weakest_term": "commitment-collision"
+          ]
         },
-        "cryptographic_approval": false,
-        "fri": {
-          "batch_pow_bits": 20,
-          "commit_pow_bits": 0,
-          "log_blowup": 8,
-          "log_final_poly_len": 0,
-          "max_log_arity": 1,
-          "num_queries": 36,
-          "query_pow_bits": 20
-        },
-        "fri_folding_rounds": 9,
-        "grinding_sites": {
-          "batch_combination": 20,
-          "lookup_challenge": 0,
-          "out_of_domain": 0
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 226.82194794216065
+            },
+            {
+              "label": "deep-ali",
+              "bits": 224.82382441548944
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.79751622902037
+            },
+            {
+              "label": "batch-combination",
+              "bits": 210.51941500640385
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
         },
         "johnson_fri_terms": [
           {
-            "bits": 200.5624422899984,
-            "label": "fri-folding"
+            "label": "fri-folding",
+            "bits": 200.5624422899984
           },
           {
-            "bits": 163.79751622902037,
-            "label": "fri-query"
+            "label": "fri-query",
+            "bits": 163.79751622902037
           }
         ],
-        "network_activation": false,
-        "p3_security_version": "0.9.0-rc.2",
-        "proven_johnson": {
-          "minimum_term_bits": 163.79751622902037,
-          "regime": "ListDecoding { m: 128 }",
-          "terms": [
-            {
-              "bits": 226.83198412204922,
-              "label": "air-composition"
-            },
-            {
-              "bits": 224.82382441548944,
-              "label": "deep-ali"
-            },
-            {
-              "bits": 163.79751622902037,
-              "label": "low-degree-test"
-            },
-            {
-              "bits": 210.51941500640385,
-              "label": "batch-combination"
-            },
-            {
-              "bits": 185.0,
-              "label": "commitment-collision"
-            }
-          ],
-          "weakest_term": "low-degree-test"
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 224.82382441548944
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 194.22259228711377
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
         },
-        "proven_unique_decoding": {
-          "minimum_term_bits": 55.795937428191245,
-          "regime": "UniqueDecoding",
-          "terms": [
-            {
-              "bits": 237.8376086712431,
-              "label": "air-composition"
-            },
-            {
-              "bits": 235.8294489646833,
-              "label": "deep-ali"
-            },
-            {
-              "bits": 55.795937428191245,
-              "label": "low-degree-test"
-            },
-            {
-              "bits": 240.95697271640546,
-              "label": "batch-combination"
-            },
-            {
-              "bits": 185.0,
-              "label": "commitment-collision"
-            }
-          ],
-          "weakest_term": "low-degree-test"
+        "fri": {
+          "log_blowup": 8,
+          "num_queries": 36,
+          "query_pow_bits": 20,
+          "commit_pow_bits": 0,
+          "batch_pow_bits": 20,
+          "max_log_arity": 1,
+          "log_final_poly_len": 0
+        }
+      },
+      "performance": {
+        "4": {
+          "complete": true,
+          "trial_count": 3,
+          "generation_median_ns": 639979907,
+          "generation_min_ns": 601598109,
+          "generation_max_ns": 717943136,
+          "verification_median_ns": 8641459,
+          "process_wall_median_ns": 717024445,
+          "memory_peak_median_bytes": 211402752,
+          "memory_peak_max_bytes": 211423232,
+          "proof_bytes_min": 274353,
+          "proof_bytes_max": 280401
         },
-        "screen": {
-          "bht_collision_bits": 123.33333333333333,
-          "classical_conjectured_union_bits": 184.99999999999997,
-          "classical_johnson_union_bits": 163.79751563117227,
-          "johnson_m": 128,
-          "passes_selected_model": true,
-          "proof_multiplicity": 1,
-          "quantum_johnson_challenge_union_bits": 81.89871998312842
-        },
-        "setup_performed": false,
-        "shape": {
-          "base_trace_rows": 128,
-          "challenge_field_bits_floor": 247,
-          "classical_collision_bits_floor": 185,
-          "log_committed_trace_length": 8,
-          "main_width": 438,
-          "max_constraint_degree": 3,
-          "num_batched_functions": 1056,
-          "num_constraints": 573,
-          "num_quotient_chunks": 8,
-          "preprocessed_width": 10,
-          "public_values": 72,
-          "status": "actual-extracted"
+        "1": {
+          "complete": true,
+          "trial_count": 3,
+          "generation_median_ns": 1241751044,
+          "generation_min_ns": 1161136898,
+          "generation_max_ns": 1686880130,
+          "verification_median_ns": 8528751,
+          "process_wall_median_ns": 1318278895,
+          "memory_peak_median_bytes": 210448384,
+          "memory_peak_max_bytes": 210460672,
+          "proof_bytes_min": 270177,
+          "proof_bytes_max": 285585
         }
       }
     }

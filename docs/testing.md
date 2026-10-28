@@ -1,9 +1,10 @@
 # Validation and Regression Coverage
 
-The [monetary revision](v1-economics.md) reopens affected proof qualification.
-Earlier source-bound reports, keys and numeric profiles are baseline evidence
-only; revised lock/reward relations require new actual-AIR screening and
-resource measurements. Separate optimization work does not waive this gate.
+The [monetary relations](v1-economics.md) use revision
+`native-v1-economics-1`. Fresh actual-AIR reports and 39 qualified-reference
+trials cover the economic proof profiles. Reproducing their public keys and
+passing complete CI remain release checks. Historical profiles and earlier
+service observations do not qualify changed economic relations.
 
 ## Proof and runtime boundaries
 
@@ -43,7 +44,9 @@ All-features tests intentionally enable development helpers. Release artifacts u
 | Canonical encodings | `crates/consensus/tests/encoding.rs` |
 | Producer/validator agreement | `producer_seed.rs`, `state_delta.rs` in consensus tests |
 | Statement binding and miner notes | `container_statement.rs`, `miner_package.rs`, `crates/prover/tests` |
-| Native monetary allocation, pool/burn, per-wallet fund vesting and conservation | `crates/core/src/v1_economics_tests.rs`; native state/audit tests |
+| Native monetary allocation, pool/burn, independent fund vesting/spending and 20-year conservation simulation | `crates/core/src/v1_economics_tests.rs`; native state/audit tests |
+| Snapshot-height locks, canonical limbs and reduced-width asset matches | `multi_asset_transaction.rs` in the multi-asset proof workspace |
+| Available/locked wallet tranches, private delay and small-SIP consolidation | Native wallet tests; complete durable M2 integration remains separate |
 | Legacy integer issuance and fund accounting | `issuance.rs`, `payouts.rs` in consensus tests |
 | Difficulty and fork choice | `pow.rs`, `fork_choice.rs`, `main_chain.rs` in consensus tests |
 | Native/circuit equivalence | `crates/poseidon2`, `crates/bench-stark/common`, `crates/bench-stark/plonky3` |

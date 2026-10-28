@@ -1,121 +1,125 @@
-# Multi-asset transaction AIR layout optimization
+# Multi-Asset Transaction AIR Layout Optimization
 
-The [monetary revision](v1-economics.md) reopens affected proof qualification.
-Earlier source-bound reports, keys and numeric profiles are baseline evidence
-only; revised lock/reward relations require new actual-AIR screening and
-resource measurements. Separate optimization work does not waive this gate.
+Status: the engineering-frozen `native-v1-economics-1` relation includes the
+snapshot-range and exact asset-comparison reductions described below. Its
+source-bound [profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+records actual-AIR reports and hosted measurements. A separate unreferenced
+layout prototype remains research; its structural counts are not measured
+production proof savings. Further relation changes require new keys, security
+reports and measurements.
 
-Status: isolated structural prototype. The production parameter scan and its
-source remain independent. No smaller proof, lower peak memory or faster
-proving time is established by this prototype. It does not implement an AIR,
-produce a proof or change network acceptance.
+## Adopted relation
 
-## Reference instance
-
-The native two-input/three-output relation currently has 256 base rows,
-1,420 main columns and 243 preprocessed columns. The hiding construction
-increases the committed domain as specified by its fixed FRI configuration;
-256 is the padded base-relation height, not the committed domain size.
+The two-input/three-output relation has **256 base rows, 1,392 main columns,
+247 preprocessed columns and 101 public values**. Symbolic extraction gives
+2,898 constraints, maximum degree three and eight quotient chunks. The hiding
+construction increases the committed domain: the 256-row base relation is not
+the 512-row committed trace.
 
 | Main column group | Columns | Use |
 | --- | ---: | --- |
 | Slot Poseidon2 lane | 239 | One W24 permutation per row |
 | Slot direction, range value and range bits | 18 | One direction, one u16 value and 16 bits |
-| Slot row-constant registers | 810 | Notes, exact asset matches, balances, public-slot values and accumulator data |
-| Private accumulator statement | 97 | 72 set elements, 12 fee-commitment elements, count and 12 anchor-entry elements |
-| Recent-root Poseidon2 lane | 239 | Twelve useful path permutations; remaining rows have no path binding |
+| Slot row-constant registers | 778 | Notes, exact asset matches, balances, slot public values and accumulator data |
+| Private accumulator statement | 101 | Set elements, fee commitment, count, anchor entry and snapshot-height binding |
+| Recent-root Poseidon2 lane | 239 | Twelve path permutations in a separate lane |
 | Recent-root direction and anchor-height bits | 17 | Direction and 16 row-constant low height bits |
-| Total | 1,420 | |
+| Total | 1,392 | |
 
-The 810 slot registers comprise 146 input-note columns, 204 output-note
-columns, 23 fee columns, 12 nullifier-inequality columns, 255 asset-match
-columns, 27 asset-carry columns, three output-asset admission inverses,
-84 slot-public-value registers and 56 accumulator registers.
+The preprocessed trace has the previous 243 columns plus four trusted selectors
+for snapshot-height limb checks. The original 168 range-check rows are
+unchanged. The two Poseidon2 lanes remain separate; the recent-root path has
+not been relocated into the slot lane.
 
-The 243 preprocessed columns comprise 7 fixed slot role fields, 38 absorb
-selectors, 18 output selectors, 168 range selectors and 12 recent-root
-selectors. The slot has 132 useful hash rows. Range checks occupy rows 0
-through 167. The trace has enough unused rows to schedule the 12 recent-root
-permutations at rows 168 through 179 without increasing base height.
+### Canonical snapshot-height range cells
 
-## First implementation candidate
+The snapshot height is represented by four canonical u16 limbs. The adopted
+layout reuses the slot AIR's existing range-value and 16-bit decomposition
+cells at rows 168–171, selected by four appended preprocessed columns. This
+avoids dedicated snapshot bit columns while retaining private-to-public
+snapshot binding and both nonzero inputs' full u64 unlock-height inequalities.
+These range cells do not alias the separate recent-root Poseidon2 lane.
+
+### Exact asset self-comparisons
+
+Each of the two input asset IDs has a self-comparison whose equality flag must
+be one. Its 16 inverse-certificate coefficients cannot affect that equality,
+so the adopted layout omits those 32 unused main columns. The remaining 13
+comparisons retain their exact checks over all 16 canonical u16 limbs of the
+32-byte asset ID. No compressed asset identifier or probabilistic equality
+test is introduced. Equality-flag mutation tests still cover all 15 flags,
+including the two self-comparisons.
+
+## Measured qualification
+
+The current relation was screened with pinned `p3-security` 0.9.0-rc.2 across
+log blowup 5–8 and grinding 20/24. The selected coordinate is log blowup seven,
+41 queries, 20-bit query/batch grinding, zero commitment grinding, binary
+folding and final-polynomial log length zero. Three four-worker EPYC 7763 VM
+generation times were 1.531155438, 1.429902190 and 1.462877730 seconds. The
+four-worker maximum process-tree peak was 525,234,176 bytes. The largest
+selected one/four-worker serialized proof body was 588,832 bytes, below the
+655,360-byte admission cap. See the [measurement scope](v1-multi-asset-evaluation.md)
+and [reproduction procedure](native-proof-profiles.md).
+
+These results qualify the recorded source instance under the selected
+engineering model. They do not isolate each optimization's causal performance
+effect, bound every randomized proof, establish independent verifier memory or
+complete cryptographic review and whole-node acceptance.
+
+## Separate structural prototype
 
 The unreferenced [layout prototype](../crates/bench-multi-asset/src/experiments/transaction_layout.rs)
-constructs a coordinate mapping and relocates synthetic trace cells. It is
-absent from the crate module graph and scanner. Its structural tests cover
-path relocation, non-overlap, retained-column uniqueness, exact identifier
-comparison aliases and every possible low anchor-height limb.
+constructs coordinate mappings and relocates synthetic cells. It is absent
+from the crate module graph and scanner. Its historical reference was a
+pre-lock relation with 1,420 main columns, 243 preprocessed columns and 97
+private statement registers. The prototype's 1,104-main-column target is a
+structural count, not the current revised AIR. Its proposed changes are not
+all adopted:
 
-1. Reuse the slot Poseidon2 lane for the recent-root path at rows 168–179.
-   Preserve every slot sponge and note-membership permutation and bind the
-   new path's first node to the private anchor entry. Bind its last output to
-   the public recent-root root. Remove the second 239-column lane.
-2. Reuse the slot direction and range-check cells on these rows. Set the range
-   value to the low anchor-height limb at path level zero. At later path rows,
-   constrain `previous_index = 2 * current_index + previous_direction` and
-   constrain direction to range bit zero. Existing u16 decomposition prevents
-   a field-valued quotient from replacing an integer quotient. This removes
-   the separate direction and 16 height-bit columns.
-3. Delete the nine unused legacy fee-carry columns. Current per-asset carries
-   and fee-tier carries have separate live locations; they remain unchanged.
-4. Keep one exact asset-comparison cell for each unordered pair. The two
-   input self-comparisons are constants equal to one. Reuse the input-0 versus
-   input-1 equality flag for its reverse comparison; do not reinterpret the
-   signed inverse certificate as the reverse certificate. Retain one
-   canonical exact-comparison constraint/certificate. Fifteen cells of 17
-   columns reduce to twelve cells, saving 51 columns. All sixteen canonical
-   u16 limbs continue to participate; no compressed identifier is introduced.
+1. Reuse the slot Poseidon2 lane for the recent-root path at rows 168–179,
+   removing the second 239-column lane. Preserve every slot sponge and
+   note-membership permutation, bind the path's first node to the private
+   anchor entry and its last output to the public recent-root root.
+2. Reuse direction/range cells while constraining canonical integer path-index
+   transitions, removing the separate direction and low-height bit columns.
+   The revised snapshot checks now occupy range rows 168–171; a new combined
+   schedule must explicitly resolve cell use and selector interaction.
+3. Remove unused legacy fee-carry columns after confirming that per-asset and
+   fee-tier carries remain live at their separate locations.
+4. Alias symmetric exact asset comparisons only with a canonical certificate;
+   an inverse certificate cannot simply be reused with its sign unchanged.
+   The implemented self-comparison reduction above is narrower than this
+   proposal.
 
-The resulting structural target is **1,104 main columns**, a reduction of
-316 columns (22.25%), with the same 256-row base height and, initially, the
-same 243 preprocessed columns. This is a layout count, not a measured AIR
-instance. The new AIR must independently confirm maximum degree, quotient
-chunks, hiding height and exact security terms.
+The historical target saves 316 main columns (22.25%) relative to its own
+1,420-column reference. At four serialized bytes per base-field element, that
+is 1,264 bytes from a queried main row. It also removes D8 out-of-domain
+claims at 32 bytes per extension element and opening point. These arithmetic
+counts exclude authentication paths, FRI openings, quotient/random matrices,
+hiding salt, length prefixes and query-count or degree changes. They establish
+neither total proof size nor generation or memory savings.
 
-The prototype retains all 97 private statement registers. A later direct
-native evaluator could read the 85 already-public set/fee/count values
-without copying them into main registers, leaving only the private 12-element
-anchor entry. That would target a further 85-column reduction. It requires
-removing the generic embedded-leaf statement adapter and has not been
-implemented by this prototype.
+A direct evaluator might later avoid copying already-public set/fee/count
+values into private statement registers. That requires replacing the generic
+embedded-leaf statement adapter while preserving private anchor and trusted
+snapshot bindings. It is not implemented by the prototype.
 
-## Opening-size accounting
+## Requirements for further changes
 
-For the pinned non-human-readable base-field serialization, one field
-element is four bytes. The reference main plus preprocessed row contains
-1,663 elements (6,652 bytes); the first candidate contains 1,347 elements
-(5,388 bytes). Holding the PCS query shape fixed, removing 316 main columns
-removes **1,264 bytes from a queried main row**. It also removes D8
-out-of-domain claims: 316 columns at 32 bytes per extension value, for each
-opened point. Two main opening points would remove 20,224 claim bytes.
-
-These terms do not include Merkle authentication paths, FRI round openings,
-quotient/random matrices, hiding salt, length prefixes or possible changes
-in the selected query count. They therefore are not an upper bound or a
-measured total proof saving. Changes to constraint degree or hiding geometry
-could offset the saving. Compare actual serialized proofs after the full
-candidate AIR passes the same security screen.
-
-## Soundness and validation requirements
-
-- Use one Poseidon2 constraint evaluation on the shared lane. Activate the
-  correct sponge/Merkle transition selectors on the relocated path rows and
-  preserve the reference fixed hash domains and statement.
-- Reject a wrong initial anchor entry, root, direction, path sibling,
-  low-height limb, shift quotient, or transition across a path/padding boundary.
-  Exercise both a valid path and a path whose membership would succeed under
-  a different anchor position.
-- Run the existing per-field mutation and counterexample tests unchanged.
-  In particular, retain per-asset integer conservation, final zero carries,
-  SIP-only fees, unique nullifiers and canonical asset limbs.
-- Differentially check reference and candidate public statements and native
-  witness validity, including duplicate input assets, SIP inputs, zero-valued
-  outputs and all single-limb asset differences. Proof/verifier artifacts
-  change and require their own identifiers and hashes.
-- Extract the actual symbolic instance and repeat the pinned `p3-security`
-  report. No candidate may reduce the quantum-halved Johnson or challenge
-  domain target below 80 bits or classical conjectured target below 128 bits.
-- Measure all stages and process-tree peak memory on the same four-vCPU
-  baseline, with three repeats and the same runtime settings. Parameter
-  freeze does not wait for this optimization. Adopt a later smaller envelope
-  or lower bandwidth requirement only after measured validation.
+- Preserve every fixed hash domain, exact asset limb check, per-asset integer
+  balance, final zero carry, SIP-only fee and nullifier-uniqueness constraint.
+- Reject wrong path entries, roots, directions, siblings, height limbs,
+  shift quotients and transitions across active/padding boundaries. Retain
+  both inputs' before/at-unlock tests, full-u64 boundaries and snapshot-binding
+  mutation tests.
+- Differentially compare public statements and witness validity for duplicate
+  input assets, SIP inputs, zero outputs and single-limb asset differences.
+  Recalculate all derived offsets and selectors; keys change with the AIR.
+- Extract the actual symbolic instance and repeat the pinned security report.
+  Quantum-halved Johnson and challenge-domain terms must remain at least
+  80 bits, BHT commitment-collision terms at least 80 bits and classical
+  conjectured terms at least 128 bits under the selected model.
+- Repeat three-trial generation, verification and process-tree memory
+  measurements on the qualified four-vCPU profile. Adopt a smaller envelope
+  or lower bandwidth requirement only after measured qualification and review.

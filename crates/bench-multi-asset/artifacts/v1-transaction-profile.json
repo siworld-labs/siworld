@@ -1,18 +1,22 @@
 {
-  "schema": 1,
+  "schema": 2,
   "status": "engineering-frozen",
   "suite": "KoalaBear-D8-Poseidon2-W24-digest12",
+  "relation_revision": "native-v1-economics-1",
+  "measurement_schema": 3,
   "cryptographic_approval": false,
   "network_activation": false,
+  "acceptance": false,
   "dependency_revision": "d3d15b2b5d1325fb38ebc8979c1cae04b761e71f",
-  "measured_source_commit": "46b793e24ed42495d6c0c4c051e5a06fb4d56b13",
-  "air_source_sha256": "753d16770132e7cf22d8c485a543bc6442a888b940bccb6667296719a33a51f7",
+  "measured_source_commit": "7eecc60b9a1b0e7d6b348952daae06cd145abf3a",
+  "air_source_sha256": "6aa9161aea4d443b1ce4dea842cc20971ab799b9bd16e6477d66454f24c4b5e4",
   "dependencies_sha256": "f19f34ddfd3d5ff8ee91c7a742aa75d25c54bddfb0762cef1dda30a63894ec6e",
-  "measurement_binary_sha256": "471d72d2b8b33f7fd4ad19a148e5e1a00698c733ece5d574293fdd04a14e680a",
+  "measurement_binary_sha256": "a03dbef06187ff553bdada435ae8729ea96b2735f4c2f5dc73bd5e792e1ceed1",
   "measurement_launcher_sha256": "7d32ba619e5d51d85525ecaeed1a3e04127157ad6bab6ffe5fefe4c04a584a1a",
   "source_sha256": {
     ".cargo/config.toml": "7d367cdae596ec470e10a40376cbec2d5e17e950cd28a14bc84f3c4c98414937",
     ".github/workflows/multi-asset-native.yml": "75ffdbcf2d23e9b06764a436686f8bf6b2b34e1202fee8c53f2f56a600110abb",
+    ".github/workflows/v1-economics.yml": "a7e4340dad5f1c6045f6b144f32e9156565ca32aeaa2eac61b80a90734d81370",
     "crates/bench-d8/Cargo.lock": "66ac717f68367604fe91cd20270c67ad2f8a5a0d76471fc29411b7bb752fbbb5",
     "crates/bench-d8/Cargo.toml": "4b8db86ab2b7aa6582374d8c79f66e45a52cdaca08ae20a5ca954626e2328761",
     "crates/bench-d8/src/agg.rs": "8938c4cd8aa11c845769258d7f07402087b653619cb8306181f2d2c1e6bfd5aa",
@@ -41,32 +45,36 @@
     "crates/bench-d8/src/transaction.rs": "dcc5cf7d983d71975cf0ac4bd1b3167f19737f50582b2aeec8cd03a0acdda15c",
     "crates/bench-multi-asset/Cargo.lock": "f19f34ddfd3d5ff8ee91c7a742aa75d25c54bddfb0762cef1dda30a63894ec6e",
     "crates/bench-multi-asset/Cargo.toml": "5283ec818eb517a3d2af73bb71e88e36e20fbc3473e6a58844bc798f05b82cb3",
-    "crates/bench-multi-asset/src/bin/native-scan.rs": "a306f852cdd85c7adcd68cafa599a4d071ed1fe2b6715fa5bc79f00098e6b998",
+    "crates/bench-multi-asset/src/bin/native-scan.rs": "1a6b7f693ac3415051ab62c58453ff6a955a3a12a223e1c4f89639e08db68a6e",
     "crates/bench-multi-asset/src/bin/profile-artifacts.rs": "252a2e2f811eb50fbc77fdb11a916c9294a3a0afd4a66472a94f61e1461f48b8",
-    "crates/bench-multi-asset/src/codec.rs": "96914d20d0c8cda8256f1428a856d217ab4ecc2343bf2791966a69cc500150e9",
-    "crates/bench-multi-asset/src/confidential_fees.rs": "33390ad2fa7e9cc804c310a8c6e97988daf75d3a5353c90215a3f84b6d885ecc",
-    "crates/bench-multi-asset/src/encryption.rs": "9c8597fb386add674dd63d841d26ea3259f1a5a83cd4a2b95275c096a98a4200",
-    "crates/bench-multi-asset/src/issuance.rs": "1e1aa436c51fcbad909ff6da9129b5a4e47305c5325218cc40af87d0cc1dddc1",
-    "crates/bench-multi-asset/src/issuance_air.rs": "fa765935881acbf65218feb56604d33b38fba3edeca86372fe8cbcea27d1e00b",
-    "crates/bench-multi-asset/src/lib.rs": "8383f7c23351043ad257fef613f476814f1b0a9b4d7cbecfef3d260bd4d7663e",
-    "crates/bench-multi-asset/src/multi_asset.rs": "12560c4bf40a457a09fd0741c34baad154932daaf3b0a60fc079c87d6c2ed6b3",
-    "crates/bench-multi-asset/src/multi_asset_air.rs": "aa8bf268f7cec12e50d5d6c6b80f154dc4b73db98d494c2847db0d6e5f8f619f",
-    "crates/bench-multi-asset/src/multi_asset_trace.rs": "46c385f6e65ad03635f34a03e6ce075a03c5d4d19209c79189ea44ef2f142c5c",
-    "crates/bench-multi-asset/src/multi_asset_transaction.rs": "18bc9d889c100dae876f029935a77aef2749bae14f1410c9aea31f3987a65d8b",
+    "crates/bench-multi-asset/src/codec.rs": "063ee6abe4598043306c68c7ac6804bb0f79cd6758d4e0f21308d422dd9a2107",
+    "crates/bench-multi-asset/src/confidential_fees.rs": "f43732a5cea78865be53d6c20034f1eadcfe4423d151e898bf9a581d7ef05c8b",
+    "crates/bench-multi-asset/src/economic_rewards_tests.rs": "d4f7ab4cd435fdaac88ddd4430950ac04411eae46ab354acd815869e3b3f868b",
+    "crates/bench-multi-asset/src/encryption.rs": "bfdad201823f6a0db5ff217c9702e507d9c871597fd20098ab3316668cd04bd0",
+    "crates/bench-multi-asset/src/issuance.rs": "4cffebde2cf7f8b72ef99499ea8077513c628bb9b7e09001b71d9e1afa647fef",
+    "crates/bench-multi-asset/src/issuance_air.rs": "4ec04d8216274351c088adc5057be6013fb78683b71fb8af0b1e1177d7af957f",
+    "crates/bench-multi-asset/src/lib.rs": "8968f9875bcbdf716d52f4f26eac27a42ae9a7acd15c722e2d537c1e01bf1ca2",
+    "crates/bench-multi-asset/src/multi_asset.rs": "387afb36293b43391da44aaab1febd48dad44d0d2cccdc685e577dfa80fc2a97",
+    "crates/bench-multi-asset/src/multi_asset_air.rs": "0746dcdda77f7c3cbf7a8457e310bff877a4d968976aabccd0351f72fedbc055",
+    "crates/bench-multi-asset/src/multi_asset_trace.rs": "18fa9a819e2db084c232dad7d847b633aeb3eed46808e34bde0511d7b94d2c11",
+    "crates/bench-multi-asset/src/multi_asset_transaction.rs": "c951ba3d54131934f0871165e758ae08a4fafe84ec70bf7561b5ffdb9153c2d4",
     "crates/bench-multi-asset/src/security.rs": "c9dbd31907e8c5a51105278cf45eec8d37ca29e107759c3965002a8e87a89f6e",
-    "crates/bench-multi-asset/src/settlement.rs": "45c91ee6d1dbf075771e59efac7e8ff38e79efab8be24c042747fed1abe71797",
+    "crates/bench-multi-asset/src/settlement.rs": "df51629a6bb3b6a8cd01144d2cf73aaf8779352e51368912202b133a147f9a98",
     "rust-toolchain.toml": "5e7517b95a2b4e810124f84091dd4a6e3f2192523fcac7b6d52abc7fc6aff91d",
     "scripts/build-composition-intra.py": "b77f4b77209a33b9de12ac7287a69644aa6fca2a41c3f8bb37849fdfc7bf7c3b",
     "scripts/check-prover-isa.py": "7f0babfcb826a8fd4c4dd74200f9c553e460fdff0f0b6b835de66c9a23ec3583",
-    "scripts/freeze-multi-asset.py": "04601022dd3da9e75bb3a1bc0a47ec638675311a09600ef1b8335090bdae9938",
-    "scripts/measure-multi-asset.py": "17f85beb68699c84842350bb017a991da5c984f0bd3a71cbc65dc929aa62f4ba",
+    "scripts/freeze-multi-asset.py": "4607a99d9be9c97a47185e83ae1f5732f56789fdddf6bd13d11f03911bce33c6",
+    "scripts/measure-multi-asset.py": "e56706434bf62640b4d129d3439424f05f9abe72ae8b0cd38b7439d514a8ad6b",
     "scripts/measure-native-cgroup.py": "a1d610ce60aa855e958956fc9400ea3ce9dc8bddbf17f00b735b6aca22d66efc",
     "scripts/measure-proof-cgroup.py": "18fde6dbe25bf0ae3fcc2f782abe74ca230084484ab29348fb490357f7d48372",
-    "scripts/prover-launcher.rs": "e2ececc1547045c2966f0cc5d09321e823bed1d20a050abcb9439263bed5a8dd"
+    "scripts/native-proof-artifacts.rs": "413ac7df4d85a1ea1203603da0ead53466548aa246eae9965f341105b08899e8",
+    "scripts/prover-launcher.rs": "e2ececc1547045c2966f0cc5d09321e823bed1d20a050abcb9439263bed5a8dd",
+    "scripts/v1-economics-candidate.py": "fa835a86a6e276ef02f35fedaa58db59e152fb8c0f2feedbf3ee18635612e345"
   },
   "measured_source_sha256": {
     ".cargo/config.toml": "7d367cdae596ec470e10a40376cbec2d5e17e950cd28a14bc84f3c4c98414937",
     ".github/workflows/multi-asset-native.yml": "75ffdbcf2d23e9b06764a436686f8bf6b2b34e1202fee8c53f2f56a600110abb",
+    ".github/workflows/v1-economics.yml": "a7e4340dad5f1c6045f6b144f32e9156565ca32aeaa2eac61b80a90734d81370",
     "crates/bench-d8/Cargo.lock": "66ac717f68367604fe91cd20270c67ad2f8a5a0d76471fc29411b7bb752fbbb5",
     "crates/bench-d8/Cargo.toml": "4b8db86ab2b7aa6582374d8c79f66e45a52cdaca08ae20a5ca954626e2328761",
     "crates/bench-d8/src/agg.rs": "8938c4cd8aa11c845769258d7f07402087b653619cb8306181f2d2c1e6bfd5aa",
@@ -95,26 +103,31 @@
     "crates/bench-d8/src/transaction.rs": "dcc5cf7d983d71975cf0ac4bd1b3167f19737f50582b2aeec8cd03a0acdda15c",
     "crates/bench-multi-asset/Cargo.lock": "f19f34ddfd3d5ff8ee91c7a742aa75d25c54bddfb0762cef1dda30a63894ec6e",
     "crates/bench-multi-asset/Cargo.toml": "5283ec818eb517a3d2af73bb71e88e36e20fbc3473e6a58844bc798f05b82cb3",
-    "crates/bench-multi-asset/src/bin/native-scan.rs": "a306f852cdd85c7adcd68cafa599a4d071ed1fe2b6715fa5bc79f00098e6b998",
-    "crates/bench-multi-asset/src/codec.rs": "96914d20d0c8cda8256f1428a856d217ab4ecc2343bf2791966a69cc500150e9",
-    "crates/bench-multi-asset/src/confidential_fees.rs": "33390ad2fa7e9cc804c310a8c6e97988daf75d3a5353c90215a3f84b6d885ecc",
-    "crates/bench-multi-asset/src/encryption.rs": "9c8597fb386add674dd63d841d26ea3259f1a5a83cd4a2b95275c096a98a4200",
-    "crates/bench-multi-asset/src/issuance.rs": "1e1aa436c51fcbad909ff6da9129b5a4e47305c5325218cc40af87d0cc1dddc1",
-    "crates/bench-multi-asset/src/issuance_air.rs": "fa765935881acbf65218feb56604d33b38fba3edeca86372fe8cbcea27d1e00b",
-    "crates/bench-multi-asset/src/lib.rs": "8383f7c23351043ad257fef613f476814f1b0a9b4d7cbecfef3d260bd4d7663e",
-    "crates/bench-multi-asset/src/multi_asset.rs": "12560c4bf40a457a09fd0741c34baad154932daaf3b0a60fc079c87d6c2ed6b3",
-    "crates/bench-multi-asset/src/multi_asset_air.rs": "aa8bf268f7cec12e50d5d6c6b80f154dc4b73db98d494c2847db0d6e5f8f619f",
-    "crates/bench-multi-asset/src/multi_asset_trace.rs": "46c385f6e65ad03635f34a03e6ce075a03c5d4d19209c79189ea44ef2f142c5c",
-    "crates/bench-multi-asset/src/multi_asset_transaction.rs": "18bc9d889c100dae876f029935a77aef2749bae14f1410c9aea31f3987a65d8b",
+    "crates/bench-multi-asset/src/bin/native-scan.rs": "1a6b7f693ac3415051ab62c58453ff6a955a3a12a223e1c4f89639e08db68a6e",
+    "crates/bench-multi-asset/src/bin/profile-artifacts.rs": "252a2e2f811eb50fbc77fdb11a916c9294a3a0afd4a66472a94f61e1461f48b8",
+    "crates/bench-multi-asset/src/codec.rs": "063ee6abe4598043306c68c7ac6804bb0f79cd6758d4e0f21308d422dd9a2107",
+    "crates/bench-multi-asset/src/confidential_fees.rs": "f43732a5cea78865be53d6c20034f1eadcfe4423d151e898bf9a581d7ef05c8b",
+    "crates/bench-multi-asset/src/economic_rewards_tests.rs": "d4f7ab4cd435fdaac88ddd4430950ac04411eae46ab354acd815869e3b3f868b",
+    "crates/bench-multi-asset/src/encryption.rs": "bfdad201823f6a0db5ff217c9702e507d9c871597fd20098ab3316668cd04bd0",
+    "crates/bench-multi-asset/src/issuance.rs": "4cffebde2cf7f8b72ef99499ea8077513c628bb9b7e09001b71d9e1afa647fef",
+    "crates/bench-multi-asset/src/issuance_air.rs": "4ec04d8216274351c088adc5057be6013fb78683b71fb8af0b1e1177d7af957f",
+    "crates/bench-multi-asset/src/lib.rs": "8968f9875bcbdf716d52f4f26eac27a42ae9a7acd15c722e2d537c1e01bf1ca2",
+    "crates/bench-multi-asset/src/multi_asset.rs": "387afb36293b43391da44aaab1febd48dad44d0d2cccdc685e577dfa80fc2a97",
+    "crates/bench-multi-asset/src/multi_asset_air.rs": "0746dcdda77f7c3cbf7a8457e310bff877a4d968976aabccd0351f72fedbc055",
+    "crates/bench-multi-asset/src/multi_asset_trace.rs": "18fa9a819e2db084c232dad7d847b633aeb3eed46808e34bde0511d7b94d2c11",
+    "crates/bench-multi-asset/src/multi_asset_transaction.rs": "c951ba3d54131934f0871165e758ae08a4fafe84ec70bf7561b5ffdb9153c2d4",
     "crates/bench-multi-asset/src/security.rs": "c9dbd31907e8c5a51105278cf45eec8d37ca29e107759c3965002a8e87a89f6e",
-    "crates/bench-multi-asset/src/settlement.rs": "45c91ee6d1dbf075771e59efac7e8ff38e79efab8be24c042747fed1abe71797",
+    "crates/bench-multi-asset/src/settlement.rs": "df51629a6bb3b6a8cd01144d2cf73aaf8779352e51368912202b133a147f9a98",
     "rust-toolchain.toml": "5e7517b95a2b4e810124f84091dd4a6e3f2192523fcac7b6d52abc7fc6aff91d",
     "scripts/build-composition-intra.py": "b77f4b77209a33b9de12ac7287a69644aa6fca2a41c3f8bb37849fdfc7bf7c3b",
     "scripts/check-prover-isa.py": "7f0babfcb826a8fd4c4dd74200f9c553e460fdff0f0b6b835de66c9a23ec3583",
-    "scripts/measure-multi-asset.py": "17f85beb68699c84842350bb017a991da5c984f0bd3a71cbc65dc929aa62f4ba",
+    "scripts/freeze-multi-asset.py": "4607a99d9be9c97a47185e83ae1f5732f56789fdddf6bd13d11f03911bce33c6",
+    "scripts/measure-multi-asset.py": "e56706434bf62640b4d129d3439424f05f9abe72ae8b0cd38b7439d514a8ad6b",
     "scripts/measure-native-cgroup.py": "a1d610ce60aa855e958956fc9400ea3ce9dc8bddbf17f00b735b6aca22d66efc",
     "scripts/measure-proof-cgroup.py": "18fde6dbe25bf0ae3fcc2f782abe74ca230084484ab29348fb490357f7d48372",
-    "scripts/prover-launcher.rs": "e2ececc1547045c2966f0cc5d09321e823bed1d20a050abcb9439263bed5a8dd"
+    "scripts/native-proof-artifacts.rs": "413ac7df4d85a1ea1203603da0ead53466548aa246eae9965f341105b08899e8",
+    "scripts/prover-launcher.rs": "e2ececc1547045c2966f0cc5d09321e823bed1d20a050abcb9439263bed5a8dd",
+    "scripts/v1-economics-candidate.py": "fa835a86a6e276ef02f35fedaa58db59e152fb8c0f2feedbf3ee18635612e345"
   },
   "reference_execution": {
     "cpu_model": "AMD EPYC 7763",
@@ -126,8 +139,27 @@
     "hiding_workers": 2,
     "required_isa": "x86-64-v3"
   },
+  "hardware_qualification": {
+    "required_hardware_profile": "epyc7763-baseline",
+    "profile_qualified": true,
+    "hardware": {
+      "cpu_model": "AMD EPYC 7763",
+      "os": "Ubuntu 24.04",
+      "architecture": "x86_64",
+      "avx2": true,
+      "logical_cpus": 4,
+      "online_logical_cpus": 4,
+      "exposed_physical_cores": 2,
+      "affinity_cpus": 4,
+      "virtualization_detection": {
+        "exit_code": 0,
+        "result": "microsoft"
+      }
+    }
+  },
   "generation_limit_ns": 2000000000,
-  "selection_rule": "all-three-trials-within-limit-then-smallest-maximum-observed-proof",
+  "proof_body_limit_bytes": 655360,
+  "selection_rule": "all-three-trials-within-time-and-size-limits-then-smallest-maximum-observed-proof",
   "parameters": {
     "log_blowup": 7,
     "num_queries": 41,
@@ -142,13 +174,13 @@
     "accounting": "single-proof-johnson-halving-bht-v1",
     "shape": {
       "base_trace_rows": 256,
-      "main_width": 1420,
-      "preprocessed_width": 243,
-      "public_values": 97,
-      "num_constraints": 2940,
+      "main_width": 1392,
+      "preprocessed_width": 247,
+      "public_values": 101,
+      "num_constraints": 2898,
       "max_constraint_degree": 3,
       "num_quotient_chunks": 8,
-      "num_batched_functions": 3486,
+      "num_batched_functions": 3438,
       "log_committed_trace_length": 9,
       "challenge_field_bits_floor": 247,
       "classical_collision_bits_floor": 185
@@ -157,7 +189,7 @@
       "passes_selected_model": true,
       "classical_conjectured_union_bits": 184.99999999999997,
       "classical_johnson_union_bits": 163.38458391106965,
-      "quantum_johnson_challenge_union_bits": 81.69221886630498,
+      "quantum_johnson_challenge_union_bits": 81.6922188692167,
       "bht_collision_bits": 123.33333333333333,
       "johnson_m": 256,
       "proof_multiplicity": 1
@@ -166,7 +198,7 @@
       "terms": [
         {
           "label": "air-composition",
-          "bits": 235.47839956027627
+          "bits": 235.49915812044307
         },
         {
           "label": "deep-ali",
@@ -182,7 +214,7 @@
         },
         {
           "label": "batch-combination",
-          "bits": 239.23305705924423
+          "bits": 239.2530658636277
         },
         {
           "label": "commitment-collision",
@@ -194,7 +226,7 @@
       "terms": [
         {
           "label": "air-composition",
-          "bits": 223.97558454466923
+          "bits": 223.99634310483603
         },
         {
           "label": "deep-ali",
@@ -206,7 +238,7 @@
         },
         {
           "label": "batch-combination",
-          "bits": 206.80675399408182
+          "bits": 206.82676279846532
         },
         {
           "label": "commitment-collision",
@@ -245,12 +277,13 @@
   },
   "public_verifier_key": {
     "encoding": "SWMV-v1",
-    "hex": "53574d56010001070000002900000014000000000000001400000001000000f30000000900000061000000028105dd4d72cefd42fcd94118ed958268e5beef18c110012751088605ad507a5c70831b0e57d24c6ddf942a20173d591b3842cf3e18c5700ede5dde55c59492226678655bf3f4321aa6a83356d9fdaf27e9c57a0a2501c11494a7596316730b05",
-    "sha256": "6761ed6dd7bb1da62bbcf5ba0441f142af9ee969557f8928b046412c24f82bf5",
-    "width": 243,
+    "hex": "53574d56010001070000002900000014000000000000001400000001000000f70000000900000061000000024caa9036bdc17f000261f26a7e2a8720d728662df8e6dc329adaa24c8069757821754e6128445b7c6bcf8755b3c29471506755375888a26c2436f61248d39375a1adea57d05ec969cdbe5c2b11780d107269f831d5af42353822f123a74c0710",
+    "sha256": "6ac344d3091f0c50fb5e001f3e3a0a8d0ff2aabfc04f19a4fcecedb8c75b692c",
+    "width": 247,
     "degree_bits": 9
   },
   "max_leaf_proof_bytes": 655360,
+  "selected_transaction_proof_bytes_max": 588832,
   "max_settlement_proof_bytes": 524288,
   "max_issuance_proof_bytes": 524288,
   "proof_cap_policy": "at-least-ten-percent-above-observed-maximum-rounded-up-to-65536-bytes",
@@ -258,6 +291,8 @@
   "measurement_memory_scope": "whole setup-prove-verify process tree including recorder",
   "diagnostic_memory_max_bytes": 5368709120,
   "memory_boundary_is_miner_requirement": false,
+  "verification_measurement": "single-worker verifier timing inside a one-worker setup/prove/verify process; memory includes all three phases; not an independent verifier memory measurement",
+  "verification_only_process": false,
   "public_transaction_bytes": 2027,
   "permanent_position_bytes": 2115,
   "profiles": [
@@ -280,13 +315,13 @@
         "accounting": "single-proof-johnson-halving-bht-v1",
         "shape": {
           "base_trace_rows": 256,
-          "main_width": 1420,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "num_constraints": 2940,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
           "max_constraint_degree": 3,
           "num_quotient_chunks": 8,
-          "num_batched_functions": 3486,
+          "num_batched_functions": 3438,
           "log_committed_trace_length": 9,
           "challenge_field_bits_floor": 247,
           "classical_collision_bits_floor": 185
@@ -295,7 +330,7 @@
           "passes_selected_model": true,
           "classical_conjectured_union_bits": 185.0,
           "classical_johnson_union_bits": 162.33954389277855,
-          "quantum_johnson_challenge_union_bits": 81.16975929471838,
+          "quantum_johnson_challenge_union_bits": 81.16975929522764,
           "bht_collision_bits": 123.33333333333333,
           "johnson_m": 256,
           "proof_multiplicity": 1
@@ -304,7 +339,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 235.47839956027627
+              "bits": 235.49915812044307
             },
             {
               "label": "deep-ali",
@@ -320,7 +355,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 241.23305705924423
+              "bits": 241.2530658636277
             },
             {
               "label": "commitment-collision",
@@ -332,7 +367,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 224.97558454466923
+              "bits": 224.99634310483603
             },
             {
               "label": "deep-ali",
@@ -344,7 +379,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 210.80675399408182
+              "bits": 210.82676279846532
             },
             {
               "label": "commitment-collision",
@@ -382,31 +417,294 @@
         }
       },
       "generation_ns": [
-        347745902,
-        431773075,
-        315287455
+        381136980,
+        330040015,
+        597747517
       ],
-      "generation_median_ns": 347745902,
-      "generation_max_ns": 431773075,
+      "generation_median_ns": 381136980,
+      "generation_max_ns": 597747517,
       "proof_bytes": [
-        688559,
-        685631,
-        693071
+        678863,
+        673870,
+        682175
       ],
-      "proof_bytes_min": 685631,
-      "proof_bytes_max": 693071,
+      "proof_bytes_min": 673870,
+      "proof_bytes_max": 682175,
       "cgroup_peak_bytes": [
-        143482880,
-        143224832,
-        143196160
+        141484032,
+        141983744,
+        141459456
       ],
-      "cgroup_peak_max_bytes": 143482880,
+      "cgroup_peak_max_bytes": 141983744,
       "memory_events_delta": {
         "max": 0,
         "oom": 0,
         "oom_kill": 0,
         "oom_group_kill": 0
-      }
+      },
+      "kernel_trials": [
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 5,
+            "num_queries": 57,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 1,
+          "measurement_scope_sha256": "5292c2fc3a133cf2e2a50db17436d3a9a0e3f31a8e59bec87d377b7654d47c8f",
+          "process_wall_ns": 468813270,
+          "process_cpu_ns": 1577842000,
+          "memory_peak_bytes": 141484032,
+          "memory_events_delta": {
+            "high": 0,
+            "oom": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "max": 0,
+            "oom_kill": 0
+          },
+          "memory_events_before": {
+            "high": 0,
+            "oom": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "max": 0,
+            "oom_kill": 0
+          },
+          "memory_events_after": {
+            "high": 0,
+            "oom": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "max": 0,
+            "oom_kill": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 39067684,
+            "generation_ns": 381136980,
+            "verification_ns": 19325362,
+            "proof_bytes": 678863,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 5,
+            "num_queries": 57,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 2,
+          "measurement_scope_sha256": "f33d98c82db50f85b2ca21a5887c964d79f65ce16f63c143e19c75fdce3b1626",
+          "process_wall_ns": 418675547,
+          "process_cpu_ns": 1436529000,
+          "memory_peak_bytes": 141983744,
+          "memory_events_delta": {
+            "low": 0,
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "oom": 0
+          },
+          "memory_events_before": {
+            "low": 0,
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "oom": 0
+          },
+          "memory_events_after": {
+            "low": 0,
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "oom": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 39134098,
+            "generation_ns": 330040015,
+            "verification_ns": 19215096,
+            "proof_bytes": 673870,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 5,
+            "num_queries": 57,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 3,
+          "measurement_scope_sha256": "dddfe76643332ab27511dbc99f4818b31e541e3c461bfe325745dea4d2b6d079",
+          "process_wall_ns": 719181346,
+          "process_cpu_ns": 2499675000,
+          "memory_peak_bytes": 141459456,
+          "memory_events_delta": {
+            "oom_group_kill": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "low": 0,
+            "max": 0
+          },
+          "memory_events_before": {
+            "oom_group_kill": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "low": 0,
+            "max": 0
+          },
+          "memory_events_after": {
+            "oom_group_kill": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "low": 0,
+            "max": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 39155407,
+            "generation_ns": 597747517,
+            "verification_ns": 19535274,
+            "proof_bytes": 682175,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        }
+      ]
     },
     {
       "coordinate": {
@@ -427,13 +725,13 @@
         "accounting": "single-proof-johnson-halving-bht-v1",
         "shape": {
           "base_trace_rows": 256,
-          "main_width": 1420,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "num_constraints": 2940,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
           "max_constraint_degree": 3,
           "num_quotient_chunks": 8,
-          "num_batched_functions": 3486,
+          "num_batched_functions": 3438,
           "log_committed_trace_length": 9,
           "challenge_field_bits_floor": 247,
           "classical_collision_bits_floor": 185
@@ -442,7 +740,7 @@
           "passes_selected_model": true,
           "classical_conjectured_union_bits": 185.0,
           "classical_johnson_union_bits": 161.3451740323769,
-          "quantum_johnson_challenge_union_bits": 80.67257806901077,
+          "quantum_johnson_challenge_union_bits": 80.67257806910303,
           "bht_collision_bits": 123.33333333333333,
           "johnson_m": 256,
           "proof_multiplicity": 1
@@ -451,7 +749,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 235.47839956027627
+              "bits": 235.49915812044307
             },
             {
               "label": "deep-ali",
@@ -467,7 +765,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 245.23305705924423
+              "bits": 245.2530658636277
             },
             {
               "label": "commitment-collision",
@@ -479,7 +777,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 224.97558454466923
+              "bits": 224.99634310483603
             },
             {
               "label": "deep-ali",
@@ -491,7 +789,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 214.80675399408182
+              "bits": 214.82676279846532
             },
             {
               "label": "commitment-collision",
@@ -529,31 +827,294 @@
         }
       },
       "generation_ns": [
-        4687112686,
-        9904237453,
-        5536282224
+        6565152268,
+        2450732438,
+        2887922762
       ],
-      "generation_median_ns": 5536282224,
-      "generation_max_ns": 9904237453,
+      "generation_median_ns": 2887922762,
+      "generation_max_ns": 6565152268,
       "proof_bytes": [
-        674707,
-        676387,
-        675811
+        670435,
+        663955,
+        668227
       ],
-      "proof_bytes_min": 674707,
-      "proof_bytes_max": 676387,
+      "proof_bytes_min": 663955,
+      "proof_bytes_max": 670435,
       "cgroup_peak_bytes": [
-        143175680,
-        142876672,
-        143736832
+        141705216,
+        142503936,
+        141959168
       ],
-      "cgroup_peak_max_bytes": 143736832,
+      "cgroup_peak_max_bytes": 142503936,
       "memory_events_delta": {
         "max": 0,
         "oom": 0,
         "oom_kill": 0,
         "oom_group_kill": 0
-      }
+      },
+      "kernel_trials": [
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 5,
+            "num_queries": 55,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 1,
+          "measurement_scope_sha256": "49500376e8ed1a5385c7d6bbbdaf99cb8f91ff9651059ade3a2ac06b88238a37",
+          "process_wall_ns": 6677412338,
+          "process_cpu_ns": 26302316000,
+          "memory_peak_bytes": 141705216,
+          "memory_events_delta": {
+            "oom": 0,
+            "max": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0,
+            "high": 0
+          },
+          "memory_events_before": {
+            "oom": 0,
+            "max": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0,
+            "high": 0
+          },
+          "memory_events_after": {
+            "oom": 0,
+            "max": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0,
+            "high": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 39325795,
+            "generation_ns": 6565152268,
+            "verification_ns": 19383429,
+            "proof_bytes": 670435,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 5,
+            "num_queries": 55,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 2,
+          "measurement_scope_sha256": "b0d67d75ee5648c00554d1c24cb84df7e5e04fa63a994f413971ee009d88a5c4",
+          "process_wall_ns": 2571066687,
+          "process_cpu_ns": 9885723000,
+          "memory_peak_bytes": 142503936,
+          "memory_events_delta": {
+            "max": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "low": 0,
+            "oom": 0
+          },
+          "memory_events_before": {
+            "max": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "low": 0,
+            "oom": 0
+          },
+          "memory_events_after": {
+            "max": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "low": 0,
+            "oom": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 39261250,
+            "generation_ns": 2450732438,
+            "verification_ns": 19274195,
+            "proof_bytes": 663955,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 5,
+            "num_queries": 55,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 3,
+          "measurement_scope_sha256": "561d0737a85f182fdf3b2c93e1b895d7f34e86edafc1c4519689f253b2d5d143",
+          "process_wall_ns": 2972807169,
+          "process_cpu_ns": 11627740000,
+          "memory_peak_bytes": 141959168,
+          "memory_events_delta": {
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "high": 0,
+            "low": 0,
+            "sock_throttled": 0,
+            "oom": 0
+          },
+          "memory_events_before": {
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "high": 0,
+            "low": 0,
+            "sock_throttled": 0,
+            "oom": 0
+          },
+          "memory_events_after": {
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "high": 0,
+            "low": 0,
+            "sock_throttled": 0,
+            "oom": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 39301176,
+            "generation_ns": 2887922762,
+            "verification_ns": 19191938,
+            "proof_bytes": 668227,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        }
+      ]
     },
     {
       "coordinate": {
@@ -574,13 +1135,13 @@
         "accounting": "single-proof-johnson-halving-bht-v1",
         "shape": {
           "base_trace_rows": 256,
-          "main_width": 1420,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "num_constraints": 2940,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
           "max_constraint_degree": 3,
           "num_quotient_chunks": 8,
-          "num_batched_functions": 3486,
+          "num_batched_functions": 3438,
           "log_committed_trace_length": 9,
           "challenge_field_bits_floor": 247,
           "classical_collision_bits_floor": 185
@@ -589,7 +1150,7 @@
           "passes_selected_model": true,
           "classical_conjectured_union_bits": 185.0,
           "classical_johnson_union_bits": 160.86769418801236,
-          "quantum_johnson_challenge_union_bits": 80.43383181021241,
+          "quantum_johnson_challenge_union_bits": 80.4338318108221,
           "bht_collision_bits": 123.33333333333333,
           "johnson_m": 256,
           "proof_multiplicity": 1
@@ -598,7 +1159,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 235.47839956027627
+              "bits": 235.49915812044307
             },
             {
               "label": "deep-ali",
@@ -614,7 +1175,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 240.23305705924423
+              "bits": 240.2530658636277
             },
             {
               "label": "commitment-collision",
@@ -626,7 +1187,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 224.47558454466923
+              "bits": 224.49634310483603
             },
             {
               "label": "deep-ali",
@@ -638,7 +1199,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 208.80675399408182
+              "bits": 208.82676279846532
             },
             {
               "label": "commitment-collision",
@@ -676,31 +1237,294 @@
         }
       },
       "generation_ns": [
-        753689729,
-        842321730,
-        717343084
+        656968671,
+        786891786,
+        789807081
       ],
-      "generation_median_ns": 753689729,
-      "generation_max_ns": 842321730,
+      "generation_median_ns": 786891786,
+      "generation_max_ns": 789807081,
       "proof_bytes": [
-        624964,
-        616467,
-        624579
+        616660,
+        618099,
+        616899
       ],
-      "proof_bytes_min": 616467,
-      "proof_bytes_max": 624964,
+      "proof_bytes_min": 616660,
+      "proof_bytes_max": 618099,
       "cgroup_peak_bytes": [
-        272478208,
-        272449536,
-        272424960
+        270172160,
+        270151680,
+        270434304
       ],
-      "cgroup_peak_max_bytes": 272478208,
+      "cgroup_peak_max_bytes": 270434304,
       "memory_events_delta": {
         "max": 0,
         "oom": 0,
         "oom_kill": 0,
         "oom_group_kill": 0
-      }
+      },
+      "kernel_trials": [
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 6,
+            "num_queries": 47,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 1,
+          "measurement_scope_sha256": "da4d35656372201ca4df3c53eb1372ec53ce39880d531e393d7105530b469dc8",
+          "process_wall_ns": 819662828,
+          "process_cpu_ns": 2833310000,
+          "memory_peak_bytes": 270172160,
+          "memory_events_delta": {
+            "oom_kill": 0,
+            "oom": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "max": 0,
+            "low": 0
+          },
+          "memory_events_before": {
+            "oom_kill": 0,
+            "oom": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "max": 0,
+            "low": 0
+          },
+          "memory_events_after": {
+            "oom_kill": 0,
+            "oom": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "max": 0,
+            "low": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 78333812,
+            "generation_ns": 656968671,
+            "verification_ns": 18072858,
+            "proof_bytes": 616660,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 6,
+            "num_queries": 47,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 2,
+          "measurement_scope_sha256": "d93f7ff143be3c868eb61edc6f478ff655736d372866832b2d7c558aa6a59df9",
+          "process_wall_ns": 920892670,
+          "process_cpu_ns": 3340150000,
+          "memory_peak_bytes": 270151680,
+          "memory_events_delta": {
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "low": 0,
+            "oom": 0,
+            "max": 0
+          },
+          "memory_events_before": {
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "low": 0,
+            "oom": 0,
+            "max": 0
+          },
+          "memory_events_after": {
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "high": 0,
+            "low": 0,
+            "oom": 0,
+            "max": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 78252360,
+            "generation_ns": 786891786,
+            "verification_ns": 18204695,
+            "proof_bytes": 618099,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 6,
+            "num_queries": 47,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 3,
+          "measurement_scope_sha256": "261baa708982c3c22f0084b094e42bb800f1724729b3b55c51d0a9cff34a84be",
+          "process_wall_ns": 920576469,
+          "process_cpu_ns": 3364235000,
+          "memory_peak_bytes": 270434304,
+          "memory_events_delta": {
+            "oom_group_kill": 0,
+            "oom": 0,
+            "low": 0,
+            "max": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory_events_before": {
+            "oom_group_kill": 0,
+            "oom": 0,
+            "low": 0,
+            "max": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory_events_after": {
+            "oom_group_kill": 0,
+            "oom": 0,
+            "low": 0,
+            "max": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 78485547,
+            "generation_ns": 789807081,
+            "verification_ns": 17820598,
+            "proof_bytes": 616899,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        }
+      ]
     },
     {
       "coordinate": {
@@ -721,13 +1545,13 @@
         "accounting": "single-proof-johnson-halving-bht-v1",
         "shape": {
           "base_trace_rows": 256,
-          "main_width": 1420,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "num_constraints": 2940,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
           "max_constraint_degree": 3,
           "num_quotient_chunks": 8,
-          "num_batched_functions": 3486,
+          "num_batched_functions": 3438,
           "log_committed_trace_length": 9,
           "challenge_field_bits_floor": 247,
           "classical_collision_bits_floor": 185
@@ -736,7 +1560,7 @@
           "passes_selected_model": true,
           "classical_conjectured_union_bits": 185.0,
           "classical_johnson_union_bits": 161.87050912485688,
-          "quantum_johnson_challenge_union_bits": 80.93523304315248,
+          "quantum_johnson_challenge_union_bits": 80.93523304337117,
           "bht_collision_bits": 123.33333333333333,
           "johnson_m": 256,
           "proof_multiplicity": 1
@@ -745,7 +1569,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 235.47839956027627
+              "bits": 235.49915812044307
             },
             {
               "label": "deep-ali",
@@ -761,7 +1585,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 244.23305705924423
+              "bits": 244.2530658636277
             },
             {
               "label": "commitment-collision",
@@ -773,7 +1597,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 224.47558454466923
+              "bits": 224.49634310483603
             },
             {
               "label": "deep-ali",
@@ -785,7 +1609,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 212.80675399408182
+              "bits": 212.82676279846532
             },
             {
               "label": "commitment-collision",
@@ -823,31 +1647,294 @@
         }
       },
       "generation_ns": [
-        2049189683,
-        3087182025,
-        5130963467
+        2093739935,
+        8442857996,
+        2039747374
       ],
-      "generation_median_ns": 3087182025,
-      "generation_max_ns": 5130963467,
+      "generation_median_ns": 2093739935,
+      "generation_max_ns": 8442857996,
       "proof_bytes": [
-        615278,
-        618254,
-        619838
+        601741,
+        602989,
+        599629
       ],
-      "proof_bytes_min": 615278,
-      "proof_bytes_max": 619838,
+      "proof_bytes_min": 599629,
+      "proof_bytes_max": 602989,
       "cgroup_peak_bytes": [
-        272973824,
-        273338368,
-        272437248
+        269934592,
+        269389824,
+        269824000
       ],
-      "cgroup_peak_max_bytes": 273338368,
+      "cgroup_peak_max_bytes": 269934592,
       "memory_events_delta": {
         "max": 0,
         "oom": 0,
         "oom_kill": 0,
         "oom_group_kill": 0
-      }
+      },
+      "kernel_trials": [
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 6,
+            "num_queries": 46,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 1,
+          "measurement_scope_sha256": "d807d952aaee59a84cccd880626e6d134cad28c706ce3f842928590f82f9e595",
+          "process_wall_ns": 2222608749,
+          "process_cpu_ns": 8466250000,
+          "memory_peak_bytes": 269934592,
+          "memory_events_delta": {
+            "oom_group_kill": 0,
+            "low": 0,
+            "max": 0,
+            "oom": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom_kill": 0
+          },
+          "memory_events_before": {
+            "oom_group_kill": 0,
+            "low": 0,
+            "max": 0,
+            "oom": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom_kill": 0
+          },
+          "memory_events_after": {
+            "oom_group_kill": 0,
+            "low": 0,
+            "max": 0,
+            "oom": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom_kill": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 78821854,
+            "generation_ns": 2093739935,
+            "verification_ns": 17623349,
+            "proof_bytes": 601741,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 6,
+            "num_queries": 46,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 2,
+          "measurement_scope_sha256": "32a3e2b0ddebf337a5b3d2013f4bca7d50a15a74ef7d91376f34728e03a3c0ea",
+          "process_wall_ns": 8580034293,
+          "process_cpu_ns": 33927057000,
+          "memory_peak_bytes": 269389824,
+          "memory_events_delta": {
+            "high": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "low": 0,
+            "oom": 0,
+            "sock_throttled": 0
+          },
+          "memory_events_before": {
+            "high": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "low": 0,
+            "oom": 0,
+            "sock_throttled": 0
+          },
+          "memory_events_after": {
+            "high": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "low": 0,
+            "oom": 0,
+            "sock_throttled": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 78950606,
+            "generation_ns": 8442857996,
+            "verification_ns": 17710045,
+            "proof_bytes": 602989,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 6,
+            "num_queries": 46,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 3,
+          "measurement_scope_sha256": "147aa22888a2c531bf6fd7656cf8fb53356bda8f785b2548d997e19911574f94",
+          "process_wall_ns": 2169503292,
+          "process_cpu_ns": 8355522000,
+          "memory_peak_bytes": 269824000,
+          "memory_events_delta": {
+            "oom": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0
+          },
+          "memory_events_before": {
+            "oom": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0
+          },
+          "memory_events_after": {
+            "oom": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 78270971,
+            "generation_ns": 2039747374,
+            "verification_ns": 17331735,
+            "proof_bytes": 599629,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        }
+      ]
     },
     {
       "coordinate": {
@@ -868,13 +1955,13 @@
         "accounting": "single-proof-johnson-halving-bht-v1",
         "shape": {
           "base_trace_rows": 256,
-          "main_width": 1420,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "num_constraints": 2940,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
           "max_constraint_degree": 3,
           "num_quotient_chunks": 8,
-          "num_batched_functions": 3486,
+          "num_batched_functions": 3438,
           "log_committed_trace_length": 9,
           "challenge_field_bits_floor": 247,
           "classical_collision_bits_floor": 185
@@ -883,7 +1970,7 @@
           "passes_selected_model": true,
           "classical_conjectured_union_bits": 184.99999999999997,
           "classical_johnson_union_bits": 163.38458391106965,
-          "quantum_johnson_challenge_union_bits": 81.69221886630498,
+          "quantum_johnson_challenge_union_bits": 81.6922188692167,
           "bht_collision_bits": 123.33333333333333,
           "johnson_m": 256,
           "proof_multiplicity": 1
@@ -892,7 +1979,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 235.47839956027627
+              "bits": 235.49915812044307
             },
             {
               "label": "deep-ali",
@@ -908,7 +1995,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 239.23305705924423
+              "bits": 239.2530658636277
             },
             {
               "label": "commitment-collision",
@@ -920,7 +2007,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 223.97558454466923
+              "bits": 223.99634310483603
             },
             {
               "label": "deep-ali",
@@ -932,7 +2019,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 206.80675399408182
+              "bits": 206.82676279846532
             },
             {
               "label": "commitment-collision",
@@ -970,31 +2057,294 @@
         }
       },
       "generation_ns": [
-        1332142999,
-        1315662444,
-        1316439952
+        1531155438,
+        1429902190,
+        1462877730
       ],
-      "generation_median_ns": 1316439952,
-      "generation_max_ns": 1332142999,
+      "generation_median_ns": 1462877730,
+      "generation_max_ns": 1531155438,
       "proof_bytes": [
-        584848,
-        583552,
-        584032
+        582400,
+        585808,
+        581392
       ],
-      "proof_bytes_min": 583552,
-      "proof_bytes_max": 584848,
+      "proof_bytes_min": 581392,
+      "proof_bytes_max": 585808,
       "cgroup_peak_bytes": [
-        531668992,
-        531398656,
-        531402752
+        525234176,
+        524980224,
+        524980224
       ],
-      "cgroup_peak_max_bytes": 531668992,
+      "cgroup_peak_max_bytes": 525234176,
       "memory_events_delta": {
         "max": 0,
         "oom": 0,
         "oom_kill": 0,
         "oom_group_kill": 0
-      }
+      },
+      "kernel_trials": [
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 7,
+            "num_queries": 41,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 1,
+          "measurement_scope_sha256": "9a11e4cc4e64f39c80d7369b7f8ca39e6a07c019f55db3dc1b06def97008e428",
+          "process_wall_ns": 1771204004,
+          "process_cpu_ns": 6523865000,
+          "memory_peak_bytes": 525234176,
+          "memory_events_delta": {
+            "low": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "oom": 0,
+            "high": 0
+          },
+          "memory_events_before": {
+            "low": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "oom": 0,
+            "high": 0
+          },
+          "memory_events_after": {
+            "low": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "oom": 0,
+            "high": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 160699188,
+            "generation_ns": 1531155438,
+            "verification_ns": 17076357,
+            "proof_bytes": 582400,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 7,
+            "num_queries": 41,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 2,
+          "measurement_scope_sha256": "fd910987ed977a2d5cf0b6b14fa4ddced5bd6410389bd8fdb99004d23c043d70",
+          "process_wall_ns": 1670069740,
+          "process_cpu_ns": 6121655000,
+          "memory_peak_bytes": 524980224,
+          "memory_events_delta": {
+            "oom_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "high": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "oom_group_kill": 0
+          },
+          "memory_events_before": {
+            "oom_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "high": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "oom_group_kill": 0
+          },
+          "memory_events_after": {
+            "oom_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "high": 0,
+            "sock_throttled": 0,
+            "low": 0,
+            "oom_group_kill": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 156945554,
+            "generation_ns": 1429902190,
+            "verification_ns": 17141610,
+            "proof_bytes": 585808,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 7,
+            "num_queries": 41,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 3,
+          "measurement_scope_sha256": "e8926206d1ca3b1560a53f855a48a8589ebce3b377263272d76aeb7ac3be4acc",
+          "process_wall_ns": 1671611009,
+          "process_cpu_ns": 6211336000,
+          "memory_peak_bytes": 524980224,
+          "memory_events_delta": {
+            "oom": 0,
+            "high": 0,
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "low": 0,
+            "max": 0,
+            "oom_group_kill": 0
+          },
+          "memory_events_before": {
+            "oom": 0,
+            "high": 0,
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "low": 0,
+            "max": 0,
+            "oom_group_kill": 0
+          },
+          "memory_events_after": {
+            "oom": 0,
+            "high": 0,
+            "sock_throttled": 0,
+            "oom_kill": 0,
+            "low": 0,
+            "max": 0,
+            "oom_group_kill": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 156254335,
+            "generation_ns": 1462877730,
+            "verification_ns": 16888957,
+            "proof_bytes": 581392,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        }
+      ]
     },
     {
       "coordinate": {
@@ -1015,13 +2365,13 @@
         "accounting": "single-proof-johnson-halving-bht-v1",
         "shape": {
           "base_trace_rows": 256,
-          "main_width": 1420,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "num_constraints": 2940,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
           "max_constraint_degree": 3,
           "num_quotient_chunks": 8,
-          "num_batched_functions": 3486,
+          "num_batched_functions": 3438,
           "log_committed_trace_length": 9,
           "challenge_field_bits_floor": 247,
           "classical_collision_bits_floor": 185
@@ -1030,7 +2380,7 @@
           "passes_selected_model": true,
           "classical_conjectured_union_bits": 184.99999999999997,
           "classical_johnson_union_bits": 160.39021433497527,
-          "quantum_johnson_challenge_union_bits": 80.19508133593152,
+          "quantum_johnson_challenge_union_bits": 80.19508133619148,
           "bht_collision_bits": 123.33333333333333,
           "johnson_m": 256,
           "proof_multiplicity": 1
@@ -1039,7 +2389,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 235.47839956027627
+              "bits": 235.49915812044307
             },
             {
               "label": "deep-ali",
@@ -1055,7 +2405,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 243.23305705924423
+              "bits": 243.2530658636277
             },
             {
               "label": "commitment-collision",
@@ -1067,7 +2417,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 223.97558454466923
+              "bits": 223.99634310483603
             },
             {
               "label": "deep-ali",
@@ -1079,7 +2429,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 210.80675399408182
+              "bits": 210.82676279846532
             },
             {
               "label": "commitment-collision",
@@ -1117,31 +2467,294 @@
         }
       },
       "generation_ns": [
-        4084397470,
-        2223029119,
-        1694905654
+        3568666051,
+        3083717843,
+        7587626991
       ],
-      "generation_median_ns": 2223029119,
-      "generation_max_ns": 4084397470,
+      "generation_median_ns": 3568666051,
+      "generation_max_ns": 7587626991,
       "proof_bytes": [
-        562020,
-        574500,
-        569796
+        551460,
+        562308,
+        564996
       ],
-      "proof_bytes_min": 562020,
-      "proof_bytes_max": 574500,
+      "proof_bytes_min": 551460,
+      "proof_bytes_max": 564996,
       "cgroup_peak_bytes": [
-        530886656,
-        530915328,
-        531169280
+        525488128,
+        525758464,
+        525574144
       ],
-      "cgroup_peak_max_bytes": 531169280,
+      "cgroup_peak_max_bytes": 525758464,
       "memory_events_delta": {
         "max": 0,
         "oom": 0,
         "oom_kill": 0,
         "oom_group_kill": 0
-      }
+      },
+      "kernel_trials": [
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 7,
+            "num_queries": 39,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 1,
+          "measurement_scope_sha256": "542cbbc1f2165afdbc9118cfb2a3ffebe2db12eb5ddef3c270c3a8992d2fabed",
+          "process_wall_ns": 3773409645,
+          "process_cpu_ns": 14650224000,
+          "memory_peak_bytes": 525488128,
+          "memory_events_delta": {
+            "high": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "oom": 0,
+            "low": 0,
+            "oom_kill": 0,
+            "max": 0
+          },
+          "memory_events_before": {
+            "high": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "oom": 0,
+            "low": 0,
+            "oom_kill": 0,
+            "max": 0
+          },
+          "memory_events_after": {
+            "high": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "oom": 0,
+            "low": 0,
+            "oom_kill": 0,
+            "max": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 156703767,
+            "generation_ns": 3568666051,
+            "verification_ns": 16197358,
+            "proof_bytes": 551460,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 7,
+            "num_queries": 39,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 2,
+          "measurement_scope_sha256": "b25a94d42a987db10ec5fbc987db31eacc83db7be0290f9e7a80195bf51effad",
+          "process_wall_ns": 3325428486,
+          "process_cpu_ns": 12736804000,
+          "memory_peak_bytes": 525758464,
+          "memory_events_delta": {
+            "low": 0,
+            "oom": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory_events_before": {
+            "low": 0,
+            "oom": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory_events_after": {
+            "low": 0,
+            "oom": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "sock_throttled": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 158077753,
+            "generation_ns": 3083717843,
+            "verification_ns": 16455931,
+            "proof_bytes": 562308,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 7,
+            "num_queries": 39,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 3,
+          "measurement_scope_sha256": "f0187cbfe2df1251fb1e5b96de8ddb79db7540d7e104fe986eed290cd4b42db3",
+          "process_wall_ns": 7829773249,
+          "process_cpu_ns": 30707375000,
+          "memory_peak_bytes": 525574144,
+          "memory_events_delta": {
+            "oom": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "sock_throttled": 0
+          },
+          "memory_events_before": {
+            "oom": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "sock_throttled": 0
+          },
+          "memory_events_after": {
+            "oom": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "sock_throttled": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 156230457,
+            "generation_ns": 7587626991,
+            "verification_ns": 16582388,
+            "proof_bytes": 564996,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        }
+      ]
     },
     {
       "coordinate": {
@@ -1162,13 +2775,13 @@
         "accounting": "single-proof-johnson-halving-bht-v1",
         "shape": {
           "base_trace_rows": 256,
-          "main_width": 1420,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "num_constraints": 2940,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
           "max_constraint_degree": 3,
           "num_quotient_chunks": 8,
-          "num_batched_functions": 3486,
+          "num_batched_functions": 3438,
           "log_committed_trace_length": 9,
           "challenge_field_bits_floor": 247,
           "classical_collision_bits_floor": 185
@@ -1177,7 +2790,7 @@
           "passes_selected_model": true,
           "classical_conjectured_union_bits": 184.99999999999994,
           "classical_johnson_union_bits": 163.8986587968797,
-          "quantum_johnson_challenge_union_bits": 81.94915450451681,
+          "quantum_johnson_challenge_union_bits": 81.94915451146784,
           "bht_collision_bits": 123.33333333333333,
           "johnson_m": 256,
           "proof_multiplicity": 1
@@ -1186,7 +2799,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 235.47839956027627
+              "bits": 235.49915812044307
             },
             {
               "label": "deep-ali",
@@ -1202,7 +2815,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 238.23305705924423
+              "bits": 238.2530658636277
             },
             {
               "label": "commitment-collision",
@@ -1214,7 +2827,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 223.47558454466923
+              "bits": 223.49634310483603
             },
             {
               "label": "deep-ali",
@@ -1226,7 +2839,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 204.80675399408182
+              "bits": 204.82676279846532
             },
             {
               "label": "commitment-collision",
@@ -1264,31 +2877,294 @@
         }
       },
       "generation_ns": [
-        2238902045,
-        2298780702,
-        2315131492
+        2422350935,
+        2596701033,
+        2834584320
       ],
-      "generation_median_ns": 2298780702,
-      "generation_max_ns": 2315131492,
+      "generation_median_ns": 2596701033,
+      "generation_max_ns": 2834584320,
       "proof_bytes": [
-        556963,
-        551539,
-        553411
+        547987,
+        554659,
+        560131
       ],
-      "proof_bytes_min": 551539,
-      "proof_bytes_max": 556963,
+      "proof_bytes_min": 547987,
+      "proof_bytes_max": 560131,
       "cgroup_peak_bytes": [
-        1049178112,
-        1049620480,
-        1048645632
+        1036644352,
+        1036406784,
+        1036673024
       ],
-      "cgroup_peak_max_bytes": 1049620480,
+      "cgroup_peak_max_bytes": 1036673024,
       "memory_events_delta": {
         "max": 0,
         "oom": 0,
         "oom_kill": 0,
         "oom_group_kill": 0
-      }
+      },
+      "kernel_trials": [
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 8,
+            "num_queries": 36,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 1,
+          "measurement_scope_sha256": "ade079dc9a9504419706ca2689da0c06ee130316f2b2b222d19191518d862dc3",
+          "process_wall_ns": 2822016584,
+          "process_cpu_ns": 10495517000,
+          "memory_peak_bytes": 1036644352,
+          "memory_events_delta": {
+            "oom": 0,
+            "sock_throttled": 0,
+            "max": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0
+          },
+          "memory_events_before": {
+            "oom": 0,
+            "sock_throttled": 0,
+            "max": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0
+          },
+          "memory_events_after": {
+            "oom": 0,
+            "sock_throttled": 0,
+            "max": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 313158006,
+            "generation_ns": 2422350935,
+            "verification_ns": 16161040,
+            "proof_bytes": 547987,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 8,
+            "num_queries": 36,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 2,
+          "measurement_scope_sha256": "b683ea5f3746dd1e9015b42f889d84f544d233be435d9584374780e584107961",
+          "process_wall_ns": 2971943010,
+          "process_cpu_ns": 11173925000,
+          "memory_peak_bytes": 1036406784,
+          "memory_events_delta": {
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "low": 0,
+            "high": 0
+          },
+          "memory_events_before": {
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "low": 0,
+            "high": 0
+          },
+          "memory_events_after": {
+            "oom_kill": 0,
+            "sock_throttled": 0,
+            "oom_group_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "low": 0,
+            "high": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 312959749,
+            "generation_ns": 2596701033,
+            "verification_ns": 16279431,
+            "proof_bytes": 554659,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 8,
+            "num_queries": 36,
+            "query_pow_bits": 20,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 20,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 3,
+          "measurement_scope_sha256": "1cdac753b2d5eeb0089432536de9bcfecae335868864fddcde224d9bde0c2dea",
+          "process_wall_ns": 3222336004,
+          "process_cpu_ns": 12179396000,
+          "memory_peak_bytes": 1036673024,
+          "memory_events_delta": {
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "low": 0
+          },
+          "memory_events_before": {
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "low": 0
+          },
+          "memory_events_after": {
+            "oom_group_kill": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "low": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 313160735,
+            "generation_ns": 2834584320,
+            "verification_ns": 16434911,
+            "proof_bytes": 560131,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        }
+      ]
     },
     {
       "coordinate": {
@@ -1309,13 +3185,13 @@
         "accounting": "single-proof-johnson-halving-bht-v1",
         "shape": {
           "base_trace_rows": 256,
-          "main_width": 1420,
-          "preprocessed_width": 243,
-          "public_values": 97,
-          "num_constraints": 2940,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
           "max_constraint_degree": 3,
           "num_quotient_chunks": 8,
-          "num_batched_functions": 3486,
+          "num_batched_functions": 3438,
           "log_committed_trace_length": 9,
           "challenge_field_bits_floor": 247,
           "classical_collision_bits_floor": 185
@@ -1324,7 +3200,7 @@
           "passes_selected_model": true,
           "classical_conjectured_union_bits": 184.99999999999994,
           "classical_johnson_union_bits": 163.90147381123492,
-          "quantum_johnson_challenge_union_bits": 81.95056259522588,
+          "quantum_johnson_challenge_union_bits": 81.95056259697371,
           "bht_collision_bits": 123.33333333333333,
           "johnson_m": 256,
           "proof_multiplicity": 1
@@ -1333,7 +3209,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 235.47839956027627
+              "bits": 235.49915812044307
             },
             {
               "label": "deep-ali",
@@ -1349,7 +3225,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 242.23305705924423
+              "bits": 242.2530658636277
             },
             {
               "label": "commitment-collision",
@@ -1361,7 +3237,7 @@
           "terms": [
             {
               "label": "air-composition",
-              "bits": 223.47558454466923
+              "bits": 223.49634310483603
             },
             {
               "label": "deep-ali",
@@ -1373,7 +3249,7 @@
             },
             {
               "label": "batch-combination",
-              "bits": 208.80675399408182
+              "bits": 208.82676279846532
             },
             {
               "label": "commitment-collision",
@@ -1411,31 +3287,2331 @@
         }
       },
       "generation_ns": [
-        11778875402,
-        4021280471,
-        4217235409
+        4896359696,
+        3367161692,
+        5419455035
       ],
-      "generation_median_ns": 4217235409,
-      "generation_max_ns": 11778875402,
+      "generation_median_ns": 4896359696,
+      "generation_max_ns": 5419455035,
       "proof_bytes": [
-        550973,
-        540317,
-        536477
+        538925,
+        544205,
+        537725
       ],
-      "proof_bytes_min": 536477,
-      "proof_bytes_max": 550973,
+      "proof_bytes_min": 537725,
+      "proof_bytes_max": 544205,
       "cgroup_peak_bytes": [
-        1050329088,
-        1048903680,
-        1048657920
+        1036107776,
+        1036406784,
+        1036107776
       ],
-      "cgroup_peak_max_bytes": 1050329088,
+      "cgroup_peak_max_bytes": 1036406784,
       "memory_events_delta": {
         "max": 0,
         "oom": 0,
         "oom_kill": 0,
         "oom_group_kill": 0
+      },
+      "kernel_trials": [
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 8,
+            "num_queries": 35,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 1,
+          "measurement_scope_sha256": "a76bdecaf25ce4ccec9d3a4a58488b13b0ed8ff5669bb51a3dd839087cad85aa",
+          "process_wall_ns": 5274795486,
+          "process_cpu_ns": 20418185000,
+          "memory_peak_bytes": 1036107776,
+          "memory_events_delta": {
+            "oom": 0,
+            "max": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0
+          },
+          "memory_events_before": {
+            "oom": 0,
+            "max": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0
+          },
+          "memory_events_after": {
+            "oom": 0,
+            "max": 0,
+            "sock_throttled": 0,
+            "high": 0,
+            "oom_group_kill": 0,
+            "low": 0,
+            "oom_kill": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 313214337,
+            "generation_ns": 4896359696,
+            "verification_ns": 15782823,
+            "proof_bytes": 538925,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 8,
+            "num_queries": 35,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 2,
+          "measurement_scope_sha256": "420c6ea9bf8a8c4fce507945ff179921181b9f51a26958173f4150f223eef3d0",
+          "process_wall_ns": 3772827439,
+          "process_cpu_ns": 14281727000,
+          "memory_peak_bytes": 1036406784,
+          "memory_events_delta": {
+            "sock_throttled": 0,
+            "oom": 0,
+            "low": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0
+          },
+          "memory_events_before": {
+            "sock_throttled": 0,
+            "oom": 0,
+            "low": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0
+          },
+          "memory_events_after": {
+            "sock_throttled": 0,
+            "oom": 0,
+            "low": 0,
+            "high": 0,
+            "oom_kill": 0,
+            "max": 0,
+            "oom_group_kill": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 313233081,
+            "generation_ns": 3367161692,
+            "verification_ns": 16089486,
+            "proof_bytes": 544205,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        },
+        {
+          "kind": "transaction",
+          "workers": 4,
+          "verification_workers": 4,
+          "parameters": {
+            "log_blowup": 8,
+            "num_queries": 35,
+            "query_pow_bits": 24,
+            "commit_pow_bits": 0,
+            "batch_pow_bits": 24,
+            "max_log_arity": 1,
+            "log_final_poly_len": 0
+          },
+          "hardware_profile": "epyc7763-baseline",
+          "resource_control_pass": true,
+          "proof_report_valid": true,
+          "scope_exit_code": 0,
+          "exit_code": 0,
+          "timed_out": false,
+          "remaining_descendants_at_exit": 0,
+          "memory_max_bytes": 5368709120,
+          "memory_swap_max_bytes": 0,
+          "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+          "verification_only_process": false,
+          "cryptographic_approval": false,
+          "network_activation": false,
+          "acceptance": false,
+          "trial": 3,
+          "measurement_scope_sha256": "e9e4cbde5e06075f316d04eb79af32efad41cafd61a6fa5ff8ed878fc06802a7",
+          "process_wall_ns": 5825675699,
+          "process_cpu_ns": 22484737000,
+          "memory_peak_bytes": 1036107776,
+          "memory_events_delta": {
+            "sock_throttled": 0,
+            "low": 0,
+            "oom_group_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "high": 0
+          },
+          "memory_events_before": {
+            "sock_throttled": 0,
+            "low": 0,
+            "oom_group_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "high": 0
+          },
+          "memory_events_after": {
+            "sock_throttled": 0,
+            "low": 0,
+            "oom_group_kill": 0,
+            "oom": 0,
+            "max": 0,
+            "oom_kill": 0,
+            "high": 0
+          },
+          "cpu_max": "max 100000",
+          "visible_cpu_limits": [
+            {
+              "ancestor_level": 0,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 1,
+              "cpu_max": "max 100000",
+              "quota_cores": null
+            },
+            {
+              "ancestor_level": 2,
+              "cpu_max": null,
+              "quota_cores": null
+            }
+          ],
+          "measurement": {
+            "setup_ns": 314117884,
+            "generation_ns": 5419455035,
+            "verification_ns": 15937021,
+            "proof_bytes": 537725,
+            "public_transaction_bytes": 2027,
+            "permanent_position_bytes": 2115,
+            "proof_within_524288_bytes": false
+          }
+        }
+      ]
+    }
+  ],
+  "repeated_measurements": {
+    "transaction": {
+      "measured": true,
+      "parameters": {
+        "log_blowup": 7,
+        "num_queries": 41,
+        "query_pow_bits": 20,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 20,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 256,
+          "main_width": 1392,
+          "preprocessed_width": 247,
+          "public_values": 101,
+          "num_constraints": 2898,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 3438,
+          "log_committed_trace_length": 9,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999997,
+          "classical_johnson_union_bits": 163.38458391106965,
+          "quantum_johnson_challenge_union_bits": 81.6922188692167,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 256,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 235.49915812044307
+            },
+            {
+              "label": "deep-ali",
+              "bits": 234.82976194766334
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 305.0119658664367
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 230.99997798638864
+            },
+            {
+              "label": "batch-combination",
+              "bits": 239.2530658636277
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 223.99634310483603
+            },
+            {
+              "label": "deep-ali",
+              "bits": 223.3269469320563
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.38458436011078
+            },
+            {
+              "label": "batch-combination",
+              "bits": 206.82676279846532
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 198.5736969348376
+          },
+          {
+            "label": "fri-query",
+            "bits": 163.38458436011078
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 223.3269469320563
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 191.92984074506288
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "workers": {
+        "4": {
+          "trials": [
+            {
+              "kind": "transaction",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 7,
+                "num_queries": 41,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 1,
+              "measurement_scope_sha256": "9a11e4cc4e64f39c80d7369b7f8ca39e6a07c019f55db3dc1b06def97008e428",
+              "process_wall_ns": 1771204004,
+              "process_cpu_ns": 6523865000,
+              "memory_peak_bytes": 525234176,
+              "memory_events_delta": {
+                "low": 0,
+                "oom_group_kill": 0,
+                "max": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "high": 0
+              },
+              "memory_events_before": {
+                "low": 0,
+                "oom_group_kill": 0,
+                "max": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "high": 0
+              },
+              "memory_events_after": {
+                "low": 0,
+                "oom_group_kill": 0,
+                "max": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "high": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 160699188,
+                "generation_ns": 1531155438,
+                "verification_ns": 17076357,
+                "proof_bytes": 582400,
+                "public_transaction_bytes": 2027,
+                "permanent_position_bytes": 2115,
+                "proof_within_524288_bytes": false
+              }
+            },
+            {
+              "kind": "transaction",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 7,
+                "num_queries": 41,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 2,
+              "measurement_scope_sha256": "fd910987ed977a2d5cf0b6b14fa4ddced5bd6410389bd8fdb99004d23c043d70",
+              "process_wall_ns": 1670069740,
+              "process_cpu_ns": 6121655000,
+              "memory_peak_bytes": 524980224,
+              "memory_events_delta": {
+                "oom_kill": 0,
+                "oom": 0,
+                "max": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom_group_kill": 0
+              },
+              "memory_events_before": {
+                "oom_kill": 0,
+                "oom": 0,
+                "max": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom_group_kill": 0
+              },
+              "memory_events_after": {
+                "oom_kill": 0,
+                "oom": 0,
+                "max": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom_group_kill": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 156945554,
+                "generation_ns": 1429902190,
+                "verification_ns": 17141610,
+                "proof_bytes": 585808,
+                "public_transaction_bytes": 2027,
+                "permanent_position_bytes": 2115,
+                "proof_within_524288_bytes": false
+              }
+            },
+            {
+              "kind": "transaction",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 7,
+                "num_queries": 41,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 3,
+              "measurement_scope_sha256": "e8926206d1ca3b1560a53f855a48a8589ebce3b377263272d76aeb7ac3be4acc",
+              "process_wall_ns": 1671611009,
+              "process_cpu_ns": 6211336000,
+              "memory_peak_bytes": 524980224,
+              "memory_events_delta": {
+                "oom": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "max": 0,
+                "oom_group_kill": 0
+              },
+              "memory_events_before": {
+                "oom": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "max": 0,
+                "oom_group_kill": 0
+              },
+              "memory_events_after": {
+                "oom": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "max": 0,
+                "oom_group_kill": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 156254335,
+                "generation_ns": 1462877730,
+                "verification_ns": 16888957,
+                "proof_bytes": 581392,
+                "public_transaction_bytes": 2027,
+                "permanent_position_bytes": 2115,
+                "proof_within_524288_bytes": false
+              }
+            }
+          ],
+          "summary": {
+            "complete": true,
+            "trial_count": 3,
+            "generation_median_ns": 1462877730,
+            "generation_min_ns": 1429902190,
+            "generation_max_ns": 1531155438,
+            "verification_median_ns": 17076357,
+            "process_wall_median_ns": 1671611009,
+            "memory_peak_median_bytes": 524980224,
+            "memory_peak_max_bytes": 525234176,
+            "proof_bytes_min": 581392,
+            "proof_bytes_max": 585808,
+            "acceptance": false
+          },
+          "source": "selected-grid-trials"
+        },
+        "1": {
+          "trials": [
+            {
+              "kind": "transaction",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 7,
+                "num_queries": 41,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 1,
+              "measurement_scope_sha256": "979181c0df83f96a3a53d15294496fbc592e4619af45eaa576cb53afcca9f7a2",
+              "process_wall_ns": 3122668811,
+              "process_cpu_ns": 3121657000,
+              "memory_peak_bytes": 523685888,
+              "memory_events_delta": {
+                "max": 0,
+                "high": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "low": 0
+              },
+              "memory_events_before": {
+                "max": 0,
+                "high": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "low": 0
+              },
+              "memory_events_after": {
+                "max": 0,
+                "high": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "low": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 347900170,
+                "generation_ns": 2728648957,
+                "verification_ns": 16966907,
+                "proof_bytes": 585520,
+                "public_transaction_bytes": 2027,
+                "permanent_position_bytes": 2115,
+                "proof_within_524288_bytes": false
+              }
+            },
+            {
+              "kind": "transaction",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 7,
+                "num_queries": 41,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 2,
+              "measurement_scope_sha256": "005fbe7982b04a5c9952394e88b34126341b1a96432e315f7ba2110e6a103d33",
+              "process_wall_ns": 3222246334,
+              "process_cpu_ns": 3200066000,
+              "memory_peak_bytes": 523583488,
+              "memory_events_delta": {
+                "max": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "oom_group_kill": 0,
+                "oom": 0
+              },
+              "memory_events_before": {
+                "max": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "oom_group_kill": 0,
+                "oom": 0
+              },
+              "memory_events_after": {
+                "max": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "oom_group_kill": 0,
+                "oom": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 344289976,
+                "generation_ns": 2810005525,
+                "verification_ns": 17006900,
+                "proof_bytes": 586720,
+                "public_transaction_bytes": 2027,
+                "permanent_position_bytes": 2115,
+                "proof_within_524288_bytes": false
+              }
+            },
+            {
+              "kind": "transaction",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 7,
+                "num_queries": 41,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 3,
+              "measurement_scope_sha256": "ad7ee9210792b6257db5c0a9ac501046f4d80968404012a55790486bf92e4304",
+              "process_wall_ns": 2921927848,
+              "process_cpu_ns": 2908081000,
+              "memory_peak_bytes": 523964416,
+              "memory_events_delta": {
+                "max": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "oom": 0,
+                "low": 0,
+                "high": 0,
+                "oom_group_kill": 0
+              },
+              "memory_events_before": {
+                "max": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "oom": 0,
+                "low": 0,
+                "high": 0,
+                "oom_group_kill": 0
+              },
+              "memory_events_after": {
+                "max": 0,
+                "sock_throttled": 0,
+                "oom_kill": 0,
+                "oom": 0,
+                "low": 0,
+                "high": 0,
+                "oom_group_kill": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 343804049,
+                "generation_ns": 2519086686,
+                "verification_ns": 17130019,
+                "proof_bytes": 588832,
+                "public_transaction_bytes": 2027,
+                "permanent_position_bytes": 2115,
+                "proof_within_524288_bytes": false
+              }
+            }
+          ],
+          "summary": {
+            "complete": true,
+            "trial_count": 3,
+            "generation_median_ns": 2728648957,
+            "generation_min_ns": 2519086686,
+            "generation_max_ns": 2810005525,
+            "verification_median_ns": 17006900,
+            "process_wall_median_ns": 3122668811,
+            "memory_peak_median_bytes": 523685888,
+            "memory_peak_max_bytes": 523964416,
+            "proof_bytes_min": 585520,
+            "proof_bytes_max": 588832,
+            "acceptance": false
+          }
+        }
+      }
+    },
+    "settlement": {
+      "measured": true,
+      "parameters": {
+        "log_blowup": 8,
+        "num_queries": 36,
+        "query_pow_bits": 20,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 20,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 1024,
+          "main_width": 581,
+          "preprocessed_width": 609,
+          "public_values": 7050,
+          "num_constraints": 19703,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 2540,
+          "log_committed_trace_length": 11,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999983,
+          "classical_johnson_union_bits": 163.97403730343973,
+          "quantum_johnson_challenge_union_bits": 81.98370535371576,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 1000,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 232.73387230774318
+            },
+            {
+              "label": "deep-ali",
+              "bits": 232.82999672946553
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 306.0514843810616
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 227.9999972482802
+            },
+            {
+              "label": "batch-combination",
+              "bits": 236.6899553203525
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 218.76736685583745
+            },
+            {
+              "label": "deep-ali",
+              "bits": 218.8634912775598
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.97403797922846
+            },
+            {
+              "label": "batch-combination",
+              "bits": 197.37469685237983
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 188.68474153202735
+          },
+          {
+            "label": "fri-query",
+            "bits": 163.97403797922846
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 218.8634912775598
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 181.51481653058502
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "workers": {
+        "4": {
+          "trials": [
+            {
+              "kind": "settlement",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 1,
+              "measurement_scope_sha256": "c320945c81c652674201dd1f48c76979eb2b1b8732824c2585db8bd2cd597973",
+              "process_wall_ns": 8635607165,
+              "process_cpu_ns": 32755900000,
+              "memory_peak_bytes": 3161432064,
+              "memory_events_delta": {
+                "max": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "high": 0,
+                "oom_group_kill": 0
+              },
+              "memory_events_before": {
+                "max": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "high": 0,
+                "oom_group_kill": 0
+              },
+              "memory_events_after": {
+                "max": 0,
+                "sock_throttled": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "low": 0,
+                "high": 0,
+                "oom_group_kill": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 2944648847,
+                "generation_ns": 5523829281,
+                "verification_ns": 20116498,
+                "proof_bytes": 518379,
+                "capacity": 576,
+                "reward_asset_constrained_si": true
+              }
+            },
+            {
+              "kind": "settlement",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 2,
+              "measurement_scope_sha256": "12e048a675892aa47691ea6f6890d9e76ee2d5caeeb8331a1a7227e748c955f7",
+              "process_wall_ns": 8738620162,
+              "process_cpu_ns": 33139309000,
+              "memory_peak_bytes": 3161415680,
+              "memory_events_delta": {
+                "oom_group_kill": 0,
+                "low": 0,
+                "high": 0,
+                "oom": 0,
+                "max": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0
+              },
+              "memory_events_before": {
+                "oom_group_kill": 0,
+                "low": 0,
+                "high": 0,
+                "oom": 0,
+                "max": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0
+              },
+              "memory_events_after": {
+                "oom_group_kill": 0,
+                "low": 0,
+                "high": 0,
+                "oom": 0,
+                "max": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 2950820235,
+                "generation_ns": 5616304295,
+                "verification_ns": 20130663,
+                "proof_bytes": 514635,
+                "capacity": 576,
+                "reward_asset_constrained_si": true
+              }
+            },
+            {
+              "kind": "settlement",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 3,
+              "measurement_scope_sha256": "e9da37516d93ca9b121f46b86d4fc8a011d14ec484086751f41fd0aee0c6f5d1",
+              "process_wall_ns": 8535001291,
+              "process_cpu_ns": 32290885000,
+              "memory_peak_bytes": 3161419776,
+              "memory_events_delta": {
+                "oom": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom_group_kill": 0,
+                "high": 0,
+                "max": 0
+              },
+              "memory_events_before": {
+                "oom": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom_group_kill": 0,
+                "high": 0,
+                "max": 0
+              },
+              "memory_events_after": {
+                "oom": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom_group_kill": 0,
+                "high": 0,
+                "max": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 2935665085,
+                "generation_ns": 5424077424,
+                "verification_ns": 20507206,
+                "proof_bytes": 520203,
+                "capacity": 576,
+                "reward_asset_constrained_si": true
+              }
+            }
+          ],
+          "summary": {
+            "complete": true,
+            "trial_count": 3,
+            "generation_median_ns": 5523829281,
+            "generation_min_ns": 5424077424,
+            "generation_max_ns": 5616304295,
+            "verification_median_ns": 20130663,
+            "process_wall_median_ns": 8635607165,
+            "memory_peak_median_bytes": 3161419776,
+            "memory_peak_max_bytes": 3161432064,
+            "proof_bytes_min": 514635,
+            "proof_bytes_max": 520203,
+            "acceptance": false
+          }
+        },
+        "1": {
+          "trials": [
+            {
+              "kind": "settlement",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 1,
+              "measurement_scope_sha256": "cc2b1fd4a603455b175f325ffef549c7a6ebf6b0c7b737f494da13ed9c356f38",
+              "process_wall_ns": 18550242870,
+              "process_cpu_ns": 18528476000,
+              "memory_peak_bytes": 3158732800,
+              "memory_events_delta": {
+                "oom": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0,
+                "max": 0,
+                "high": 0
+              },
+              "memory_events_before": {
+                "oom": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0,
+                "max": 0,
+                "high": 0
+              },
+              "memory_events_after": {
+                "oom": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0,
+                "max": 0,
+                "high": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 6408215847,
+                "generation_ns": 11954381874,
+                "verification_ns": 20171426,
+                "proof_bytes": 516699,
+                "capacity": 576,
+                "reward_asset_constrained_si": true
+              }
+            },
+            {
+              "kind": "settlement",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 2,
+              "measurement_scope_sha256": "d811653b2585edac005fdaf0d34e1b603008ab2ed992e67e80aa98e94a132d9c",
+              "process_wall_ns": 17904708016,
+              "process_cpu_ns": 17863401000,
+              "memory_peak_bytes": 3158675456,
+              "memory_events_delta": {
+                "oom_kill": 0,
+                "max": 0,
+                "oom": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0
+              },
+              "memory_events_before": {
+                "oom_kill": 0,
+                "max": 0,
+                "oom": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0
+              },
+              "memory_events_after": {
+                "oom_kill": 0,
+                "max": 0,
+                "oom": 0,
+                "high": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 6418153023,
+                "generation_ns": 11282064820,
+                "verification_ns": 19914259,
+                "proof_bytes": 509451,
+                "capacity": 576,
+                "reward_asset_constrained_si": true
+              }
+            },
+            {
+              "kind": "settlement",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 3,
+              "measurement_scope_sha256": "4ea761be5028f17995e7c0bfdcff13e7b6c79c491b1e37414698fd7a2e963977",
+              "process_wall_ns": 17907049265,
+              "process_cpu_ns": 17890344000,
+              "memory_peak_bytes": 3158740992,
+              "memory_events_delta": {
+                "max": 0,
+                "oom_kill": 0,
+                "oom": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0,
+                "high": 0
+              },
+              "memory_events_before": {
+                "max": 0,
+                "oom_kill": 0,
+                "oom": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0,
+                "high": 0
+              },
+              "memory_events_after": {
+                "max": 0,
+                "oom_kill": 0,
+                "oom": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "low": 0,
+                "high": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 6436465467,
+                "generation_ns": 11290169489,
+                "verification_ns": 19485229,
+                "proof_bytes": 499130,
+                "capacity": 576,
+                "reward_asset_constrained_si": true
+              }
+            }
+          ],
+          "summary": {
+            "complete": true,
+            "trial_count": 3,
+            "generation_median_ns": 11290169489,
+            "generation_min_ns": 11282064820,
+            "generation_max_ns": 11954381874,
+            "verification_median_ns": 19914259,
+            "process_wall_median_ns": 17907049265,
+            "memory_peak_median_bytes": 3158732800,
+            "memory_peak_max_bytes": 3158740992,
+            "proof_bytes_min": 499130,
+            "proof_bytes_max": 516699,
+            "acceptance": false
+          }
+        }
+      }
+    },
+    "issuance": {
+      "measured": true,
+      "parameters": {
+        "log_blowup": 8,
+        "num_queries": 36,
+        "query_pow_bits": 20,
+        "commit_pow_bits": 0,
+        "batch_pow_bits": 20,
+        "max_log_arity": 1,
+        "log_final_poly_len": 0
+      },
+      "security": {
+        "p3_security_version": "0.9.0-rc.2",
+        "accounting": "single-proof-johnson-halving-bht-v1",
+        "shape": {
+          "base_trace_rows": 128,
+          "main_width": 438,
+          "preprocessed_width": 10,
+          "public_values": 72,
+          "num_constraints": 577,
+          "max_constraint_degree": 3,
+          "num_quotient_chunks": 8,
+          "num_batched_functions": 1056,
+          "log_committed_trace_length": 8,
+          "challenge_field_bits_floor": 247,
+          "classical_collision_bits_floor": 185
+        },
+        "screen": {
+          "passes_selected_model": true,
+          "classical_conjectured_union_bits": 184.99999999999997,
+          "classical_johnson_union_bits": 163.79751563117227,
+          "quantum_johnson_challenge_union_bits": 81.89871998312678,
+          "bht_collision_bits": 123.33333333333333,
+          "johnson_m": 128,
+          "proof_multiplicity": 1
+        },
+        "conjectured": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 237.82757249135452
+            },
+            {
+              "label": "deep-ali",
+              "bits": 235.8294489646833
+            },
+            {
+              "label": "ldt-query-phase",
+              "bits": 306.0514843810616
+            },
+            {
+              "label": "ldt-commit-phase",
+              "bits": 230.99997798638864
+            },
+            {
+              "label": "batch-combination",
+              "bits": 240.95697271640546
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "proven_johnson": {
+          "terms": [
+            {
+              "label": "air-composition",
+              "bits": 226.82194794216065
+            },
+            {
+              "label": "deep-ali",
+              "bits": 224.82382441548944
+            },
+            {
+              "label": "low-degree-test",
+              "bits": 163.79751622902037
+            },
+            {
+              "label": "batch-combination",
+              "bits": 210.51941500640385
+            },
+            {
+              "label": "commitment-collision",
+              "bits": 185.0
+            }
+          ]
+        },
+        "johnson_fri_terms": [
+          {
+            "label": "fri-folding",
+            "bits": 200.5624422899984
+          },
+          {
+            "label": "fri-query",
+            "bits": 163.79751622902037
+          }
+        ],
+        "challenge_domain_terms": [
+          {
+            "label": "ood-deep-ali-domain",
+            "bits": 224.82382441548944
+          },
+          {
+            "label": "fri-folding-domain",
+            "bits": 194.22259228711377
+          }
+        ],
+        "application_binding": {
+          "algorithm": "BLAKE3-256",
+          "digest_bytes": 32,
+          "nominal_classical_collision_bits": 128,
+          "nominal_bht_collision_bits": 85.33333333333333,
+          "included_in_p3_security_report": false,
+          "model_status": "nominal-collision-model-requires-review"
+        }
+      },
+      "workers": {
+        "4": {
+          "trials": [
+            {
+              "kind": "issuance",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 1,
+              "measurement_scope_sha256": "43eb1d39f8da6e9b7e0ec342123d4e7ab7062dc243df19ef4b591e011f1b4a79",
+              "process_wall_ns": 667036087,
+              "process_cpu_ns": 2321778000,
+              "memory_peak_bytes": 211132416,
+              "memory_events_delta": {
+                "max": 0,
+                "low": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "oom": 0,
+                "high": 0
+              },
+              "memory_events_before": {
+                "max": 0,
+                "low": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "oom": 0,
+                "high": 0
+              },
+              "memory_events_after": {
+                "max": 0,
+                "low": 0,
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "oom_group_kill": 0,
+                "oom": 0,
+                "high": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 18658631,
+                "generation_ns": 601598109,
+                "verification_ns": 8556729,
+                "proof_bytes": 274353,
+                "initial_notes": 3,
+                "actual_ml_dsa65_verification": true,
+                "signed_record_bytes": 5673,
+                "ciphertext_bytes": 3939
+              }
+            },
+            {
+              "kind": "issuance",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 2,
+              "measurement_scope_sha256": "d5f9ee4faa82bdf5a37b95f414750ca778f1650db82792f3d98217770f32f7fd",
+              "process_wall_ns": 717024445,
+              "process_cpu_ns": 2491307000,
+              "memory_peak_bytes": 211423232,
+              "memory_events_delta": {
+                "low": 0,
+                "oom": 0,
+                "sock_throttled": 0,
+                "max": 0,
+                "oom_group_kill": 0,
+                "oom_kill": 0,
+                "high": 0
+              },
+              "memory_events_before": {
+                "low": 0,
+                "oom": 0,
+                "sock_throttled": 0,
+                "max": 0,
+                "oom_group_kill": 0,
+                "oom_kill": 0,
+                "high": 0
+              },
+              "memory_events_after": {
+                "low": 0,
+                "oom": 0,
+                "sock_throttled": 0,
+                "max": 0,
+                "oom_group_kill": 0,
+                "oom_kill": 0,
+                "high": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 18515451,
+                "generation_ns": 639979907,
+                "verification_ns": 8699588,
+                "proof_bytes": 280401,
+                "initial_notes": 3,
+                "actual_ml_dsa65_verification": true,
+                "signed_record_bytes": 5673,
+                "ciphertext_bytes": 3939
+              }
+            },
+            {
+              "kind": "issuance",
+              "workers": 4,
+              "verification_workers": 4,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 3,
+              "measurement_scope_sha256": "9b631c36a72aee651a7a26c9391e11b3ce7a2172875b0ae3ff82de470c1bcba0",
+              "process_wall_ns": 767040974,
+              "process_cpu_ns": 2809025000,
+              "memory_peak_bytes": 211402752,
+              "memory_events_delta": {
+                "oom_group_kill": 0,
+                "oom_kill": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "low": 0,
+                "sock_throttled": 0
+              },
+              "memory_events_before": {
+                "oom_group_kill": 0,
+                "oom_kill": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "low": 0,
+                "sock_throttled": 0
+              },
+              "memory_events_after": {
+                "oom_group_kill": 0,
+                "oom_kill": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "low": 0,
+                "sock_throttled": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 18623985,
+                "generation_ns": 717943136,
+                "verification_ns": 8641459,
+                "proof_bytes": 278913,
+                "initial_notes": 3,
+                "actual_ml_dsa65_verification": true,
+                "signed_record_bytes": 5673,
+                "ciphertext_bytes": 3939
+              }
+            }
+          ],
+          "summary": {
+            "complete": true,
+            "trial_count": 3,
+            "generation_median_ns": 639979907,
+            "generation_min_ns": 601598109,
+            "generation_max_ns": 717943136,
+            "verification_median_ns": 8641459,
+            "process_wall_median_ns": 717024445,
+            "memory_peak_median_bytes": 211402752,
+            "memory_peak_max_bytes": 211423232,
+            "proof_bytes_min": 274353,
+            "proof_bytes_max": 280401,
+            "acceptance": false
+          }
+        },
+        "1": {
+          "trials": [
+            {
+              "kind": "issuance",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 1,
+              "measurement_scope_sha256": "eb67b9d7dc2368ca611794303855ae54b9054d0520805bb5086b42e9c80b1f9a",
+              "process_wall_ns": 1769442752,
+              "process_cpu_ns": 1746038000,
+              "memory_peak_bytes": 210448384,
+              "memory_events_delta": {
+                "sock_throttled": 0,
+                "high": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0,
+                "max": 0,
+                "oom": 0,
+                "low": 0
+              },
+              "memory_events_before": {
+                "sock_throttled": 0,
+                "high": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0,
+                "max": 0,
+                "oom": 0,
+                "low": 0
+              },
+              "memory_events_after": {
+                "sock_throttled": 0,
+                "high": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0,
+                "max": 0,
+                "oom": 0,
+                "low": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 36913433,
+                "generation_ns": 1686880130,
+                "verification_ns": 8731339,
+                "proof_bytes": 285585,
+                "initial_notes": 3,
+                "actual_ml_dsa65_verification": true,
+                "signed_record_bytes": 5673,
+                "ciphertext_bytes": 3939
+              }
+            },
+            {
+              "kind": "issuance",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 2,
+              "measurement_scope_sha256": "55edf1f87d8b7b57aaa602c649ecc35788962060fe5248d41c8fe0c676f78392",
+              "process_wall_ns": 1267905799,
+              "process_cpu_ns": 1220146000,
+              "memory_peak_bytes": 210182144,
+              "memory_events_delta": {
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom": 0,
+                "oom_group_kill": 0,
+                "high": 0,
+                "max": 0
+              },
+              "memory_events_before": {
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom": 0,
+                "oom_group_kill": 0,
+                "high": 0,
+                "max": 0
+              },
+              "memory_events_after": {
+                "oom_kill": 0,
+                "sock_throttled": 0,
+                "low": 0,
+                "oom": 0,
+                "oom_group_kill": 0,
+                "high": 0,
+                "max": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 36971171,
+                "generation_ns": 1161136898,
+                "verification_ns": 8528751,
+                "proof_bytes": 276465,
+                "initial_notes": 3,
+                "actual_ml_dsa65_verification": true,
+                "signed_record_bytes": 5673,
+                "ciphertext_bytes": 3939
+              }
+            },
+            {
+              "kind": "issuance",
+              "workers": 1,
+              "verification_workers": 1,
+              "parameters": {
+                "log_blowup": 8,
+                "num_queries": 36,
+                "query_pow_bits": 20,
+                "commit_pow_bits": 0,
+                "batch_pow_bits": 20,
+                "max_log_arity": 1,
+                "log_final_poly_len": 0
+              },
+              "hardware_profile": "epyc7763-baseline",
+              "resource_control_pass": true,
+              "proof_report_valid": true,
+              "scope_exit_code": 0,
+              "exit_code": 0,
+              "timed_out": false,
+              "remaining_descendants_at_exit": 0,
+              "memory_max_bytes": 5368709120,
+              "memory_swap_max_bytes": 0,
+              "memory_scope": "whole fresh setup/prove/verify process tree plus recorder",
+              "verification_only_process": false,
+              "cryptographic_approval": false,
+              "network_activation": false,
+              "acceptance": false,
+              "trial": 3,
+              "measurement_scope_sha256": "57973540e3cbb6c5260ccff2750a91bea3e9dd2d141982b7dce02b056842e4ec",
+              "process_wall_ns": 1318278895,
+              "process_cpu_ns": 1300951000,
+              "memory_peak_bytes": 210460672,
+              "memory_events_delta": {
+                "oom_group_kill": 0,
+                "sock_throttled": 0,
+                "high": 0,
+                "oom": 0,
+                "low": 0,
+                "max": 0,
+                "oom_kill": 0
+              },
+              "memory_events_before": {
+                "oom_group_kill": 0,
+                "sock_throttled": 0,
+                "high": 0,
+                "oom": 0,
+                "low": 0,
+                "max": 0,
+                "oom_kill": 0
+              },
+              "memory_events_after": {
+                "oom_group_kill": 0,
+                "sock_throttled": 0,
+                "high": 0,
+                "oom": 0,
+                "low": 0,
+                "max": 0,
+                "oom_kill": 0
+              },
+              "cpu_max": "max 100000",
+              "visible_cpu_limits": [
+                {
+                  "ancestor_level": 0,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 1,
+                  "cpu_max": "max 100000",
+                  "quota_cores": null
+                },
+                {
+                  "ancestor_level": 2,
+                  "cpu_max": null,
+                  "quota_cores": null
+                }
+              ],
+              "measurement": {
+                "setup_ns": 37025612,
+                "generation_ns": 1241751044,
+                "verification_ns": 8302860,
+                "proof_bytes": 270177,
+                "initial_notes": 3,
+                "actual_ml_dsa65_verification": true,
+                "signed_record_bytes": 5673,
+                "ciphertext_bytes": 3939
+              }
+            }
+          ],
+          "summary": {
+            "complete": true,
+            "trial_count": 3,
+            "generation_median_ns": 1241751044,
+            "generation_min_ns": 1161136898,
+            "generation_max_ns": 1686880130,
+            "verification_median_ns": 8528751,
+            "process_wall_median_ns": 1318278895,
+            "memory_peak_median_bytes": 210448384,
+            "memory_peak_max_bytes": 210460672,
+            "proof_bytes_min": 270177,
+            "proof_bytes_max": 285585,
+            "acceptance": false
+          }
+        }
       }
     }
-  ]
+  }
 }

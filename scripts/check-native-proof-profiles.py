@@ -71,6 +71,8 @@ def validate_relation(value, kind, transaction, freeze):
     shape = summary['shape']
     rows, main, pre = SHAPES[index]
     if (not summary['screen']['passes_selected_model'] or security['fri'] != p
+            or not isinstance(security['fri'], dict)
+            or any(type(number) is not int for number in security['fri'].values())
             or (shape['base_trace_rows'], shape['main_width'], shape['preprocessed_width']) != (rows, main, pre)):
         raise ValueError('Native actual-AIR security or shape changed')
     key = value['public_verifier_key']
@@ -137,6 +139,8 @@ def economic_relation(value, kind, transaction, freeze, reproduced=False):
     p = measured['parameters']
     if (value['kind'] != kind or type(value['capacity']) is not int
             or value['capacity'] != CAPACITIES[index] or value['parameters'] != p
+            or not isinstance(value['parameters'], dict)
+            or any(type(number) is not int for number in value['parameters'].values())
             or not isinstance(p, dict) or any(type(number) is not int for number in p.values())
             or value['cryptographic_approval'] is not False or value['network_activation'] is not False):
         raise ValueError('Revised native identity or measured parameters changed')
@@ -148,6 +152,8 @@ def economic_relation(value, kind, transaction, freeze, reproduced=False):
     rows, main, pre = ECONOMICS_SHAPES[index]
     dimensions = (shape['base_trace_rows'], shape['main_width'], shape['preprocessed_width'])
     if (not summary['screen']['passes_selected_model'] or security.get('fri') != p
+            or not isinstance(security.get('fri'), dict)
+            or any(type(number) is not int for number in security['fri'].values())
             or dimensions != (rows, main, pre) or any(type(number) is not int for number in dimensions)
             or type(shape['public_values']) is not int
             or shape['public_values'] != ECONOMICS_PUBLIC_VALUES[index]

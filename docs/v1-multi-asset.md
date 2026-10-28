@@ -1,8 +1,10 @@
 # V1 Multi-Asset Transaction Format
 
-**Status:** Selected V1 design with an isolated native implementation in
-`crates/bench-multi-asset`. The economic revision reopens its proof profile;
-earlier keys and measurements are baseline evidence only.
+**Status:** Selected V1 design with native transaction, settlement and issuance
+proof parameters engineering-frozen for the revised lock and economic relations
+in `crates/bench-multi-asset`. The fresh actual-AIR scan records the selected
+source-bound profile; required CI and public-key reproduction remain release
+checks.
 The [profile artifact](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
 binds the selected parameters, measured implementation and public preprocessing
 key. It is not independent cryptographic approval or network activation.
@@ -224,14 +226,15 @@ transition must use the same verified relation before activation.
 
 The following are extracted dimensions of the isolated implementation, not
 source-level estimates. Hiding and query choices can increase the padded
-height; the issuance example uses `log_blowup=8`, 36 queries and query grinding
-20. It is a measurement profile, not an approved issuance parameter set.
+height. The selected issuance profile uses `log_blowup=8`, 36 queries and
+20-bit query/opening-batch grinding. These are engineering profiles, not
+independently approved cryptographic parameters.
 
 | Relation | Padded rows | Main columns | Preprocessed columns | Public values | Constraints per row | Maximum degree |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Two-input/three-output transaction | 256 | 1,420 | 243 | 97 | 2,940 | 3 |
-| Settlement, 576 positions | 1,024 | 516 | 587 | 6,964 | 7,720 | 3 |
-| Issuance, three initial notes | 128 | 438 | 10 | 72 | 573 | 3 |
+| Two-input/three-output transaction | 256 | 1,392 | 247 | 101 | 2,898 | 3 |
+| Settlement, 576 positions | 1,024 | 581 | 609 | 7,050 | 19,703 | 3 |
+| Issuance, three initial notes | 128 | 438 | 10 | 72 | 577 | 3 |
 
 Issuance uses five Poseidon2 rows per initial note before padding, with seven
 parallel u16 range-check lanes. Its public width is `36 + 12*n` and its
@@ -266,38 +269,41 @@ halving for all Fiat--Shamir challenge terms, including FRI queries and
 grinding. Challenge-domain terms and BHT collision resistance must also reach
 80 bits. Assess each native proof relation separately.
 
-The pre-economic-revision transaction profile used `log_blowup=7`, 41 queries,
-20-bit query/batch grinding, zero commitment grinding, binary folding and final
-polynomial log length zero. Its three EPYC 7763 four-worker generation trials
-are 1.332143, 1.315662 and 1.316440 seconds. The measured body range is
-583,552--584,848 bytes and the maximum process-tree charged memory is
-531,668,992 bytes. The [complete eight-profile scan](v1-multi-asset-evaluation.md)
-records all three trials, peak memory and actual security terms. It selects
-the smallest maximum observed proof among profiles whose three generation
-trials each complete within two seconds. The selected quantum Johnson
-challenge union is 81.6922 bits.
+The revised transaction profile uses `log_blowup=7`, 41 queries, 20-bit
+query/opening-batch grinding, zero commitment grinding, binary folding and
+final-polynomial log length zero. Its three EPYC 7763 four-worker generation
+trials are 1.531155438, 1.429902190 and 1.462877730 seconds. Four-worker bodies
+are 581,392–585,808 bytes; the maximum across the separate one-worker group
+as well is 588,832 bytes. The largest charged process-tree peak is 525,234,176
+bytes. One-worker verification has a 17.006900-ms median, measured inside a
+fresh setup/prove/verify process rather than a verifier-only process. Its peak
+therefore does not establish independent verifier memory.
 
-The body cap is **655,360 bytes (640 KiB)**, at least 10% above the largest
-observed selected-profile proof and rounded up to 64 KiB; the measured margin
-is 12.0565%. It is a future wallet/node admission limit, not a theorem that
-every randomized proof fits it. Multi-asset envelope/decoder integration and
-standalone verifier resource qualification remain required. The earlier
-`bench-d8` decoder retains its independent 512-KiB limit. Settlement and
-issuance keep independent 524,288-byte body caps and their b8/q36/g20 profiles.
+The [complete eight-profile scan](v1-multi-asset-evaluation.md) records every
+trial, charged peak, actual shape and security term. Selection requires every
+four-worker generation trial to pass two seconds and the proof-body limit,
+then minimizes the largest observed body. Quantum-halved Johnson challenge
+union is 81.692218869 bits; classical conjectured union is 185 bits and selected
+W24 BHT collision ledger is 123.333333333 bits.
 
-The fixed maximum remains 576 positions. The conditional full-network ledger
-is 36.50164 Mbps; minimum uplink is **43 Mbps** to leave at least 15% of link
-capacity unused, and deployment recommends **100 Mbps**. Relay, validation
-and storage budgets use the implemented 2,115-byte permanent position record
-and bounded issuance records. The [network wire budget](v1-network-budget.md)
-includes inventories, framing, authenticated transport, ACKs, handshake,
-retransmission and recovery allowances. Actual wire/full-load measurements
-and issuance resource policy remain qualification gates.
+The body cap is **655,360 bytes (640 KiB)**, 11.2983% above the largest selected
+body across both worker groups, rounded up to 64 KiB. It is an admission limit,
+not a theorem that every randomized valid proof fits. Independently qualify
+malformed decoding, verifier resources and wallet/node integration. The earlier
+`bench-d8` decoder retains its 512-KiB limit. Settlement and issuance use
+separate 524,288-byte caps and b8/q36/g20 profiles; the fresh scan measures each
+with three four-worker and three one-worker processes.
 
-Column and query-opening optimization proceeds independently of the required
-revised-AIR screen; it cannot establish a new freeze without actual measurements.
-A smaller proof or lower uplink requirement requires a new measured profile
-revision; it does not silently change the selected verifier or security target.
+Keep the maximum at 576 positions. The economic-record complete network model
+charges 36.51260160 Mbps; **43 Mbps** minimum leaves 15.086973% unused, and
+deployment recommends **100 Mbps**. Relay, validation and storage budgets use
+the unchanged 2,115-byte permanent position record plus bounded block/fund and
+issuance records. Actual transport, complete-block processing and issuance
+resource policy remain qualification gates.
+
+The selected AIR has 1,392 main columns. Further column/opening optimization
+cannot silently change its key, cap or security target. Adopt a replacement
+only after new source-bound security, timing, memory and proof-size evidence.
 
 ## Compatibility and remaining work
 

@@ -1,11 +1,12 @@
 # Current Protocol Decisions
 
-Status: the V1 economics revision reopens transaction and settlement proof
-qualification. Source-bound profiles and measurements retained in the repository
-are baselines for the earlier relation; they do not qualify the revised input
-unlock or multi-note reward constraints. Re-extract actual-AIR security, reproduce
-public preprocessing keys and measure fresh proofs before refreezing. No external
-audit approval or network activation is implied.
+Status: native V1 transaction, fixed-capacity settlement and three-note
+issuance proof parameters have source-bound engineering profiles for the
+`native-v1-economics-1` relation. Revised actual-AIR reports and 39 isolated
+process measurements qualify the selected engineering parameters. Required CI
+must reproduce the installed public keys and exercise the native adapters.
+Independent security review, node/network integration and activation remain
+separate gates; no audit approval or active-network change is implied.
 
 ## Network and proof architecture
 
@@ -20,9 +21,12 @@ Use KoalaBear D8, standard Poseidon2 W24 and twelve-element digests. Require
 classical conjectured security of at least 128 bits and quantum-halved Johnson
 Fiat–Shamir terms, including query and enforced grinding terms, of at least
 80 bits. Challenge-domain and selected BHT collision terms must also meet
-80 bits. The earlier baseline reported quantum-halved Johnson challenge ledgers of
-81.6922 bits for transactions, 81.9837 for fixed-576 settlement and 81.8987 for
-three-note issuance. Revised relations require their own actual-AIR reports. All future parameter changes must retain at least 80 bits.
+80 bits. The revised actual-AIR ledgers report quantum-halved Johnson
+challenge unions of 81.692219 bits for transactions, 81.983705 for fixed-576
+settlement and 81.898720 for three-note issuance. The classical conjectured
+ledger is approximately 185 bits and the selected commitment BHT ledger is
+123.333333 bits. These are engineering model results pending independent
+review. All future parameter changes must retain at least 80 bits.
 The [collision ledger](bht-security-accounting.md) distinguishes raw classical
 reports from quantum model conversions and application hashes.
 
@@ -126,26 +130,37 @@ Select from log blowups 5 through 8 and query/batch grinding 20 or 24, using
 three fresh trials per configuration. All three generation times must pass;
 rank passing configurations by their largest observed serialized proof.
 
-The pre-economics baseline used `log_blowup=7`, 41 queries, query grinding 20, opening-batch grinding 20,
-commitment grinding zero, binary folding and `log_final_poly_len=0`.
-The [actual-AIR report and measurements](v1-multi-asset-evaluation.md) record
-three generation times of 1.332143, 1.315662 and 1.316440 seconds, maximum
-whole-process charged memory 531,668,992 bytes and quantum-halved Johnson
-challenge union 81.692219 bits. These qualify only the earlier relation's
-three-sample engineering experiment, not the changed AIR, a worst-case latency
-or independent cryptographic approval.
+The selected transaction profile uses `log_blowup=7`, 41 queries, query
+and opening-batch grinding 20, commitment grinding zero, binary folding and
+`log_final_poly_len=0`. The revised AIR has 256 base rows, 1,392 main columns,
+247 preprocessing columns and 101 public values. The
+[actual-AIR evaluation](v1-multi-asset-evaluation.md) and source-bound profiles
+record all eight configurations and three trials per configuration on an
+Ubuntu 24.04 EPYC 7763 VM exposing two physical cores and four vCPUs.
 
-The revised-relation provisional admission target remains
-`MAX_LEAF_PROOF_LEN = 655,360` bytes (640 KiB). This cap gave 12.056% headroom
-over the earlier relation's largest 584,848-byte sample; it does not establish
-margin for the new unlock/reward relation. Fresh revised selected-profile
-measurements and sample margin remain pending before refreezing. An enforced
-admission cap is not a mathematical encoded-size bound.
-Settlement and issuance proof caps remain independently 524,288 bytes.
-The old 512-KiB decoder and retained network are unchanged. The native
-integration's prepared multi-asset decoder and envelope enforce the byte cap;
-revised source/key/profile qualification, worker isolation and deployed-network
-resource qualification remain required before activation.
+The selected four-worker generation trials are 1.531155438, 1.429902190 and
+1.462877730 seconds. The largest proof across the selected one/four-worker
+samples is 588,832 bytes; `MAX_LEAF_PROOF_LEN = 655,360` bytes (640 KiB)
+provides 11.298299% headroom. The four-worker whole-process-tree charged peak
+is 525,234,176 bytes. Single-worker verification median is 17.006900 ms,
+measured within a process that also performs fresh setup and proving; it does
+not establish standalone verifier memory or worst-case latency. This is a
+three-sample engineering qualification, not independent cryptographic approval.
+
+Settlement uses blowup 8, 36 queries and the same grinding/folding settings.
+Its four-worker generation median is 5.523829281 seconds and maximum charged
+peak is 3,161,432,064 bytes. Three-note issuance uses those same FRI settings;
+its four-worker generation median is 0.639979907 seconds and charged peak is
+211,423,232 bytes. Settlement and issuance retain separate 524,288-byte caps.
+The 5-GiB cgroup boundary is a measurement condition, not a miner RAM
+requirement. All scopes use zero swap and preserve the kernel memory-event
+record. The 39 distinct scopes consist of 24 grid trials, three selected
+single-worker transaction trials and six trials for each related relation.
+
+An enforced admission cap is not a mathematical encoded-size bound. The
+retained two-output decoder and network are unchanged. Current native
+source/key/profile guards, worker isolation and deployed-network resource
+qualification remain mandatory before activation.
 
 The implemented public body is 2,027 bytes; its fee commitment and snapshot
 selector bring permanent bytes to 2,115 per position. The native codec's
@@ -165,10 +180,13 @@ conditional planning, not measured throughput. Earlier unflagged/native-only
 reports remain historical evidence. Recompute if the revised scan changes
 proof caps, and measure the actual transport before network acceptance.
 
-The [independent layout prototype](multi-asset-air-optimization.md) targets
-fewer columns and smaller openings. It does not change the adopted relation or
-block capacity. Re-screen and measure any adopted optimization before
-refreezing its key and reducing proof/bandwidth limits.
+The adopted layout reuses range-check lanes for snapshot-height limbs and
+omits unused inverse witnesses for two identity asset comparisons. All other
+asset comparisons and balance equations remain enforced. The separate
+[layout prototype](multi-asset-air-optimization.md) is unreferenced experimental
+work; it is not the measured 1,392-column implementation. Re-screen and
+measure any further optimization before replacing its profile or reducing
+proof/bandwidth limits.
 
 ## Confidential fees and retention
 
@@ -364,7 +382,7 @@ Project-operated permanent-public-data backups
 and mandatory mnemonic backup/full ciphertext rescan are described in
 [deployment](v1-deployment.md) and [the storage model](v1-storage-and-sync.md).
 
-## Multi-asset implementation and reopened qualification
+## Multi-asset implementation and proof qualification
 
 The isolated [multi-asset crate](../crates/bench-multi-asset/README.md) implements
 native asset conservation, the fixed three-output codec, ML-DSA-authenticated
@@ -373,15 +391,16 @@ adds trusted snapshot-height lock eligibility and mode-selected reward notes.
 Ordinary transaction and issuance outputs use unlock height zero; consensus
 reward notes obtain their locks from the authenticated reward plan.
 
-The [prior transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
-and [prior relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-remain diagnostic baselines. They are not approval for the changed sources.
-New security reports, public keys and three-trial measurements must reproduce
-before replacing their role in the native verifier. Transaction proving must
-remain within two seconds on the EPYC 7763 four-vCPU reference, with a
-655,360-byte cap and at least 80 quantum-halved Johnson bits. Settlement and
-issuance retain separately evaluated 524,288-byte targets. Keep 576 positions;
-report any resource failure and bandwidth impact rather than reducing capacity.
+The current [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
+and [relation manifest](../crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
+bind the revised relation to exact source identities, security reports,
+measurements and public preprocessing keys. Their engineering qualification
+preserves the two-second four-worker transaction criterion, 655,360-byte cap
+with at least 10% observed-body margin, 80-bit quantum-halved Johnson target
+and 576 positions. Required CI re-creates all three public keys and checks
+native proof round trips and rejection behavior. Keep the independent
+524,288-byte settlement and issuance limits. Any subsequent source or parameter
+change requires a new source-bound profile and reviewed measurements.
 
 Independent verifier qualification, valid-block timing, configured testnet
 issuance-fee collection, durable wallet recovery, retention and network
@@ -396,7 +415,8 @@ native transaction and fixed-576 settlement verification with strict ascending
 BLAKE3 statement-ID ordering, all-input reuse checks, the canonical snapshot
 window and an atomic append/replay transition. It creates independent disposable
 engineering directories and imports no retained chain, key or wallet data.
-The economics revision requires fresh source-bound relation keys and qualification.
+The runtime must use the revised source-bound keys; retained earlier service
+observations do not qualify the new economic relation.
 
 Continuous production uses a new independent ASERT engineering directory with
 configuration format v2, fresh network identity and genesis, immutable
@@ -459,7 +479,8 @@ returns the transaction, matching sidecar and private payment opening.
 Mnemonic backup, protected persistence, valid-chain seed-wallet funding,
 pruned-public-history rescan and full M2 workflow acceptance remain incomplete.
 Seed-backed mining destinations and ordered per-note encryption receipts are
-required for recovery. Existing artifacts are earlier-relation baselines.
+required for recovery. Current proof artifacts qualify the revised relation;
+they do not complete these wallet integration requirements.
 
 The dedicated native runtime CI job compiles the integration and runs
 synthetic-verifier state/transport tests and native-proof tests. Tests with
@@ -467,7 +488,7 @@ synthetic funding do not establish end-to-end valid-chain wallet acceptance or
 production cryptographic transport. Unsupported issuance operations remain
 absent until the dedicated testnet fund account, atomic fee collection and
 resource bounds are configured and implemented. Three-day proof/sidecar
-retention, checkpoint bootstrap, fund spending, protected wallet durability,
+retention, checkpoint bootstrap, configured fund operation, protected wallet durability,
 transport privacy and sustained network acceptance remain separate gates.
 No library test changes the frozen single-node observation or the retained
 seven-node network.

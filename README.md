@@ -14,18 +14,24 @@ disposable test keys and valueless test assets.
 
 | Status | Scope |
 | --- | --- |
-| Done | Earlier native transaction, settlement and issuance proof baselines with public verifier artifacts and reproducible measurements |
-| In progress | V1 economics revision, renewed proof qualification, native node/wallet/network integration and launch-time fund configuration |
+| Done | Native V1 transaction, fixed-576 settlement and three-note issuance proof parameters engineering-frozen for `native-v1-economics-1`; public verifier artifacts and source-bound measurements |
+| In progress | Native node/wallet/network integration, release validation and launch-time fund configuration |
 | Not yet | Independent security review: pending; public test network: not available; production network: not available |
 
-The economics revision changes input-lock eligibility and miner reward notes.
-Its proof parameters and public preprocessing keys require a new actual-AIR
-security scan and three-trial measurement. The retained
-[relation manifest](crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json)
-describes the earlier relation; it does not qualify changed sources. See
-[current decisions](docs/00-decisions.md) and the
+The revised transaction relation checks input unlock heights against the
+canonical snapshot height. Its selected profile measured **1.463 seconds median
+four-worker generation**, **17.007 ms median one-worker verification** and a
+maximum **588,832-byte proof body** across the selected one/four-worker trials.
+The four-worker process-tree peak was **525,234,176 bytes**. The selected
+instance-specific quantum Johnson ledger is **81.692 bits**. The
+[relation manifest](crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json),
+[measurement scope](docs/v1-multi-asset-evaluation.md) and
+[reproduction procedure](docs/native-proof-profiles.md) bind these results to
+fixed sources, parameters and public keys. Engineering freeze does not establish
+independent review, native-network activation or whole-node resource acceptance.
+See [current decisions](docs/00-decisions.md) and the
 [economic specification](docs/v1-economics.md).
-The existing runnable node uses the **legacy recursive proof route**. The
+The default workspace node uses the **legacy recursive proof route**. The
 retained seven-node N=2 engineering testnet does not run native V1.
 
 ## Native V1 design
@@ -115,8 +121,8 @@ Default binaries enable Plonky3 and reject mock-proof networks. Explicit
 `development` builds use forgeable mock proofs and are test tools. Follow the
 [legacy node operations](docs/legacy/node-operations.md) and
 [legacy RPC/recovery](docs/legacy/rpc.md) documentation for that implementation.
-No native V1 launch command is available before runtime integration and
-acceptance are complete.
+No deployment-qualified native V1 launch command is available before runtime
+integration and acceptance are complete.
 
 ## License
 

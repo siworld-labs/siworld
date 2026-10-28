@@ -4,21 +4,23 @@ Status: the continuous single-node service and native node-integration library
 are implemented engineering components. The library adds bounded admission,
 authenticated-stream protocol interfaces, full-proof synchronization,
 verified-work fork selection, wallet primitives and a public subsidy audit.
-Remote CI compiles and tests the integration, including separately selected
-native-proof tests. The real 24-hour service observation and final offline
-replay remain separate required evidence; this document does not
-report their completion. No production hybrid-handshake provider or network
+The integration has dedicated compilation, rejection and native-proof CI
+checks; complete CI for the current revision remains a release check. A real
+24-hour observation and final offline replay of the current revision remain
+required evidence; this document does not report their completion. No production hybrid-handshake provider or network
 service command is supplied. The runtime does not activate a public network,
 replace an existing database or change the retained seven-node legacy network.
 Independent security review remains pending.
 
 ## Scope
 
-The [economic revision](v1-economics.md) reopens proof qualification. The
-retained continuous-service observation uses its frozen pre-revision artifacts
-and must not be restarted or reinterpreted as acceptance of revised economics.
-New economic state, reward outputs and lock checks require separate tests,
-replay evidence, source-bound keys and a new explicitly activated network.
+The [economic relations](v1-economics.md) use revision
+`native-v1-economics-1`. Fresh actual-AIR reports and 39 EPYC 7763 trials cover
+its proof profiles; public-key reproduction and complete CI remain release
+checks. The retained continuous-service observation uses frozen pre-revision
+artifacts and must not be restarted or reinterpreted as acceptance of revised
+economics. The current revision requires its own runtime replay/observation
+and explicitly activated independent network.
 
 `crates/native-node` composes the native transaction and fixed-capacity
 settlement relations with a versioned block codec, canonical ordering, a common
@@ -33,13 +35,19 @@ order. Duplicate IDs and nullifiers, including the second input, are rejected.
 The statement binds the network, version, canonical snapshot identity, all
 public transaction bytes and the fee commitment. Proof and sidecar bytes do
 not change that identity. The block ID additionally authenticates proof bodies,
-reward ciphertext, parent, timestamp, target and nonce. The ordered settlement-list digest
+all reward ciphertexts, public mode, signed fund payouts, parent, timestamp,
+target and nonce. The ordered settlement-list digest
 excludes proof bodies.
 
 The producer and replay validator call the same state transition. Every
 transaction proof and the independent settlement proof must verify before
 accepted state changes. Output commitments and all SIP reward notes are appended
-to the depth-40 commitment tree. Accepted snapshot identities expire after
+to the depth-40 commitment tree. The block carries one Voyager reward note
+or five Holder notes. Its common transition updates the Holder pool, cumulative
+burn, scheduled reward locks and independent development-fund vesting/spending
+with the accepted state. Real input unlocks are checked against the trusted
+selected snapshot height, rather than the receiving node's latest height.
+Accepted snapshot identities expire after
 4096 canonical entries; an absent or removed identity is invalid even when
 another snapshot has the same root. The chain library verifies complete
 candidate branches and selects strictly greater cumulative verified work;
@@ -76,11 +84,11 @@ explicit recovery review; automatic crash-repair tooling is not an M1 claim.
 The local producer uses operating-system entropy and actual ML-KEM/ChaCha
 output encryption. It authenticates and reconstructs output commitments before
 proving. Reward recovery material is saved privately and synced before the
-accepted block is committed. A receipt contains the spending material and
-single-payment encapsulation opening needed to recover that reward; it must
-never be published. Service-produced rewards still use this receipt mechanism;
-they are not yet addressed to a seed-derived wallet. The separate wallet API
-below does not replace these receipts or establish durable wallet recovery.
+accepted block is committed. A receipt records private output/opening material for all one/five reward
+notes and must never be published. Rewards are encrypted to the explicitly
+configured, backed-up recipient wallet; receipts do not replace its seed
+backup. The separate wallet API does not establish protected durable wallet
+recovery merely by accepting a recipient address.
 
 ## Admission, synchronization and fork handling
 
@@ -92,8 +100,10 @@ nullifiers and all outputs, validates the sidecar against the transaction
 identity and fee commitment, then independently verifies the frozen relation.
 Verified entries are retained until canonical inclusion or explicit eviction;
 private fee sorting does not change canonical block ordering. Candidate
-assembly checks every opening and adds the private fee sum to the SIP miner
-reward with checked integer arithmetic.
+assembly checks every opening and adds the private fee sum to reward note
+zero with checked integer arithmetic. Fees are not split, burned or deposited
+into the Holder pool. Each template captures an explicit Voyager/Holder setting;
+changed settings affect subsequent templates only.
 
 The verified pool permits 512 MiB and 2,048 entries, with 16 MiB/64 entries
 per opaque peer and at most 4,096 peer identities. These are logical owned-byte
@@ -150,7 +160,12 @@ After independently replaying a complete supplied canonical history, it
 checks authenticated recipient/change ciphertexts and reconstructed note
 commitments, derives spent status and atomically replaces private receipts.
 Replaying a replacement chain removes orphan receipts and restores orphan
-spends. The wallet can prepare fixed two-input/three-output SIP or issued-asset
+spends. It reports available/locked balances and unlock tranches with estimated
+dates and the next unlock height. Private deterministic scheduling delays use
+of matured locked notes; opt-in small-SIP consolidation shares that delay
+without changing consensus maturity. These library primitives do not provide
+a deployed wallet UI or background scheduler. The wallet can prepare fixed
+two-input/three-output SIP or issued-asset
 transfers, pay standard or priority fees only in SIP, recheck all output
 encodings before proving and return the transaction, matching sidecar and
 private payment opening. Seed bytes and supported private buffers are erased
@@ -164,12 +179,13 @@ synthetic funding is not full-chain M2 acceptance.
 
 The `audit` command acquires the engineering-directory lease and independently
 replays canonical proof-carrying blocks. It checks each height's integer SIP
-subsidy and direct/locked development-fund credits against accepted counters,
-then binds its report to the exact height, tip and state fingerprint. Output
-contains only public subsidy/fund-credit records. It does not audit asset
-issuance or fund spending, and it does not validate local reward recovery
-receipts; the report explicitly marks these scope limits. Complete issuance
-and signed fund-spending audits remain blocked on those node transitions.
+subsidy, Voyager/Holder rewards, pool deposits/claims, cumulative burn,
+scheduled locks and independent fund credits, vesting and signed spending
+against accepted counters. It checks the supply invariant at every height and
+binds its report to the exact height, tip and state fingerprint. Output contains
+only public economic records. It does not audit asset issuance or validate
+local reward recovery receipts; the report explicitly marks those scope limits.
+Integrated issuance admission and its complete supply audit remain separate.
 
 ## Engineering commands
 
@@ -181,6 +197,7 @@ On a qualified Linux x86_64 host:
 python3 scripts/build-native-runtime.py --output .local/native-runtime-release
 mkdir -p .local/native-engineering
 .local/native-runtime-release/bin/siworld-native-node init .local/native-engineering/network-a 0
+.local/native-runtime-release/bin/siworld-native-node configure-miner .local/native-engineering/network-a holder .local/native-engineering/recipient-address.bin
 .local/native-runtime-release/bin/siworld-native-node mine .local/native-engineering/network-a 64
 .local/native-runtime-release/bin/siworld-native-node check .local/native-engineering/network-a
 .local/native-runtime-release/bin/siworld-native-node audit .local/native-engineering/network-a
@@ -192,7 +209,10 @@ an independently compiled baseline CPU-admission launcher. Unsupported CPUs are
 rejected; there is no scalar fallback. Direct source builds on other platforms
 are development diagnostics and do not establish deployment qualification.
 
-The `init`/`mine` example is an inexpensive correctness fixture. Its optional
+The address file must already contain the backed-up wallet's canonical
+1,232-byte public address with private file permissions. `configure-miner`
+requires `voyager` or `holder`; no default is supplied. It changes only future
+templates. The `init`/`mine` example is an inexpensive correctness fixture. Its optional
 work-bit selector is limited to 0–24, and continuous service refuses fixture
 configurations. Fixture results do not qualify ASERT timing or a sustained run.
 The current subsidy and fee helper functions are reused for engineering
@@ -201,13 +221,22 @@ protocol decisions and integration tests.
 
 ### Independent ASERT service
 
-Create a different, absent directory for continuous production:
+Create a different, absent directory for a future continuous-service run.
+Initialization alone does not make the network ready to produce:
 
 ```sh
 .local/native-runtime-release/bin/siworld-native-node init-service .local/native-engineering/asert-a
-RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
-  .local/native-runtime-release/bin/siworld-native-node run .local/native-engineering/asert-a
+.local/native-runtime-release/bin/siworld-native-node configure-miner .local/native-engineering/asert-a holder .local/native-engineering/recipient-address.bin
 ```
+
+ASERT initialization leaves the genesis-bound fund allocation unconfigured.
+`run` fails closed until an explicit adopted allocation and authenticated key
+policy exist. The current native codec has two fund key/payout slots; a
+different wallet count requires a versioned configuration/codec extension.
+There is no CLI command that silently supplies launch weights or keys. The
+cheap `init` fixture's synthetic equal weights do not adopt launch policy.
+After those independent prerequisites are met, `run DIRECTORY` requires
+`RAYON_NUM_THREADS=4` and `SIWORLD_COMPOSITION_HIDING_WORKERS=2`.
 
 `init-service` performs one bounded initialization-only work-rate calibration
 and durably fixes its resulting target in the new configuration. Resume does
@@ -327,8 +356,10 @@ issuance resource bounds remain implementation gates; the mainnet fee remains
 undecided. Unsupported operations are absent from the wire codec.
 Production hybrid identity/record protection, a listening network service,
 verifier-worker isolation, pruning/checkpoint bootstrap, real three-day
-retention, Dandelion++, fund payout execution, mnemonic/protected wallet
-persistence and panel controls remain incomplete. The library interfaces and
+retention, Dandelion++, operational fund-key/allocation configuration,
+mnemonic/protected wallet persistence and panel controls remain incomplete.
+The native block transition and audit already validate bounded signed fund
+payouts; this does not configure production fund custody. The library interfaces and
 candidate limits above must not be treated as deployment qualification.
 Those gates remain in the [node/network plan](v1-node-network-plan.md).
 The retained seven-node legacy network and its keys/data are not inputs to this

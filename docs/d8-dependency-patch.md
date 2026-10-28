@@ -1,9 +1,10 @@
 # D8 Dependency Patch and Review Boundary
 
-The [monetary revision](v1-economics.md) reopens affected proof qualification.
-Earlier source-bound reports, keys and numeric profiles are baseline evidence
-only; revised lock/reward relations require new actual-AIR screening and
-resource measurements. Separate optimization work does not waive this gate.
+The [monetary revision](v1-economics.md) is included in the engineering-frozen
+`native-v1-economics-1` proof profiles. Revised lock/reward relations have new
+actual-AIR reports, source-bound public keys and hosted measurements. Release
+validation, independent review and native network activation remain separate
+gates. Further relation changes require renewed qualification.
 
 Status: experimental source implementation with fixed project-fork revisions.
 The native application directly pins the source revision and registry lock graph;
@@ -104,8 +105,10 @@ The [two-output engineering freeze bundle](../crates/bench-d8/artifacts/v1-nativ
 remains unchanged baseline evidence. The
 [multi-asset transaction engineering profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json)
 separately binds the three-output relation, dependency graph, public verifier
-key, selected actual-instance security report and all 24 qualified generation
-trials. Its fixed source boundary excludes unreferenced layout experiments.
+key and selected actual-instance security report. Its 39 hosted trials comprise
+24 transaction grid trials, three selected one-worker transaction trials and
+12 settlement/issuance trials split across one/four-worker processes. Its fixed
+source boundary excludes unreferenced layout experiments.
 
 The selected transaction profile is `log_blowup=7`, 41 queries and 20-bit
 query/batch grinding, with zero commitment grinding, binary folding and
@@ -114,20 +117,24 @@ query/batch grinding, with zero commitment grinding, binary folding and
 three generation trials must complete within two seconds on a qualified EPYC
 7763 four-vCPU VM. Among passing configurations, the smallest maximum observed
 proof body wins. Its admission cap is at least 10% above that sample maximum,
-rounded up to 64 KiB: 655,360 bytes (640 KiB) for the selected profile. This
-policy does not claim a mathematical proof-size bound.
-The three-output envelope adds a 2,184-byte prefix, and its private sidecar is
-78 bytes. Settlement and issuance retain independent 524,288-byte proof caps.
+rounded up to 64 KiB: 655,360 bytes (640 KiB) for the selected profile. The
+selected one/four-worker samples reached 588,832 bytes; the cap retains more
+than 10% above that maximum. This policy does not claim a mathematical
+proof-size bound. The [transaction format](route-a-v1.md) specifies the current
+snapshot-bound envelope with a 2,184-byte prefix and 78-byte private sidecar.
+Settlement and issuance retain independent 524,288-byte proof caps.
 Block capacity remains 576; minimum uplink follows complete bounded wire
 accounting: 43 Mbps minimum, at least 15% unused link capacity, and 100 Mbps
 recommended. The [node and network plan](v1-node-network-plan.md) defines initial
 byte/CPU/in-flight policies and the remaining shared transition, compact relay,
 retention, synchronization and hybrid-transport milestones.
 
-This transaction freeze does not update retained node decoders or admission
-policy. The new key, codec and cap need explicit native-node integration.
-A passing resource diagnostic does not complete integration of trusted
-4,096-canonical-snapshot selection or durable wallet receipt/change-key storage.
+This transaction freeze does not update the retained legacy node or activate
+a native network. The native engineering runtime has explicit key, codec,
+snapshot and admission adapters; complete wallet/network integration and
+release qualification remain separate. A passing resource diagnostic does not
+qualify durable wallet recovery or 4,096-canonical-snapshot lifecycle handling
+under sustained operation and reorganization.
 Node admission still needs isolated single-core verifier-memory and
 malformed-input work measurements. Generation memory from a combined
 setup/prove/verify process cannot establish a verifier-memory bound. These

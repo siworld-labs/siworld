@@ -3,16 +3,17 @@
 Status: conditional planning model for the [V1 economic revision](v1-economics.md).
 The current codec permits one Voyager or five Holder reward notes and up to
 two signed fund payouts per block. The model includes those maximum records;
-it does not establish measured network throughput or qualify the changed AIR.
-Source-bound proof measurements, the final admission policy and actual hybrid
-transport overhead must pass their separate gates before activation.
+it does not establish measured network throughput. The
+`native-v1-economics-1` proof profiles have fresh source-bound reference-host
+evidence; public-key reproduction, complete CI, final admission policy and
+actual hybrid transport overhead retain separate release/activation gates.
 
-The planning transaction proof cap is **655,360 bytes (640 KiB)**, independent
+The engineering-frozen transaction proof cap is **655,360 bytes (640 KiB)**, independent
 of the **524,288-byte** settlement and issuance caps. Keep **576 positions per
 300-second target block**. Under the assumptions below, **43 Mbps** is the
 smallest integer uplink leaving 15% capacity unused; **100 Mbps sustained
 uplink** remains the deployment recommendation. These are conditional resource
-figures, not a renewed parameter freeze or a change to the retained network.
+figures, not deployed-network qualification or a change to the retained network.
 
 ## Reproduction and evidence status
 
@@ -35,13 +36,13 @@ single-reward codec model. `--legacy-baseline` reproduces the earlier
 These modes preserve historical evidence; they do not describe the revised
 reward format or set its activation requirements.
 
-The earlier b7/q41/g20 actual-AIR measurements selected the retained
-640-KiB transaction cap. Their 583,552–584,848-byte proof bodies and
-1.315662–1.332143-second generation samples are diagnostic baselines for the
-changed unlock/reward relations. The [measurement record](v1-multi-asset-evaluation.md)
-does not qualify a different source or key. Revised qualification requires
-fresh actual-AIR security, three four-worker trials within two seconds on the
-reference class, independent verification and peak-memory evidence. A sample
+The economic b7/q41/g20 actual-AIR scan retains the 640-KiB transaction cap.
+The selected four-worker generation samples range from 1.429902190 to
+1.531155438 seconds, with a 1.462877730-second median. The largest body across
+selected one- and four-worker trials is 588,832 bytes. The
+[measurement record](v1-multi-asset-evaluation.md) binds those results to the
+source and key; it does not qualify a different relation. Independent
+verification-only memory and deployed-network qualification remain required. A sample
 size margin is not a mathematical maximum proof length; wallets and decoders
 must reject an oversized body without weakening security or truncating data.
 

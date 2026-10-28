@@ -48,5 +48,26 @@ class NativeProofProfileTests(unittest.TestCase):
                     PROFILES.validate(value)
 
 
+    def test_relation_parameters_reject_equal_noninteger_values(self):
+        original = self.profile()
+        for index, relation in enumerate(original['relations']):
+            for name, number in relation['parameters'].items():
+                replacements = [float(number)]
+                if number in (0, 1):
+                    replacements.append(bool(number))
+                for replacement in replacements:
+                    for location in ('parameters', 'security.fri'):
+                        with self.subTest(kind=relation['kind'], parameter=name,
+                                          location=location,
+                                          replacement_type=type(replacement).__name__):
+                            value = copy.deepcopy(original)
+                            target = value['relations'][index]
+                            parameters = (target['parameters'] if location == 'parameters'
+                                          else target['security']['fri'])
+                            parameters[name] = replacement
+                            with self.assertRaises(ValueError):
+                                PROFILES.validate(value)
+
+
 if __name__ == '__main__':
     unittest.main()

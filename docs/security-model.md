@@ -2,8 +2,9 @@
 
 The [monetary revision](v1-economics.md) adds review boundaries for trusted
 snapshot-height locks, mode-dependent SIP reward notes, pool/burn conservation,
-per-credit fund vesting and atomic economic rollback. Old profile results do
-not qualify those changed relations. Wallet threshold backup reconstructs one
+per-credit fund vesting and atomic economic rollback. The
+`native-v1-economics-1` profiles bind the revised AIRs and fresh reference-host
+evidence; pre-revision measurements do not qualify them. Wallet threshold backup reconstructs one
 key and supplies no V1 consensus multisignature guarantee.
 
 ## Status and scope
@@ -12,9 +13,10 @@ key and supplies no V1 consensus multisignature guarantee.
 The transaction, fixed-576 settlement and three-initial-note issuance relations
 have a [source-bound engineering freeze](native-proof-profiles.md); they execute
 in isolated proof tools. This does not adopt issuance policy or qualify other
-capacity keys. Native
-node, wallet, transport, retention and checkpoint integration remain
-incomplete. There is no public native V1 testnet, production release or mainnet.
+capacity keys. Public-key reproduction and complete CI remain release checks.
+The atomic native monetary transition, wallet lock primitives and subsidy/fund
+spending audit are implemented; complete wallet, transport, retention and
+checkpoint integration remain incomplete. There is no public native V1 testnet, production release or mainnet.
 CI and estimator results do not establish independent approval.
 [Dependency advisory applicability](dependency-advisories.md) distinguishes
 runtime remediation from open isolated-experiment advisories.
@@ -86,8 +88,8 @@ keys. A compromised host can expose active keys and private fee openings.
 
 ## Activation gates
 
-Complete the shared atomic transition, bounded decoders and isolated verifier
-budgets, native wallet/recovery, actual-listener transport/source relay,
+Qualify the shared atomic transition and bounded decoders; complete isolated
+verifier budgets, durable native wallet/recovery, actual-listener transport/source relay,
 public-data durability, checkpoint authentication and real retention lifecycle.
 Qualify validator and miner resources separately under maximum sustained load
 and independent-host failures. Hardware profiles and modeled bandwidth are

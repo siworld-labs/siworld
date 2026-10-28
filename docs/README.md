@@ -1,11 +1,12 @@
 # Technical Documentation
 
-The selected native V1 economic revision adds Voyager/Holder allocation,
-height-locked notes, a public Holder pool, burn accounting and per-credit
-development-fund vesting. This reopens the transaction, settlement and issuance
-proof freeze. Earlier source-bound keys and measurements are retained baseline
-evidence; they do not qualify the revised relations. Native integration,
-independent review and public testnet acceptance remain outstanding.
+Native V1 proof parameters are engineering-frozen for relation revision
+`native-v1-economics-1`: snapshot-bound input unlock heights, Voyager/Holder
+reward notes, public Holder-pool and burn accounting, and per-wallet
+development-fund vesting. The source-bound profiles contain current public keys,
+actual-AIR security reports and hosted measurements. Native integration,
+release validation, independent review and public testnet acceptance remain
+outstanding.
 
 ## Native V1
 
@@ -13,7 +14,7 @@ independent review and public testnet acceptance remain outstanding.
 2. [Current decisions](00-decisions.md): authoritative requirements and freeze scope.
 3. [Architecture](architecture.md), [protocol](protocol.md), [cryptography](cryptography.md) and [security model](security-model.md).
 4. [Monetary rules](v1-economics.md), [transaction specification](route-a-v1.md), [multi-asset relation](v1-multi-asset.md) and [confidential fee settlement](fee-settlement.md).
-5. [Pre-revision proof-profile reproduction](native-proof-profiles.md), [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json) and [actual-instance measurements](v1-multi-asset-evaluation.md).
+5. [Proof-profile reproduction](native-proof-profiles.md), [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json) and [actual-instance measurements](v1-multi-asset-evaluation.md).
 6. [Node/network milestones](v1-node-network-plan.md), [single-node engineering runtime](v1-native-runtime.md) and [testnet acceptance](prover-acceptance.md).
 
 ## Proof implementation and measurement
@@ -21,7 +22,7 @@ independent review and public testnet acceptance remain outstanding.
 - [Native proof workspace](../crates/bench-multi-asset/README.md): transaction, issuance and settlement relations and reproducible checks.
 - [Collision accounting](bht-security-accounting.md), [dependency patch](d8-dependency-patch.md) and [settlement evaluation](fee-settlement-evaluation.md).
 - [Measurement procedure](benchmarks.md), [Linux resource measurement](linux-proof-measurement.md) and [memory accounting](memory-budgets.md).
-- [Circuit optimization](multi-asset-air-optimization.md): separate experimental work; revised production profiles require fresh screening and measurements.
+- [Circuit optimization](multi-asset-air-optimization.md): adopted snapshot-range and asset-comparison reductions, current measured shape and separate unreferenced layout research.
 - [Wallet and custody protection](v1-wallet-protection.md): lock recovery, delayed consolidation, threshold backups and offline signing interfaces.
 
 The [two-output native baseline](../crates/bench-d8/artifacts/v1-native-freeze.json)

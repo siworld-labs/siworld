@@ -1,15 +1,15 @@
 # Native V1 Deployment and Observability
 
-The [monetary revision](v1-economics.md) requires fresh source-bound proof
-qualification. The resource tables below include the current maximum of five
-reward notes and two native fund-payout slots through explicit economic-record
-planning modes. Wire allowances and database overhead remain conditional;
+The [monetary relations](v1-economics.md) have source-bound
+`native-v1-economics-1` proof profiles and fresh reference-host evidence.
+Public-key reproduction and complete CI remain release checks. The resource
+tables include the current maximum of five reward notes and two native
+fund-payout slots through explicit economic-record planning modes. Wire allowances and database overhead remain conditional;
 they do not establish measured revised-network acceptance or SSD lifetime.
 
 Status: qualification design for the independent native V1 engineering network.
-The earlier native transaction profile has actual-AIR security
-and reference-host evidence; revised V1 requires renewed qualification. The prior two-output profile remains
-a diagnostic baseline. Node integration, operating profiles, network capacity and supported
+The economic transaction profile has actual-AIR security and reference-host
+measurements. The prior two-output profile remains a diagnostic baseline. Node integration, operating profiles, network capacity and supported
 deployment platforms remain subject to acceptance. This document does not change the retained seven-node network.
 [Decisions](00-decisions.md), [native transaction design](route-a-v1.md) and the
 [node integration plan](v1-node-network-plan.md) define protocol requirements.
@@ -71,9 +71,10 @@ SSD capacity means usable capacity after filesystem/array overhead, before
 allocating separate backups. Disk redundancy does not replace backups. Measure
 power-loss behavior, synchronous commits, write amplification and compaction.
 The conditional planning minimum uplink is **43 Mbps**, with **100 Mbps sustained uplink**
-recommended. Keep all 576 positions. The retained transaction proof-cap target is
-655,360 bytes (640 KiB); revised selection and size margin require fresh
-measurements. Settlement and issuance caps remain 524,288 bytes.
+recommended. Keep all 576 positions. The engineering-frozen transaction proof
+cap is 655,360 bytes (640 KiB), with more than 10% margin above the selected
+588,832-byte observed maximum. Settlement and issuance caps remain
+524,288 bytes.
 The [complete conditional wire budget](v1-network-budget.md) charges three
 application copies, settlement and bounded issuance, control, authenticated
 framing, IPv6/TCP/link serialization, reciprocal ACKs, handshakes, 2%
@@ -108,9 +109,12 @@ cold database opening, replay, pruning and compaction. Measure prover setup,
 key loading, steady generation and teardown separately and together with node
 work. Miner tests must include concurrent settlement and permitted padding
 refill. Isolated proof measurements do not bound that aggregate. Require the
-fresh revised profile's charged process-tree peak, including preparation and
-verification; the earlier [reference measurements](v1-multi-asset-evaluation.md)
-remain baseline evidence until that profile is replaced and validated.
+selected profile's charged process-tree peak, including preparation and
+verification. The [reference measurements](v1-multi-asset-evaluation.md) report
+525,234,176 bytes for transaction generation, 3,161,432,064 for fixed-576
+settlement and 211,423,232 for three-note issuance in four-worker scopes.
+These include fresh setup, proving, verification and the recorder; none is an
+independent verifier-memory measurement.
 Neither a clean single-process run nor spare page cache establishes long-term
 memory safety.
 
@@ -263,12 +267,12 @@ Keep 576 positions per block and the 80-bit quantum security requirement.
 Select the smallest measured proof body among profiles whose three
 four-worker generation trials on the EPYC 7763 reference host each complete
 within two seconds. Set the body cap at least 10% above the largest observed
-selected-profile proof, rounded up to 64 KiB. The selected b7/q41/g20 profile
-generated in 1.315662–1.332143 seconds across three reference-host trials, with
-a 1.316440-second median and a 531,668,992-byte charged process-tree peak.
-Those pre-economic-revision numbers do not qualify the new lock relation.
-The retained 655,360-byte cap was 12.056% above the largest 584,848-byte
-baseline proof. A revised scan and complete wire ledger are required.
+selected-profile proof, rounded up to 64 KiB. The selected economic b7/q41/g20
+profile generated in 1.429902190–1.531155438 seconds across three reference-host
+trials, with a 1.462877730-second median and a 525,234,176-byte charged
+process-tree peak. The 655,360-byte cap exceeds the largest selected
+588,832-byte body across one- and four-worker measurements by more than 10%.
+The complete economic wire ledger retains the conditional 43-Mbps floor.
 Refer to the [complete measurement record](v1-multi-asset-evaluation.md) for
 the pinned security report and measurement scope. Enforce this byte cap in the
 wallet and node, and account for it independently in network, memory and
