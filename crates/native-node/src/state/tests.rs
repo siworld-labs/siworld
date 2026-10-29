@@ -68,6 +68,7 @@ fn candidate(state: &State, seed: u32) -> Block {
             ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
         }],
         fund_spends: Vec::new(),
+        issuances: Vec::new(),
         settlement_proof: vec![1],
     };
     let seed = block.pow_seed().unwrap();

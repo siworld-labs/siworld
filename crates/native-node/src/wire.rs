@@ -2,7 +2,7 @@
 //!
 //! Decoding checks byte structure, canonical public values, and local network
 //! selection. It does not establish snapshot membership or proof validity.
-//! Issuance messages are not part of this engineering-network format.
+//! Issuance carries signed declarations, fixed three-note proofs and public fee receipts.
 
 use native::codec::{PublicTransaction, decode_digest, encode_digest};
 use native::multi_asset::{F, Hasher};
@@ -24,8 +24,8 @@ pub const REWARD_CIPHERTEXT_BYTES: usize = 1313;
 pub const SIDECAR_BYTES: usize = 78;
 pub const TX_PREFIX_BYTES: usize = 4 + 2 + 27 + 32 + 40 + PUBLIC_BYTES + 48 + 4;
 pub const MAX_ENVELOPE_BYTES: usize = TX_PREFIX_BYTES + MAX_TX_PROOF;
-pub const BLOCK_VERSION: u16 = 3;
-pub const BLOCK_HEADER_BYTES: usize = 4 + 2 + 27 + 32 + 8 + 32 + 8 + 32 + 8 + 2 + 1 + 1;
+pub const BLOCK_VERSION: u16 = 4;
+pub const BLOCK_HEADER_BYTES: usize = 4 + 2 + 27 + 32 + 8 + 32 + 8 + 32 + 8 + 2 + 1 + 1 + 1;
 pub const MAX_FUND_SPENDS: usize = 2;
 pub const REWARD_RECORD_BYTES: usize = 48 + REWARD_CIPHERTEXT_BYTES;
 pub const MAX_REWARDS: usize = 5;
@@ -34,7 +34,8 @@ pub const MAX_BLOCK_BYTES: usize = BLOCK_FIXED_BYTES
     + (MAX_REWARDS - 1) * REWARD_RECORD_BYTES
     + MAX_FUND_SPENDS * crate::fund_spend::ENCODED_BYTES
     + MAX_SLOTS * (4 + MAX_ENVELOPE_BYTES)
-    + MAX_SETTLEMENT_PROOF;
+    + MAX_SETTLEMENT_PROOF
+    + crate::issuance::RECORDS_CODEC_LIMIT * (4 + crate::issuance::MAX_RECORD_BYTES);
 
 const TX_MAGIC: &[u8; 4] = b"SWTX";
 const BLOCK_MAGIC: &[u8; 4] = b"SWNB";
@@ -206,6 +207,7 @@ pub struct Block {
     pub reward_mode: RewardMode,
     pub rewards: Vec<RewardRecord>,
     pub fund_spends: Vec<crate::fund_spend::FundSpend>,
+    pub issuances: Vec<crate::issuance::IssuanceRecord>,
     pub settlement_proof: Vec<u8>,
 }
 
@@ -222,6 +224,12 @@ impl Block {
         )?;
         validate_rewards(self.reward_mode, &self.rewards)?;
         validate_fund_spends(&self.fund_spends)?;
+        if self.issuances.len() > crate::issuance::RECORDS_CODEC_LIMIT {
+            return Err("issuance count limit".into());
+        }
+        for issuance in &self.issuances {
+            issuance.validate_shape()?;
+        }
         let mut previous = None;
         for tx in &self.transactions {
             tx.record.validate()?;
@@ -251,6 +259,17 @@ impl Block {
             .and_then(|n| n.checked_add(4))
             .and_then(|n| n.checked_add(self.settlement_proof.len()))
             .ok_or("block byte length overflow")?;
+        for issuance in &self.issuances {
+            length = length
+                .checked_add(4)
+                .and_then(|n| {
+                    issuance
+                        .encoded_len()
+                        .ok()
+                        .and_then(|size| n.checked_add(size))
+                })
+                .ok_or("issuance byte length overflow")?;
+        }
         for tx in &self.transactions {
             length = length
                 .checked_add(4 + TX_PREFIX_BYTES)
@@ -319,6 +338,10 @@ impl Block {
         if fund_count > MAX_FUND_SPENDS {
             return Err(invalid_stream("fund expenditure count limit"));
         }
+        let issuance_count = usize::from(r.array::<1>().map_err(invalid_stream)?[0]);
+        if issuance_count > crate::issuance::RECORDS_CODEC_LIMIT {
+            return Err(invalid_stream("issuance count limit"));
+        }
         validate_slots(count).map_err(invalid_stream)?;
         if timestamp == 0
             || target == [0; 32]
@@ -359,6 +382,19 @@ impl Block {
             input.read_exact(&mut bytes)?;
             fund_spends.push(crate::fund_spend::FundSpend::decode(&bytes).map_err(invalid_stream)?);
         }
+        let mut issuances = Vec::with_capacity(issuance_count);
+        for _ in 0..issuance_count {
+            let mut size = [0; 4];
+            input.read_exact(&mut size)?;
+            let size = u32::from_le_bytes(size) as usize;
+            if size > crate::issuance::MAX_RECORD_BYTES || size as u64 > input.limit() {
+                return Err(invalid_stream("issuance stream byte limit"));
+            }
+            let mut bytes = vec![0; size];
+            input.read_exact(&mut bytes)?;
+            issuances
+                .push(crate::issuance::IssuanceRecord::decode(&bytes).map_err(invalid_stream)?);
+        }
         let mut size = [0; 4];
         input.read_exact(&mut size)?;
         let size = u32::from_le_bytes(size) as usize;
@@ -379,6 +415,7 @@ impl Block {
             reward_mode,
             rewards,
             fund_spends,
+            issuances,
             settlement_proof,
         };
         block.validate_shape().map_err(invalid_stream)?;
@@ -400,6 +437,7 @@ impl Block {
         emit(&(self.transactions.len() as u16).to_le_bytes());
         emit(&[self.reward_mode.to_byte()]);
         emit(&[self.fund_spends.len() as u8]);
+        emit(&[self.issuances.len() as u8]);
         for tx in &self.transactions {
             emit(&((TX_PREFIX_BYTES + tx.proof.len()) as u32).to_le_bytes());
             emit_envelope(tx, &self.network, emit);
@@ -410,6 +448,12 @@ impl Block {
         }
         for spend in &self.fund_spends {
             emit(&spend.encode());
+        }
+        for issuance in &self.issuances {
+            // Every caller validates shape before encoding.
+            let bytes = issuance.encode().expect("validated issuance record");
+            emit(&(bytes.len() as u32).to_le_bytes());
+            emit(&bytes);
         }
         emit(&(self.settlement_proof.len() as u32).to_le_bytes());
         emit(&self.settlement_proof);
@@ -448,6 +492,10 @@ impl Block {
         if fund_count > MAX_FUND_SPENDS {
             return Err("fund expenditure count limit".into());
         }
+        let issuance_count = usize::from(reader.array::<1>()?[0]);
+        if issuance_count > crate::issuance::RECORDS_CODEC_LIMIT {
+            return Err("issuance count limit".into());
+        }
         validate_slots(count)?;
         // This lower bound and every declared length are checked before any
         // transaction vector or proof body is allocated. The first pass also
@@ -477,6 +525,14 @@ impl Block {
             )?);
         }
         validate_fund_spends(&fund_spends)?;
+        let mut issuances = Vec::with_capacity(issuance_count);
+        for _ in 0..issuance_count {
+            let size = reader.u32()? as usize;
+            if size > crate::issuance::MAX_RECORD_BYTES {
+                return Err("issuance byte limit".into());
+            }
+            issuances.push(crate::issuance::IssuanceRecord::decode(reader.take(size)?)?);
+        }
         let settlement_len = reader.u32()? as usize;
         validate_proof_len(settlement_len, MAX_SETTLEMENT_PROOF, "settlement")?;
         let settlement = reader.take(settlement_len)?;
@@ -505,6 +561,7 @@ impl Block {
             reward_mode,
             rewards,
             fund_spends,
+            issuances,
             settlement_proof: settlement.to_vec(),
         })
     }
@@ -779,6 +836,7 @@ mod tests {
                 ciphertext: [4; REWARD_CIPHERTEXT_BYTES],
             }],
             fund_spends: Vec::new(),
+            issuances: Vec::new(),
             settlement_proof: vec![4, 5, 6],
         }
     }

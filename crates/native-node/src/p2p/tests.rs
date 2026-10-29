@@ -152,6 +152,7 @@ fn invalid_local_block_emits_no_frame_header() {
             ciphertext: [0; crate::wire::REWARD_CIPHERTEXT_BYTES],
         }],
         fund_spends: Vec::new(),
+        issuances: Vec::new(),
         settlement_proof: vec![1],
     };
     assert_eq!(session.send_block(1, &block), Err(Error::InvalidProtocol));
@@ -213,6 +214,64 @@ fn expired_deadlines_fail_before_touching_the_channel() {
         Some(Error::Unavailable)
     );
     assert_eq!(session.channel.position(), 0);
+}
+
+#[test]
+fn reused_exchange_deadline_does_not_reset_between_missing_proof_frames() {
+    struct Advancing {
+        input: Cursor<Vec<u8>>,
+        clock: Arc<AtomicU64>,
+    }
+    impl Read for Advancing {
+        fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+            let count = self.input.read(bytes)?;
+            self.clock.fetch_add(3000, Ordering::Relaxed);
+            Ok(count)
+        }
+    }
+    impl Write for Advancing {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let clock = Arc::new(AtomicU64::new(0));
+    let mut frames = incoming(TRANSACTION, 4, b"first");
+    frames.extend(incoming(TRANSACTION, 4, b"second"));
+    let mut session = Session::from_test_channel(
+        Advancing {
+            input: Cursor::new(frames),
+            clock: clock.clone(),
+        },
+        binding(),
+        Budget::default(),
+    );
+    let deadline = Deadline {
+        started: Instant::now(),
+        limit: CONTROL_TIMEOUT,
+        elapsed: Some(clock),
+    };
+    drop(session.receive_before(&deadline).unwrap());
+    assert_eq!(
+        session.receive_before(&deadline).err(),
+        Some(Error::Unavailable)
+    );
+    assert_eq!(session.budget.0.usage.lock().unwrap().bytes, 0);
+}
+
+#[test]
+fn bounded_issuance_artifacts_only_raise_the_compact_frame_limit() {
+    assert!(frame_header(COMPACT_BLOCK, 1, &binding().network, MAX_CONTROL_BYTES + 1).is_ok());
+    assert_eq!(
+        frame_header(TRANSACTION, 1, &binding().network, MAX_CONTROL_BYTES + 1).err(),
+        Some(Error::ResourceExhausted)
+    );
+    assert_eq!(
+        frame_header(COMPACT_BLOCK, 1, &binding().network, MAX_COMPACT_BYTES + 1).err(),
+        Some(Error::ResourceExhausted)
+    );
 }
 
 struct TestOnly {

@@ -10,6 +10,10 @@ use std::time::{Duration, Instant};
 
 pub const VERSION: u16 = 1;
 pub const MAX_CONTROL_BYTES: usize = 1024 * 1024;
+/// Compact skeletons include bounded native issuance records and their
+/// independent proofs. Ordinary control messages retain the smaller cap.
+pub const MAX_COMPACT_BYTES: usize = MAX_CONTROL_BYTES
+    + crate::issuance::RECORDS_CODEC_LIMIT * (4 + crate::issuance::MAX_RECORD_BYTES);
 pub const CONNECTION_BYTES: usize = 640 * 1024 * 1024;
 pub const HELLO_BYTES: usize = 103;
 pub const HEADER_BYTES: usize = 51;
@@ -135,14 +139,14 @@ impl Drop for HandshakeReservation {
 }
 
 #[derive(Clone)]
-struct Deadline {
+pub(crate) struct Deadline {
     started: Instant,
     limit: Duration,
     #[cfg(test)]
     elapsed: Option<Arc<std::sync::atomic::AtomicU64>>,
 }
 impl Deadline {
-    fn new(limit: Duration) -> Self {
+    pub(crate) fn new(limit: Duration) -> Self {
         Self {
             started: Instant::now(),
             limit,
@@ -434,6 +438,12 @@ impl<S: Read + Write> Session<S> {
     pub fn receive(&mut self) -> Result<Packet, Error> {
         self.receive_deadline(Deadline::new(CONTROL_TIMEOUT))
     }
+    /// Reuses one monotonic deadline across a multi-frame exchange. Giving
+    /// each missing-slot envelope a fresh deadline would let a slow sender
+    /// extend one compact recovery for every transaction in the block.
+    pub(crate) fn receive_before(&mut self, deadline: &Deadline) -> Result<Packet, Error> {
+        self.receive_deadline(deadline.clone())
+    }
     fn receive_deadline(&mut self, mut deadline: Deadline) -> Result<Packet, Error> {
         let mut header = [0; HEADER_BYTES];
         Timed {
@@ -515,6 +525,8 @@ fn frame_header(
     }
     let maximum = if kind == BLOCK {
         MAX_BLOCK_BYTES
+    } else if kind == COMPACT_BLOCK {
+        MAX_COMPACT_BYTES
     } else {
         MAX_CONTROL_BYTES
     };

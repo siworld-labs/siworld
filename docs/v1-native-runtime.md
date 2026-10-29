@@ -22,8 +22,8 @@ artifacts and must not be restarted or reinterpreted as acceptance of revised
 economics. The current revision requires its own runtime replay/observation
 and explicitly activated independent network.
 
-`crates/native-node` composes the native transaction and fixed-capacity
-settlement relations with a versioned block codec, canonical ordering, a common
+`crates/native-node` composes the native transaction, fixed-capacity
+settlement and three-note issuance relations with a versioned block codec, canonical ordering, a common
 state transition, and replay-verified local persistence. It uses D8/W24 with
 12-element digests throughout; it does not truncate them into legacy digests.
 The implementation imports the fixed native relation manifests and rejects
@@ -65,7 +65,7 @@ domains are used throughout.
 
 A new independent engineering directory contains its explicit network configuration,
 `chain.redb` and private reward recovery receipts. Initialization refuses an
-existing directory. The ASERT service uses engineering configuration format v2,
+existing directory. The ASERT service uses engineering configuration format v3,
 which binds a fresh network identity, genesis timestamp, immutable calibrated
 target, 300-second target interval and sequential BLAKE3 work iterations.
 This engineering format version is unrelated to the deferred recursive V2
@@ -131,11 +131,29 @@ requests no more than 16 missing transactions, and does not disclose sidecars
 in block-recovery responses. Network activation and deployed-listener failure
 tests remain outstanding.
 
-Missing-proof requests and exact-proof response validation are exposed as a
-bounded helper. The compact announcement handler accepts a complete local
-reconstruction or returns unavailability; the connection scheduler must still
-orchestrate missing-proof requests or a full-proof retry. A missing reference
-is not a cryptographic invalidity verdict.
+The compact announcement handler automatically requests missing exact
+statement/proof pairs in batches of at most 16. It retains accounted proof
+buffers, reconstructs the advertised block identity and invokes the shared
+verified-work transition before acknowledging that identity. The sender serves
+requested artifacts from its owned block, including miner-generated padding
+whose proof is absent from the ordinary mempool. Recovery envelopes omit fee
+sidecars and are never submitted as ordinary transaction gossip.
+
+One monotonic 180-second deadline covers the entire missing-artifact exchange;
+it is not renewed for each envelope. A caller-supplied authenticated connection
+factory can retry temporary refusal or transport timeout on at most three fresh
+sessions. Wrong request IDs, substituted statement/proof pairs, repeated artifact
+requests, altered skeletons and incorrect completion identities are rejected
+without retry. A retry of an accepted tip compares the entire skeleton with the
+stored accepted block. Missing data and exhausted local memory remain
+availability failures, not cryptographic invalidity verdicts.
+
+Compact encoding version 3 preserves the bounded issuance records and proofs
+from native block encoding version 4. Compact frames have a separate byte cap
+for those records; the 1-MiB ordinary-control limit is unchanged. These are
+authenticated-stream library operations. A production handshake provider,
+permanent connection scheduler and deployed relay qualification are still
+required before network activation.
 
 Canonical locator and synchronization-base lookups reserve one maximum block
 plus bookkeeping before decoding stored proofs. Exhaustion is retryable and
@@ -173,7 +191,7 @@ on drop; dependency-internal and native-field copies are outside that guarantee.
 
 These APIs accept seeds rather than implement mnemonic backup. Protected
 seed/payment-opening persistence, valid-chain funding into seed-derived
-addresses, issuance admission, wallet transport and recovery from pruned
+addresses, wallet transport and recovery from pruned
 public-history segments remain separate work. A native-proof test using
 synthetic funding is not full-chain M2 acceptance.
 
@@ -183,9 +201,12 @@ subsidy, Voyager/Holder rewards, pool deposits/claims, cumulative burn,
 scheduled locks and independent fund credits, vesting and signed spending
 against accepted counters. It checks the supply invariant at every height and
 binds its report to the exact height, tip and state fingerprint. Output contains
-only public economic records. It does not audit asset issuance or validate
-local reward recovery receipts; the report explicitly marks those scope limits.
-Integrated issuance admission and its complete supply audit remain separate.
+only public economic records. The same replay validates asset declarations,
+ML-DSA signatures, frozen issuance proofs, declaration-bound fee receipts and
+one-time registry insertion. Its issued-asset summary records the public supply,
+issuance height and declaration binding for each asset. Private holdings and
+local reward recovery receipts remain outside this public audit. Authenticated
+checkpoint inputs and recovery after proof pruning remain separate gates.
 
 ## Engineering commands
 
@@ -348,12 +369,17 @@ suite is covered by the dedicated native runtime CI job. None of these
 correctness checks substitutes for actual hybrid-provider tests,
 target-hardware performance or sustained-load acceptance.
 
-M1 does not implement issuance admission. The testnet fee is fixed at 50 SIP
-(5,000,000,000 atoms), entirely credited to a dedicated development-fund
-account. That account is not configured, so issuance remains closed and fails
-closed. Destination configuration, atomic fee consumption/fund credit and
-issuance resource bounds remain implementation gates; the mainnet fee remains
-undecided. Unsupported operations are absent from the wire codec.
+Native issuance admission verifies the ML-DSA-65 declaration, frozen three-note
+proof and a 50-SIP payment output to an explicitly configured dedicated fund
+owner. Declaration-derived commitment randomness binds the receipt; its actual
+transaction-derived rho is disclosed. A receipt must exist in canonical history
+or a proof-verified transaction in the candidate block and can authorize only
+one issuance. The registry, receipt consumption and minted commitments change
+atomically with the canonical block and recover through verified replay.
+The bounded local `submitissuance` dispatcher queues a declaration only after
+its fee is canonical or admitted; it does not start an RPC listener. Pending
+admissions are volatile. Production destination and limits remain unconfigured,
+so issuance fails closed there; the mainnet fee remains undecided.
 Production hybrid identity/record protection, a listening network service,
 verifier-worker isolation, pruning/checkpoint bootstrap, real three-day
 retention, Dandelion++, operational fund-key/allocation configuration,

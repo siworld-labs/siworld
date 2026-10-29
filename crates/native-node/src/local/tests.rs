@@ -101,3 +101,15 @@ fn asert_configuration_roundtrips_and_refuses_legacy_without_rewrite() {
     assert_eq!(std::fs::read(path.join(CONFIG_FILE)).unwrap(), legacy);
     std::fs::remove_dir_all(path).unwrap();
 }
+
+#[test]
+fn pre_issuance_local_rules_are_rejected_without_modifying_existing_bytes() {
+    let path = directory();
+    let config = initialize(&path, 0).unwrap();
+    let mut legacy = b"SWNDv2\0\0".to_vec();
+    legacy.extend_from_slice(&config.encode_rules()[..227]);
+    std::fs::write(path.join(CONFIG_FILE), &legacy).unwrap();
+    assert!(load(&path).is_err());
+    assert_eq!(std::fs::read(path.join(CONFIG_FILE)).unwrap(), legacy);
+    std::fs::remove_dir_all(path).unwrap();
+}

@@ -352,9 +352,11 @@ uses a domain-separated ML-DSA-65 signature verified natively by the node.
 The isolated native implementation covers ID derivation and fixed-supply issuance-to-note binding in
 [the multi-asset design](v1-multi-asset.md). Testnet asset issuance requires
 exactly **50 SIP (5,000,000,000 atoms)**, credited entirely to a dedicated
-development-fund account. That account is not yet configured: issuance admission
-must remain closed and fail closed until its authenticated destination and the
-atomic fee-payment consumption transition are implemented and configured.
+development-fund account. Native issuance integration binds a proof-verified
+canonical or same-block SIP output to the signed declaration and configured destination,
+consumes that receipt once, and applies registry changes with the block state.
+That account is not yet configured: issuance admission must remain closed
+until its authenticated destination and explicit engineering limits are set.
 An absent destination must not select a default account or waive the fee.
 The mainnet issuance fee remains undecided. Asset-aware minimum outputs,
 metadata/note limits and per-block issuance byte/CPU budgets remain open
@@ -376,8 +378,12 @@ shared reward schedule and fund transition. The native offline command and
 library now independently replay canonical proofs, check SIP subsidies and
 direct/locked fund credits and bind the report to the accepted height, tip and
 state fingerprint. Signed fund spending is included by the economic transition when existing
-verification keys and allocation are explicitly configured. Asset issuance
-admission and private wallet receipt checks remain separate audit scopes.
+verification keys and allocation are explicitly configured. Canonical replay
+also verifies signed asset declarations, issuance proofs, declaration-bound
+fee receipts and one-time registry insertion, and reports each asset's public
+supply, issuance height and declaration binding. Private holdings and wallet
+receipt checks remain outside that public audit; authenticated checkpoint
+inputs and recovery after proof pruning require separate qualification.
 Project-operated permanent-public-data backups
 and mandatory mnemonic backup/full ciphertext rescan are described in
 [deployment](v1-deployment.md) and [the storage model](v1-storage-and-sync.md).
@@ -419,7 +425,7 @@ The runtime must use the revised source-bound keys; retained earlier service
 observations do not qualify the new economic relation.
 
 Continuous production uses a new independent ASERT engineering directory with
-configuration format v2, fresh network identity and genesis, immutable
+configuration format v3, fresh network identity and genesis, immutable
 initially calibrated work rules and a 300-second target interval. Producer and
 validator share the integer-only timestamp, ASERT target and sequential BLAKE3
 work checks. A resident prover and bounded private pre-generation queue supply
@@ -458,6 +464,22 @@ budget reservations until adoption or discard. There is no production hybrid
 authenticator or enabled listening service. A reviewed X25519 + ML-KEM,
 Ed25519 + ML-DSA provider, authenticated record protection, actual-listener
 failure tests and Dandelion++ remain required before network activation.
+
+Block encoding v4 and compact encoding v3 include bounded signed issuance
+records and the fixed three-note native proof. The trusted transport identity
+also binds the issuance verifier profile. Compact recovery requests missing
+statement/proof pairs in batches of at most sixteen, checks their exact
+identities and imports only the reconstructed complete block. Each exchange
+has a shared 180-second monotonic deadline; at most three attempts use fresh
+authenticated sessions. Invalid protocol data is not a retry condition.
+These library interfaces do not enable a production listener.
+
+The existing 43-Mbps capacity model includes one issuance per block. If the
+explicit engineering configuration permits four maximum issuance records,
+the integrated compact-envelope model requires 44 Mbps to retain 15% link
+headroom. Keep the 100-Mbps deployment recommendation and pin the actual
+issuance limit before activation; the codec bound of four is not an adopted
+network policy. See the [network budget](v1-network-budget.md#integrated-issuance-envelope).
 
 Fork choice compares cumulative verified work only; equal work retains the
 current chain. Candidate blocks replay through the common transition and may

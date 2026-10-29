@@ -11,12 +11,24 @@ use crate::store::Store;
 use crate::sync::{self, Batch, CompactBlock, Locator, Reference, Staging};
 use crate::wire::{
     Block, GROUP, Hash, MAX_BLOCK_BYTES, MAX_ENVELOPE_BYTES, MAX_SLOTS, MIN_SLOTS, SIDECAR_BYTES,
-    Sidecar, Snapshot, Transaction,
+    Sidecar, Snapshot, TX_PREFIX_BYTES, Transaction,
 };
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
+use std::time::Duration;
 
 // A canonical ID lookup currently decodes one complete stored proof block.
 const BLOCK_LOOKUP_BYTES: usize = MAX_BLOCK_BYTES + 65_536;
+fn transaction_has_output(tx: &Transaction, commitment: &crate::wire::DigestBytes) -> bool {
+    native::codec::PublicTransaction::decode(&tx.record.body).is_ok_and(|p| {
+        p.cm.iter()
+            .any(|c| native::codec::encode_digest(c) == *commitment)
+    })
+}
+/// A transport timeout or explicit temporary refusal can be retried only on
+/// a fresh authenticated session. Protocol mismatches are never retried.
+pub const MAX_COMPACT_RELAY_ATTEMPTS: u8 = 3;
+const COMPACT_EXCHANGE_TIMEOUT: Duration = Duration::from_secs(180);
 
 #[derive(Debug)]
 pub enum Error {
@@ -55,6 +67,7 @@ pub struct Node<V> {
     mempool: Mempool,
     padding: Pool,
     budget: Budget,
+    pending_issuances: std::collections::BTreeMap<Hash, crate::issuance::IssuanceRecord>,
 }
 impl<V: BlockVerifier> Node<V> {
     pub fn new(store: Store, verifier: V) -> Self {
@@ -65,6 +78,7 @@ impl<V: BlockVerifier> Node<V> {
             mempool: Mempool::new(network),
             padding: Pool::new(network),
             budget: Budget::default(),
+            pending_issuances: std::collections::BTreeMap::new(),
         }
     }
     pub fn state(&self) -> &State {
@@ -97,9 +111,122 @@ impl<V: BlockVerifier> Node<V> {
         self.mempool
             .submit_encoded(self.store.state(), peer, envelope, sidecar, &self.verifier)
     }
+    /// Bounded local RPC ingress. The caller must authenticate/authorize the
+    /// local wallet before dispatch; this function does not open a listener.
+    pub fn dispatch_issuance_rpc(&mut self, request: &[u8]) -> Result<Vec<u8>, Error> {
+        let maximum = crate::issuance::MAX_RECORD_BYTES
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(128))
+            .ok_or_else(invalid)?;
+        if request.len() > maximum {
+            return Err(invalid());
+        }
+        let value: serde_json::Value = serde_json::from_slice(request).map_err(|_| invalid())?;
+        let object = value.as_object().ok_or_else(invalid)?;
+        if object.len() != 2 || value["method"] != "submitissuance" {
+            return Err(invalid());
+        }
+        let text = value["record"].as_str().ok_or_else(invalid)?;
+        if text.len() > crate::issuance::MAX_RECORD_BYTES * 2 || !text.len().is_multiple_of(2) {
+            return Err(invalid());
+        }
+        let digit = |value: u8| match value {
+            b'0'..=b'9' => Some(value - b'0'),
+            b'a'..=b'f' => Some(value - b'a' + 10),
+            _ => None,
+        };
+        let bytes: Vec<u8> = text
+            .as_bytes()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|p| Some((digit(p[0])? << 4) | digit(p[1])?))
+            .collect::<Option<_>>()
+            .ok_or_else(invalid)?;
+        let id = self.submit_issuance(&bytes)?;
+        serde_json::to_vec(
+            &serde_json::json!({"accepted":true,"declaration":crate::local::hex(&id)}),
+        )
+        .map_err(|_| invalid())
+    }
+    pub fn pending_issuance_count(&self) -> usize {
+        self.pending_issuances.len()
+    }
+    /// A signed declaration is queued only after independent issuance proof
+    /// validation and discovery of its fee output in canonical history or an
+    /// admitted transaction selected for the same block.
+    pub fn submit_issuance(&mut self, bytes: &[u8]) -> Result<Hash, Error> {
+        let record = crate::issuance::IssuanceRecord::decode(bytes)?;
+        record.validate(&self.state().config)?;
+        let id = record.signed.declaration.binding();
+        if let Some(pending) = self.pending_issuances.get(&id) {
+            return if pending == &record {
+                Ok(id)
+            } else {
+                Err(Error::Local("conflicting issuance retry".into()))
+            };
+        }
+        self.state()
+            .height
+            .checked_add(1)
+            .ok_or_else(|| Error::Local("issuance height exhausted".into()))?;
+        let policy = self.state().config.issuance.as_ref().ok_or_else(invalid)?;
+        if self.pending_issuances.len() >= usize::from(policy.max_per_block) {
+            return Err(p2p::Error::ResourceExhausted.into());
+        }
+        let has_fee = self.state().commitments.contains(&record.fee_commitment)
+            || self.mempool.ids().iter().any(|id| {
+                self.mempool
+                    .transaction(id)
+                    .is_some_and(|tx| transaction_has_output(tx, &record.fee_commitment))
+            });
+        if !has_fee {
+            return Err(Error::Local(
+                "issuance fee output is not in canonical history or an admitted transaction".into(),
+            ));
+        }
+        self.state().assets.check_available(&record)?;
+        let declaration = &record.signed.declaration;
+        for pending in self.pending_issuances.values() {
+            let prior = &pending.signed.declaration;
+            if prior.asset_id == declaration.asset_id
+                || (prior.issuer_key == declaration.issuer_key
+                    && prior.sequence == declaration.sequence)
+                || pending.fee_commitment == record.fee_commitment
+            {
+                return Err(Error::Local("issuance reservation conflicts".into()));
+            }
+        }
+        for commitment in &record.signed.declaration.note_commitments {
+            let cm = native::codec::encode_digest(commitment);
+            if self.state().commitments.contains(&cm)
+                || self
+                    .pending_issuances
+                    .values()
+                    .any(|p| p.signed.declaration.note_commitments.contains(commitment))
+            {
+                return Err(Error::Local("issuance output is already reserved".into()));
+            }
+        }
+        self.verifier.issuance(&record)?;
+        let id = record.signed.declaration.binding();
+        self.pending_issuances.insert(id, record);
+        Ok(id)
+    }
     fn reconcile_pools(&mut self) -> Result<(), Error> {
         self.mempool.prune(self.store.state())?;
         self.padding.prune(self.store.state())?;
+        let state = self.store.state();
+        let mempool = &self.mempool;
+        self.pending_issuances.retain(|_, r| {
+            state.assets.check_available(r).is_ok()
+                && (state.commitments.contains(&r.fee_commitment)
+                    || mempool.ids().iter().any(|id| {
+                        mempool
+                            .transaction(id)
+                            .is_some_and(|tx| transaction_has_output(tx, &r.fee_commitment))
+                    }))
+        });
         Ok(())
     }
     pub fn import_branch(
@@ -143,13 +270,23 @@ impl<V: BlockVerifier> Node<V> {
         let mut values = self.mempool.select(self.store.state(), slots)?;
         let remaining = slots - values.len();
         values.extend(self.padding.take_for_fill(self.store.state(), remaining)?);
-        Ok(producer::assemble(
-            self.store.state(),
-            prover,
-            values,
-            timestamp,
-            settings,
-        )?)
+        let mut produced =
+            producer::assemble(self.store.state(), prover, values, timestamp, settings)?;
+        produced.block.issuances = self
+            .pending_issuances
+            .values()
+            .filter(|r| {
+                self.store.state().commitments.contains(&r.fee_commitment)
+                    || produced
+                        .block
+                        .transactions
+                        .iter()
+                        .any(|tx| transaction_has_output(tx, &r.fee_commitment))
+            })
+            .cloned()
+            .collect();
+        produced.block.validate_shape()?;
+        Ok(produced)
     }
     fn session<S>(&self, session: &Session<S>) -> Result<(), Error>
     where
@@ -244,19 +381,11 @@ impl<V: BlockVerifier> Node<V> {
                         )?;
                         let compact = CompactBlock::decode(&body, &self.state().config.network)
                             .map_err(|_| invalid())?;
-                        let _reconstruction = self
-                            .budget
-                            .reserve(crate::wire::MAX_BLOCK_BYTES + MAX_ENVELOPE_BYTES + 65536)?;
-                        match compact
-                            .reconstruct(|r| self.mempool.transaction(&r.statement).cloned())
-                        {
-                            Ok(block) => {
-                                self.import_extension(&block)?;
-                            }
-                            Err(_) => {
-                                session.send_control(p2p::UNAVAILABLE, request, &[])?;
-                            }
-                        }
+                        // Public references arrive first. Resolve exact local
+                        // proof bytes, request every missing batch, reconstruct
+                        // the committed block and only then run its common
+                        // state transition. No fee opening is requested here.
+                        self.receive_compact(session, request, compact)?;
                     }
                     _ => return Err(invalid()),
                 }
@@ -280,6 +409,192 @@ impl<V: BlockVerifier> Node<V> {
             CandidatePolicy::default(),
         )?;
         Ok(())
+    }
+
+    fn receive_compact<S: Read + Write>(
+        &mut self,
+        session: &mut Session<S>,
+        request: u64,
+        compact: CompactBlock,
+    ) -> Result<(), Error> {
+        if compact.expected_id == self.state().tip {
+            // A lost acknowledgement is safe to retry only when every byte of
+            // the skeleton matches the accepted block. An attacker cannot get
+            // an acknowledgement merely by copying the known tip identity.
+            let _lookup = self.budget.reserve(BLOCK_LOOKUP_BYTES)?;
+            let accepted = self.store.block(self.state().height)?;
+            if !compact.matches_block(&accepted).map_err(|_| invalid())? {
+                return Err(invalid());
+            }
+            session.send_control(p2p::END_BATCH, request, &compact.expected_id)?;
+            return Ok(());
+        }
+        if compact.parent != self.state().tip
+            || self.state().height.checked_add(1) != Some(compact.height)
+        {
+            session.send_control(p2p::UNAVAILABLE, request, &[])?;
+            return Ok(());
+        }
+        // Account separately for local proof copies and recovered envelopes.
+        // Recovered transactions are moved into the block, not copied into a
+        // second full-block buffer. Each guard survives through import.
+        let structural_bytes = compact.issuances.iter().try_fold(
+            compact.settlement.len().saturating_add(65_536),
+            |total, issuance| {
+                total
+                    .checked_add(issuance.encoded_len()?)
+                    .ok_or_else(|| "compact owned-byte overflow".to_owned())
+            },
+        )?;
+        let local_bytes = compact
+            .references
+            .iter()
+            .try_fold(structural_bytes, |total, r| {
+                let extra = self
+                    .mempool
+                    .transaction(&r.statement)
+                    .filter(|tx| sync::reference(tx, &compact.network) == *r)
+                    .map_or(0, |tx| TX_PREFIX_BYTES + tx.proof.len() + 64);
+                total
+                    .checked_add(extra)
+                    .ok_or(p2p::Error::ResourceExhausted)
+            })?;
+        let _local = self.budget.reserve(local_bytes)?;
+        let mut transactions = BTreeMap::new();
+        for r in &compact.references {
+            if let Some(transaction) = self
+                .mempool
+                .transaction(&r.statement)
+                .filter(|tx| sync::reference(tx, &compact.network) == *r)
+            {
+                transactions.insert(r.statement, transaction.clone());
+            }
+        }
+        let mut recovered_guards = Vec::new();
+        let deadline = p2p::Deadline::new(COMPACT_EXCHANGE_TIMEOUT);
+        loop {
+            let missing = compact.missing_request(|r| transactions.contains_key(&r.statement));
+            if missing.is_empty() {
+                break;
+            }
+            let recovered = self.fetch_missing_before(session, request, &missing, &deadline)?;
+            for transaction in recovered.transactions {
+                let statement = transaction.record.statement_id(&compact.network);
+                if transactions.insert(statement, transaction).is_some() {
+                    return Err(invalid());
+                }
+            }
+            recovered_guards.extend(recovered._reservations);
+        }
+        let block = compact
+            .reconstruct(|r| transactions.remove(&r.statement))
+            .map_err(|_| invalid())?;
+        self.import_extension(&block)?;
+        session.send_control(p2p::END_BATCH, request, &compact.expected_id)?;
+        // Guards include every recovered proof until validation, persistence
+        // and the acknowledgement finish. They then release together.
+        drop(recovered_guards);
+        Ok(())
+    }
+
+    /// Announces only a compact skeleton, then answers bounded requests for
+    /// the missing public statements and exact proof bytes. The owned block
+    /// supplies dummy and confirmed transactions even after pool pruning.
+    /// A successful return requires the receiver's committed block identity.
+    pub fn announce_compact<S: Read + Write>(
+        &self,
+        session: &mut Session<S>,
+        request: u64,
+        block: &Block,
+    ) -> Result<(), Error> {
+        self.session(session)?;
+        if block.network != self.state().config.network {
+            return Err(invalid());
+        }
+        let _compact_guard = self.budget.reserve(p2p::MAX_COMPACT_BYTES * 2 + 65_536)?;
+        let compact = CompactBlock::from_block(block)?;
+        let encoded = compact.encode()?;
+        session.send_control(p2p::COMPACT_BLOCK, request, &encoded)?;
+        let mut requested = BTreeSet::new();
+        let deadline = p2p::Deadline::new(COMPACT_EXCHANGE_TIMEOUT);
+        // At most one request per transaction plus its acknowledgement. A
+        // peer cannot prolong the exchange with repeated or unrelated IDs.
+        for _ in 0..=compact.references.len() {
+            match session.receive_before(&deadline)? {
+                Packet::Control {
+                    kind: p2p::GET_TRANSACTIONS,
+                    request: r,
+                    body,
+                    reservation,
+                } if r == request => {
+                    let _request_guard = reservation;
+                    let references = decode_references(&body)?;
+                    for reference in references {
+                        if !requested.insert(reference.statement) {
+                            return Err(invalid());
+                        }
+                        let Some(transaction) = block
+                            .transactions
+                            .iter()
+                            .find(|tx| sync::reference(tx, &block.network) == reference)
+                        else {
+                            return Err(invalid());
+                        };
+                        let _copy_guard = self.budget.reserve(MAX_ENVELOPE_BYTES + 64)?;
+                        let envelope = transaction.encode_envelope(&block.network)?;
+                        session.send_control(p2p::TRANSACTION, request, &envelope)?;
+                    }
+                    session.send_control(p2p::END_BATCH, request, &[])?;
+                }
+                Packet::Control {
+                    kind: p2p::END_BATCH,
+                    request: r,
+                    body,
+                    ..
+                } if r == request && body == compact.expected_id => return Ok(()),
+                Packet::Control {
+                    kind: p2p::UNAVAILABLE,
+                    request: r,
+                    body,
+                    ..
+                } if r == request && body.is_empty() => {
+                    return Err(p2p::Error::Unavailable.into());
+                }
+                _ => return Err(invalid()),
+            }
+        }
+        Err(invalid())
+    }
+
+    /// Bounded retry composition for a caller that owns connection policy and
+    /// the reviewed authentication provider. A failed session is dropped before
+    /// invoking the factory again. No listener, fallback transport or automatic
+    /// peer selection is introduced by this API.
+    pub fn announce_compact_with_retry<S: Read + Write>(
+        &self,
+        block: &Block,
+        first_request: u64,
+        attempts: u8,
+        mut connect: impl FnMut() -> Result<Session<S>, Error>,
+    ) -> Result<u8, Error> {
+        if attempts == 0 || attempts > MAX_COMPACT_RELAY_ATTEMPTS {
+            return Err(invalid());
+        }
+        for index in 0..attempts {
+            let request = first_request
+                .checked_add(u64::from(index))
+                .ok_or_else(invalid)?;
+            let result = match connect() {
+                Ok(mut session) => self.announce_compact(&mut session, request, block),
+                Err(error) => Err(error),
+            };
+            match result {
+                Ok(()) => return Ok(index + 1),
+                Err(Error::Transport(p2p::Error::Unavailable)) if index + 1 < attempts => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Err(p2p::Error::Unavailable.into())
     }
     /// Pull one bounded batch. Advertised work never enters fork choice.
     /// Failure discards this attempt's uncommitted branch and reservations.
@@ -410,13 +725,27 @@ impl<V: BlockVerifier> Node<V> {
         request: u64,
         references: &[Reference],
     ) -> Result<Recovered, Error> {
+        self.fetch_missing_before(
+            session,
+            request,
+            references,
+            &p2p::Deadline::new(COMPACT_EXCHANGE_TIMEOUT),
+        )
+    }
+    fn fetch_missing_before<S: Read + Write>(
+        &self,
+        session: &mut Session<S>,
+        request: u64,
+        references: &[Reference],
+        deadline: &p2p::Deadline,
+    ) -> Result<Recovered, Error> {
         self.session(session)?;
         let body = encode_references(references)?;
         session.send_control(p2p::GET_TRANSACTIONS, request, &body)?;
         let mut transactions = Vec::with_capacity(references.len());
         let mut reservations = Vec::with_capacity(references.len());
         for expected in references {
-            match session.receive()? {
+            match session.receive_before(deadline)? {
                 Packet::Control {
                     kind: p2p::TRANSACTION,
                     request: r,
@@ -448,7 +777,7 @@ impl<V: BlockVerifier> Node<V> {
                 _ => return Err(invalid()),
             }
         }
-        match session.receive()? {
+        match session.receive_before(deadline)? {
             Packet::Control {
                 kind: p2p::END_BATCH,
                 request: r,

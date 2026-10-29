@@ -20,7 +20,7 @@ pub const MAX_REORG_DEPTH: u64 = 24;
 
 pub const TARGET_INTERVAL: u64 = 300;
 pub const MAX_POW_ITERATIONS: u64 = 1_000_000;
-pub const CONFIG_RULE_BYTES: usize = 227;
+pub const CONFIG_RULE_BYTES: usize = 279;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {
@@ -36,6 +36,8 @@ pub struct Config {
     pub fund_allocation: Option<FundAllocation>,
     /// Immutable ML-DSA verification-key fingerprints; zero disables spending.
     pub fund_key_hashes: [Hash; 2],
+    /// Explicit isolated-network issuance policy and dedicated fee owner.
+    pub issuance: Option<crate::issuance::IssuanceConfig>,
 }
 impl Config {
     /// Deterministic cheap development fixture, never service qualification.
@@ -57,6 +59,7 @@ impl Config {
                 FundAllocation::new(vec![1, 1]).expect("synthetic fixture weights"),
             ),
             fund_key_hashes: [[0; 32]; 2],
+            issuance: None,
         })
     }
     /// Explicit disposable ASERT engineering network, not a public genesis.
@@ -84,6 +87,7 @@ impl Config {
             economics: EconomicsParams::production(),
             fund_allocation: None,
             fund_key_hashes: [[0; 32]; 2],
+            issuance: None,
         })
     }
     /// Compressed timings are confined to explicit disposable fixture networks.
@@ -109,6 +113,9 @@ impl Config {
     }
     pub fn validate(&self) -> Result<(), String> {
         self.economics.validate().map_err(|e| e.to_string())?;
+        if let Some(policy) = &self.issuance {
+            policy.validate()?;
+        }
         if self
             .fund_allocation
             .as_ref()
@@ -132,6 +139,7 @@ impl Config {
         expected.economics = self.economics.clone();
         expected.fund_allocation = self.fund_allocation.clone();
         expected.fund_key_hashes = self.fund_key_hashes;
+        expected.issuance = self.issuance.clone();
         if &expected != self {
             return Err("noncanonical engineering network rules".into());
         }
@@ -156,12 +164,20 @@ impl Config {
                 bytes[211 + index * 8..219 + index * 8].copy_from_slice(&weight.to_le_bytes());
             }
         }
+        if let Some(policy) = &self.issuance {
+            bytes[227] = 1;
+            bytes[228..276].copy_from_slice(&policy.fee_owner);
+            bytes[276..278].copy_from_slice(&policy.max_metadata_bytes.to_le_bytes());
+            bytes[278] = policy.max_per_block;
+        }
         bytes
     }
     pub fn decode_rules(bytes: &[u8]) -> Result<Self, String> {
         if bytes.len() != CONFIG_RULE_BYTES
             || bytes[33] > 1
             || bytes[210] > 1
+            || bytes[227] > 1
+            || (bytes[227] == 0 && bytes[228..279].iter().any(|v| *v != 0))
             || (bytes[210] == 0 && bytes[211..227].iter().any(|value| *value != 0))
         {
             return Err("invalid engineering rule encoding".into());
@@ -197,6 +213,21 @@ impl Config {
                 bytes[146..178].try_into().expect("fixed first fund key"),
                 bytes[178..210].try_into().expect("fixed second fund key"),
             ],
+            issuance: if bytes[227] == 0 {
+                None
+            } else {
+                Some(crate::issuance::IssuanceConfig {
+                    fee_owner: bytes[228..276]
+                        .try_into()
+                        .expect("fixed issuance fee owner"),
+                    max_metadata_bytes: u16::from_le_bytes(
+                        bytes[276..278]
+                            .try_into()
+                            .expect("fixed issuance metadata limit"),
+                    ),
+                    max_per_block: bytes[278],
+                })
+            },
             economics: EconomicsParams {
                 maturity: u64::from_le_bytes(bytes[90..98].try_into().expect("fixed maturity")),
                 holder_unlock_offsets: core::array::from_fn(|i| {
@@ -231,6 +262,11 @@ impl Config {
 }
 
 pub trait BlockVerifier {
+    /// Proof validity only; State independently checks the signed declaration,
+    /// destination-bound fee output, uniqueness and commitment insertion.
+    fn issuance(&self, _record: &crate::issuance::IssuanceRecord) -> Result<(), String> {
+        Err("issuance proof verification is unavailable".into())
+    }
     fn transaction(
         &self,
         public: &PublicTransaction,
@@ -251,6 +287,9 @@ pub trait BlockVerifier {
     ) -> Result<(), String>;
 }
 impl BlockVerifier for NativeVerifier {
+    fn issuance(&self, record: &crate::issuance::IssuanceRecord) -> Result<(), String> {
+        self.verify_issuance(record)
+    }
     fn transaction(
         &self,
         public: &PublicTransaction,
@@ -367,6 +406,7 @@ pub struct State {
     pub leaves: Vec<Digest>,
     pub snapshots: VecDeque<CanonicalSnapshot>,
     pub economics: EconomicsLedger,
+    pub assets: crate::issuance::AssetRegistry,
 }
 impl State {
     pub fn new(config: Config) -> Result<Self, String> {
@@ -405,6 +445,7 @@ impl State {
                 recent_root,
             }]),
             economics,
+            assets: crate::issuance::AssetRegistry::default(),
         })
     }
     /// Compute the only reward allocation permitted by the accepted parent state.
@@ -526,6 +567,38 @@ impl State {
             verifier.transaction(&public, &context, &fee, &root, &tx.proof)?;
             fees.push(fee);
         }
+        let mut trial_assets = self.assets.clone();
+        if let Some(policy) = &self.config.issuance {
+            if block.issuances.len() > usize::from(policy.max_per_block) {
+                return Err("issuance count exceeds configured block limit".into());
+            }
+        } else if !block.issuances.is_empty() {
+            return Err("issuance destination and policy are not configured".into());
+        }
+        // An exact declaration-bound fund note may be paid in this block or
+        // already exist in canonical history. Registry consumption is one-use;
+        // spending that fund note later does not undo the historical payment.
+        let transaction_outputs = outputs.clone();
+        for issuance in &block.issuances {
+            issuance.validate(&self.config)?;
+            if !transaction_outputs.contains(&issuance.fee_commitment)
+                && !self.commitments.contains(&issuance.fee_commitment)
+            {
+                return Err(
+                    "issuance fee output is not in verified canonical history or this block".into(),
+                );
+            }
+            verifier.issuance(issuance)?;
+            trial_assets.apply(issuance, block.height)?;
+            for commitment in &issuance.signed.declaration.note_commitments {
+                let bytes = encode_digest(commitment);
+                if self.commitments.contains(&bytes) || !outputs.insert(bytes) {
+                    return Err("issuance output commitment already used".into());
+                }
+                trial_tree.append(*commitment)?;
+                leaves.push(*commitment);
+            }
+        }
         let mut rewards = Vec::with_capacity(block.rewards.len());
         for record in &block.rewards {
             let reward =
@@ -608,6 +681,7 @@ impl State {
         }
         self.cumulative_work = cumulative_work;
         self.economics = trial_economics;
+        self.assets = trial_assets;
         self.spent.extend(spends);
         self.commitments.extend(outputs);
         self.leaves.extend(leaves);
@@ -636,6 +710,9 @@ impl State {
         for c in &self.commitments {
             h.update(c);
         }
+        self.assets.visit_encoding(&mut |part| {
+            h.update(part);
+        });
         self.economics.visit_encoding(&mut |part| {
             h.update(part);
         });

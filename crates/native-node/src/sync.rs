@@ -334,6 +334,7 @@ pub struct CompactBlock {
     pub reward_mode: RewardMode,
     pub rewards: Vec<RewardRecord>,
     pub fund_spends: Vec<crate::fund_spend::FundSpend>,
+    pub issuances: Vec<crate::issuance::IssuanceRecord>,
     pub settlement: Vec<u8>,
 }
 impl CompactBlock {
@@ -355,14 +356,48 @@ impl CompactBlock {
             reward_mode: block.reward_mode,
             rewards: block.rewards.clone(),
             fund_spends: block.fund_spends.clone(),
+            issuances: block.issuances.clone(),
             settlement: block.settlement_proof.clone(),
         })
+    }
+    /// Checks the complete announced skeleton against a previously accepted
+    /// block without cloning its proof artifacts. This is used for a lost-ACK
+    /// retry; an expected block ID alone does not authenticate substituted
+    /// references, rewards, issuance records or settlement bytes.
+    pub fn matches_block(&self, block: &Block) -> Result<bool, String> {
+        self.validate()?;
+        block.validate_shape()?;
+        Ok(self.network == block.network
+            && self.height == block.height
+            && self.parent == block.parent
+            && self.timestamp == block.timestamp
+            && self.target == block.target
+            && self.nonce == block.nonce
+            && self.expected_id == block.id()?
+            && self.reward_mode == block.reward_mode
+            && self.rewards == block.rewards
+            && self.fund_spends == block.fund_spends
+            && self.issuances == block.issuances
+            && self.settlement == block.settlement_proof
+            && self.references.len() == block.transactions.len()
+            && self
+                .references
+                .iter()
+                .zip(&block.transactions)
+                .all(|(expected, transaction)| reference(transaction, &block.network) == *expected))
     }
     fn validate(&self) -> Result<(), String> {
         validate_rewards(self.reward_mode, &self.rewards)?;
         validate_fund_spends(&self.fund_spends)?;
+        if self.issuances.len() > crate::issuance::RECORDS_CODEC_LIMIT {
+            return Err("compact issuance count limit".into());
+        }
+        for issuance in &self.issuances {
+            issuance.validate_shape()?;
+        }
         if !(MIN_SLOTS..=MAX_SLOTS).contains(&self.references.len())
             || !self.references.len().is_multiple_of(GROUP)
+            || self.height == 0
             || self.settlement.is_empty()
             || self.settlement.len() > MAX_SETTLEMENT_PROOF
             || self.timestamp == 0
@@ -415,6 +450,7 @@ impl CompactBlock {
             reward_mode: self.reward_mode,
             rewards: self.rewards.clone(),
             fund_spends: self.fund_spends.clone(),
+            issuances: self.issuances.clone(),
             settlement_proof: self.settlement.clone(),
         };
         block.validate_shape()?;
@@ -427,7 +463,7 @@ impl CompactBlock {
         self.validate()?;
         let mut out = Vec::new();
         out.extend_from_slice(b"SWCP");
-        out.extend_from_slice(&2u16.to_le_bytes());
+        out.extend_from_slice(&3u16.to_le_bytes());
         out.extend_from_slice(&self.network);
         out.extend_from_slice(&self.height.to_le_bytes());
         out.extend_from_slice(&self.parent);
@@ -438,6 +474,7 @@ impl CompactBlock {
         out.extend_from_slice(&(self.references.len() as u16).to_le_bytes());
         out.push(self.reward_mode.to_byte());
         out.push(self.fund_spends.len() as u8);
+        out.push(self.issuances.len() as u8);
         for r in &self.references {
             out.extend_from_slice(&r.statement);
             out.extend_from_slice(&r.proof);
@@ -449,25 +486,31 @@ impl CompactBlock {
         for spend in &self.fund_spends {
             out.extend_from_slice(&spend.encode());
         }
+        for issuance in &self.issuances {
+            let bytes = issuance.encode()?;
+            out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+            out.extend_from_slice(&bytes);
+        }
         out.extend_from_slice(&(self.settlement.len() as u32).to_le_bytes());
         out.extend_from_slice(&self.settlement);
         Ok(out)
     }
     pub fn decode(bytes: &[u8], network: &Hash) -> Result<Self, String> {
         const FIXED: usize =
-            4 + 2 + 32 + 8 + 32 + 8 + 32 + 8 + 32 + 2 + 1 + 1 + REWARD_RECORD_BYTES + 4;
+            4 + 2 + 32 + 8 + 32 + 8 + 32 + 8 + 32 + 2 + 1 + 1 + 1 + REWARD_RECORD_BYTES + 4;
         if bytes.len() < FIXED
             || bytes.len()
                 > FIXED
                     + (MAX_REWARDS - 1) * REWARD_RECORD_BYTES
                     + MAX_FUND_SPENDS * crate::fund_spend::ENCODED_BYTES
+                    + crate::issuance::RECORDS_CODEC_LIMIT * (4 + crate::issuance::MAX_RECORD_BYTES)
                     + MAX_SLOTS * 64
                     + MAX_SETTLEMENT_PROOF
         {
             return Err("compact byte limit".into());
         }
         let mut r = Cursor { bytes, position: 0 };
-        if r.take(4)? != b"SWCP" || r.array::<2>()? != 2u16.to_le_bytes() {
+        if r.take(4)? != b"SWCP" || r.array::<2>()? != 3u16.to_le_bytes() {
             return Err("compact version".into());
         }
         let n = r.array()?;
@@ -485,6 +528,10 @@ impl CompactBlock {
         let fund_count = usize::from(r.array::<1>()?[0]);
         if fund_count > MAX_FUND_SPENDS {
             return Err("compact fund expenditure count limit".into());
+        }
+        let issuance_count = usize::from(r.array::<1>()?[0]);
+        if issuance_count > crate::issuance::RECORDS_CODEC_LIMIT {
+            return Err("compact issuance count limit".into());
         }
         if !(MIN_SLOTS..=MAX_SLOTS).contains(&count)
             || !count.is_multiple_of(GROUP)
@@ -512,6 +559,14 @@ impl CompactBlock {
                 r.take(crate::fund_spend::ENCODED_BYTES)?,
             )?);
         }
+        let mut issuances = Vec::with_capacity(issuance_count);
+        for _ in 0..issuance_count {
+            let length = u32::from_le_bytes(r.array()?) as usize;
+            if length > crate::issuance::MAX_RECORD_BYTES {
+                return Err("compact issuance byte limit".into());
+            }
+            issuances.push(crate::issuance::IssuanceRecord::decode(r.take(length)?)?);
+        }
         let length = u32::from_le_bytes(r.array()?) as usize;
         if length == 0 || length > MAX_SETTLEMENT_PROOF || length != bytes.len() - r.position {
             return Err("compact settlement length".into());
@@ -528,6 +583,7 @@ impl CompactBlock {
             reward_mode,
             rewards,
             fund_spends,
+            issuances,
             settlement: r.take(length)?.to_vec(),
         };
         value.validate()?;

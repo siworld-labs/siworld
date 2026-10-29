@@ -9,7 +9,7 @@ use siworld_native_node::{
 use std::path::Path;
 fn help() {
     println!(
-        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\nconfigure-miner DIRECTORY MODE ADDRESS_FILE  Select voyager/holder and a backed-up wallet address\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, peer networking, issuance admission, or public-network activation is provided."
+        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\nconfigure-miner DIRECTORY MODE ADDRESS_FILE  Select voyager/holder and a backed-up wallet address\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, peer listener, issuance RPC listener, or public-network activation is provided."
     );
 }
 fn cpu_admission() -> Result<(), String> {
@@ -176,7 +176,7 @@ fn check_audit_head(
 }
 fn audit_summary(report: &audit::AuditReport) -> serde_json::Value {
     serde_json::json!({
-        "kind": "summary", "scope": "subsidy-pool-burn-and-signed-fund-spending",
+        "kind": "summary", "scope": "subsidy-pool-burn-signed-fund-spending-and-assets",
         "network": local::hex(&report.network), "height": report.height,
         "tip": local::hex(&report.tip), "state": local::hex(&report.fingerprint),
         "total_subsidy_atoms": report.total_subsidy.to_string(),
@@ -192,6 +192,10 @@ fn audit_summary(report: &audit::AuditReport) -> serde_json::Value {
         "scheduled_locked_subsidy_atoms":report.locked_subsidy.to_string(),
         "scheduled_circulating_atoms":report.scheduled_circulating.to_string(),
         "asset_issuance_supported": report.asset_issuance_supported,
+        "issued_assets": report.issued_assets.iter().map(|(id, asset)| serde_json::json!({
+            "asset_id":local::hex(id), "height":asset.height,
+            "public_supply":asset.public_supply.to_string(), "declaration":local::hex(&asset.declaration),
+        })).collect::<Vec<_>>(),
         "fund_spending_supported": report.fund_spending_supported,
         "wallet_reward_recovery_checked": false,
     })
@@ -224,7 +228,8 @@ mod tests {
             locked_subsidy: 0,
             scheduled_circulating: 0,
             heights: Vec::new(),
-            asset_issuance_supported: false,
+            asset_issuance_supported: true,
+            issued_assets: Vec::new(),
             fund_spending_supported: true,
         };
         (state, report)
@@ -235,11 +240,11 @@ mod tests {
         let summary = audit_summary(&report);
         assert_eq!(
             summary["scope"],
-            "subsidy-pool-burn-and-signed-fund-spending"
+            "subsidy-pool-burn-signed-fund-spending-and-assets"
         );
         assert_eq!(summary["total_subsidy_atoms"], "0");
         assert_eq!(summary["wallet_reward_recovery_checked"], false);
-        assert_eq!(summary["asset_issuance_supported"], false);
+        assert_eq!(summary["asset_issuance_supported"], true);
         assert_eq!(summary["fund_spending_supported"], true);
     }
     #[test]

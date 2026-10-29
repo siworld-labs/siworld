@@ -39,6 +39,8 @@ pub struct AuditReport {
     pub funds: [FundBalance; 2],
     pub heights: Vec<HeightIssuance>,
     pub asset_issuance_supported: bool,
+    /// Public declarations have been checked during the same canonical replay.
+    pub issued_assets: Vec<(Hash, crate::issuance::PublicAsset)>,
     pub fund_spending_supported: bool,
 }
 impl AuditReport {
@@ -160,7 +162,12 @@ pub fn replay_blocks(
             state.economics.fund(FundAccount::Second),
         ],
         heights,
-        asset_issuance_supported: false,
+        asset_issuance_supported: true,
+        issued_assets: state
+            .assets
+            .iter()
+            .map(|(id, asset)| (*id, asset.clone()))
+            .collect(),
         fund_spending_supported: true,
     };
     report.check_supply()?;

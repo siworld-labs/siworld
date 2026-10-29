@@ -137,6 +137,18 @@ pub(crate) fn candidate_budget(
                 .and_then(|n| n.checked_add(std::mem::size_of::<Block>())),
             |total, tx| total.and_then(|n| n.checked_add(tx.proof.capacity())),
         );
+        let owned = block.issuances.iter().fold(
+            owned.and_then(|n| {
+                block
+                    .issuances
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<crate::issuance::IssuanceRecord>())
+                    .and_then(|size| n.checked_add(size))
+            }),
+            |n, issuance| {
+                n.and_then(|n| issuance.owned_bytes().and_then(|size| n.checked_add(size)))
+            },
+        );
         bytes = encoded
             .and_then(|n| n.checked_add(32 + 64))
             .and_then(|n| owned.and_then(|owned| n.checked_add(owned)))
@@ -171,6 +183,7 @@ fn state_budget(state: &State) -> Option<usize> {
         )?
         .checked_add(state.timestamps.capacity().checked_mul(8)?)?
         .checked_add(state.economics.logical_memory_bytes()?)?
+        .checked_add(state.assets.logical_memory_bytes()?)?
         .checked_add(8192)
 }
 

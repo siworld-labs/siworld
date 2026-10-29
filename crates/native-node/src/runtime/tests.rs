@@ -158,9 +158,16 @@ fn gossip_codec_requires_exact_sidecar_and_rejects_trailing_bytes() {
 struct Scripted {
     input: std::io::Cursor<Vec<u8>>,
     output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    timeout_at_eof: bool,
 }
 impl Read for Scripted {
     fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+        if self.timeout_at_eof && self.input.position() as usize == self.input.get_ref().len() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "scripted deadline",
+            ));
+        }
         self.input.read(bytes)
     }
 }
@@ -213,6 +220,7 @@ fn scripted_with_budget(
     let channel = Scripted {
         input: std::io::Cursor::new(input),
         output: output.clone(),
+        timeout_at_eof: false,
     };
     let capability = p2p::Authenticated::from_verified_provider(channel, binding, peer);
     let session = Session::establish(capability, binding, p2p::Role::Validator, budget).unwrap();
@@ -593,7 +601,322 @@ fn compact_adoption_rechecks_proofs_and_releases_all_pending_and_transport_reser
         (1, block.id().unwrap())
     );
     assert!(node.mempool().is_empty());
+    assert_eq!(
+        sent(&output),
+        vec![(p2p::END_BATCH, 88, block.id().unwrap().to_vec())]
+    );
+    assert!(full_budget_available(&node.transport_budget()));
+}
+
+#[test]
+fn compact_relay_fetches_every_missing_slot_and_exact_proof_before_atomic_import() {
+    let dir = Directory::new();
+    let mut node = setup(&dir);
+    let block = candidate(node.state(), 700_000);
+    let compact = CompactBlock::from_block(&block).unwrap();
+    let binding = node.binding();
+    let request = 100;
+    let mut packets = vec![frame(
+        binding,
+        p2p::COMPACT_BLOCK,
+        request,
+        &compact.encode().unwrap(),
+    )];
+    for chunk in block.transactions.chunks(sync::MAX_MISSING) {
+        for transaction in chunk {
+            packets.push(frame(
+                binding,
+                p2p::TRANSACTION,
+                request,
+                &transaction.encode_envelope(&binding.network).unwrap(),
+            ));
+        }
+        packets.push(frame(binding, p2p::END_BATCH, request, &[]));
+    }
+    let (mut session, output) = scripted(&node, [61; 32], packets);
+    node.serve_once(&mut session).unwrap();
+    assert_eq!(node.state().tip, block.id().unwrap());
+    assert!(
+        node.mempool().is_empty(),
+        "sidecarless reconstruction must not enter the mempool"
+    );
+    let sent = sent(&output);
+    assert_eq!(
+        sent.len(),
+        block.transactions.len().div_ceil(sync::MAX_MISSING) + 1
+    );
+    for (index, chunk) in compact.references.chunks(sync::MAX_MISSING).enumerate() {
+        assert_eq!(
+            sent[index],
+            (
+                p2p::GET_TRANSACTIONS,
+                request,
+                encode_references(chunk).unwrap()
+            )
+        );
+    }
+    assert_eq!(
+        sent.last().unwrap(),
+        &(p2p::END_BATCH, request, block.id().unwrap().to_vec())
+    );
+    assert!(full_budget_available(&node.transport_budget()));
+}
+
+#[test]
+fn compact_recovery_requests_only_missing_exact_references() {
+    let dir = Directory::new();
+    let mut node = setup(&dir);
+    let (known, sidecar) = payment(node.state());
+    let binding = node.binding();
+    node.submit_local(
+        &known.encode_envelope(&binding.network).unwrap(),
+        Some(&sidecar.encode().unwrap()),
+    )
+    .unwrap();
+    let known_reference = sync::reference(&known, &binding.network);
+    let mut block = candidate(node.state(), 750_000);
+    block.transactions[0] = known;
+    block
+        .transactions
+        .sort_by_key(|tx| tx.record.statement_id(&binding.network));
+    let compact = CompactBlock::from_block(&block).unwrap();
+    let missing: Vec<_> = block
+        .transactions
+        .iter()
+        .filter(|tx| sync::reference(tx, &binding.network) != known_reference)
+        .collect();
+    let mut packets = vec![frame(
+        binding,
+        p2p::COMPACT_BLOCK,
+        104,
+        &compact.encode().unwrap(),
+    )];
+    for chunk in missing.chunks(sync::MAX_MISSING) {
+        for transaction in chunk {
+            packets.push(frame(
+                binding,
+                p2p::TRANSACTION,
+                104,
+                &transaction.encode_envelope(&binding.network).unwrap(),
+            ));
+        }
+        packets.push(frame(binding, p2p::END_BATCH, 104, &[]));
+    }
+    let (mut session, output) = scripted(&node, [66; 32], packets);
+    node.serve_once(&mut session).unwrap();
+    assert_eq!(node.state().tip, block.id().unwrap());
+    let requested: Vec<_> = sent(&output)
+        .iter()
+        .filter(|frame| frame.0 == p2p::GET_TRANSACTIONS)
+        .flat_map(|frame| decode_references(&frame.2).unwrap())
+        .collect();
+    assert_eq!(requested.len(), 63);
+    assert!(!requested.contains(&known_reference));
+    assert!(full_budget_available(&node.transport_budget()));
+}
+
+#[test]
+fn compact_retry_acknowledges_only_the_exact_previously_accepted_skeleton() {
+    let dir = Directory::new();
+    let mut node = setup(&dir);
+    let block = pending_compact_block(&mut node);
+    let compact = CompactBlock::from_block(&block).unwrap();
+    node.import_branch(0, std::slice::from_ref(&block), CandidatePolicy::default())
+        .unwrap();
+    let before = node.state().fingerprint();
+    let binding = node.binding();
+    let (mut session, output) = scripted(
+        &node,
+        [67; 32],
+        vec![frame(
+            binding,
+            p2p::COMPACT_BLOCK,
+            105,
+            &compact.encode().unwrap(),
+        )],
+    );
+    node.serve_once(&mut session).unwrap();
+    assert_eq!(
+        sent(&output),
+        vec![(p2p::END_BATCH, 105, compact.expected_id.to_vec())]
+    );
+    let mut forged = compact;
+    forged.settlement.push(2);
+    let (mut session, output) = scripted(
+        &node,
+        [67; 32],
+        vec![frame(
+            binding,
+            p2p::COMPACT_BLOCK,
+            106,
+            &forged.encode().unwrap(),
+        )],
+    );
+    assert!(matches!(
+        node.serve_once(&mut session),
+        Err(Error::Transport(p2p::Error::InvalidProtocol))
+    ));
     assert!(sent(&output).is_empty());
+    assert_eq!(node.state().fingerprint(), before);
+    assert!(full_budget_available(&node.transport_budget()));
+}
+
+#[test]
+fn compact_sender_serves_requested_proofs_from_owned_block_after_mempool_pruning() {
+    let dir = Directory::new();
+    let node = setup(&dir);
+    let block = candidate(node.state(), 800_000);
+    let compact = CompactBlock::from_block(&block).unwrap();
+    let binding = node.binding();
+    let request = 101;
+    let wanted = &compact.references[..sync::MAX_MISSING];
+    let packets = vec![
+        frame(
+            binding,
+            p2p::GET_TRANSACTIONS,
+            request,
+            &encode_references(wanted).unwrap(),
+        ),
+        frame(binding, p2p::END_BATCH, request, &compact.expected_id),
+    ];
+    let (mut session, output) = scripted(&node, [62; 32], packets);
+    node.announce_compact(&mut session, request, &block)
+        .unwrap();
+    let sent = sent(&output);
+    assert_eq!(
+        sent[0],
+        (p2p::COMPACT_BLOCK, request, compact.encode().unwrap())
+    );
+    for (index, transaction) in block.transactions[..sync::MAX_MISSING].iter().enumerate() {
+        assert_eq!(
+            sent[index + 1],
+            (
+                p2p::TRANSACTION,
+                request,
+                transaction.encode_envelope(&binding.network).unwrap()
+            )
+        );
+    }
+    assert_eq!(sent.last().unwrap(), &(p2p::END_BATCH, request, vec![]));
+    assert!(full_budget_available(&node.transport_budget()));
+}
+
+#[test]
+fn missing_compact_proof_tampering_does_not_change_state_or_keep_buffers() {
+    for tamper in 0..3 {
+        let dir = Directory::new();
+        let mut node = setup(&dir);
+        let block = candidate(node.state(), 900_000);
+        let compact = CompactBlock::from_block(&block).unwrap();
+        let binding = node.binding();
+        let before = node.state().fingerprint();
+        let mut transaction = block.transactions[0].clone();
+        if tamper == 0 {
+            transaction.proof.push(2);
+        }
+        if tamper == 1 {
+            transaction.record.snapshot.block_id[0] ^= 1;
+        }
+        let packets = vec![
+            frame(binding, p2p::COMPACT_BLOCK, 102, &compact.encode().unwrap()),
+            frame(
+                binding,
+                p2p::TRANSACTION,
+                if tamper == 2 { 103 } else { 102 },
+                &transaction.encode_envelope(&binding.network).unwrap(),
+            ),
+        ];
+        let (mut session, _) = scripted(&node, [63; 32], packets);
+        assert!(matches!(
+            node.serve_once(&mut session),
+            Err(Error::Transport(p2p::Error::InvalidProtocol))
+        ));
+        assert_eq!(node.state().fingerprint(), before);
+        assert!(node.mempool().is_empty());
+        assert!(full_budget_available(&node.transport_budget()));
+    }
+}
+
+fn timeout_session(node: &Node<TestVerifier>, peer: Hash) -> Session<Scripted> {
+    let binding = node.binding();
+    let input = p2p::Hello {
+        binding,
+        role: p2p::Role::Validator,
+    }
+    .encode()
+    .to_vec();
+    let channel = Scripted {
+        input: std::io::Cursor::new(input),
+        output: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        timeout_at_eof: true,
+    };
+    let capability = p2p::Authenticated::from_verified_provider(channel, binding, peer);
+    Session::establish(
+        capability,
+        binding,
+        p2p::Role::Validator,
+        node.transport_budget(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn compact_transport_timeout_retries_on_fresh_sessions_and_has_a_hard_attempt_cap() {
+    let dir = Directory::new();
+    let node = setup(&dir);
+    let block = candidate(node.state(), 1_000_000);
+    let acknowledged = frame(node.binding(), p2p::END_BATCH, 111, &block.id().unwrap());
+    let (success, _) = scripted(&node, [64; 32], vec![acknowledged]);
+    let mut sessions =
+        std::collections::VecDeque::from([timeout_session(&node, [64; 32]), success]);
+    let mut connects = 0;
+    assert_eq!(
+        node.announce_compact_with_retry(&block, 110, 3, || {
+            connects += 1;
+            Ok(sessions.pop_front().unwrap())
+        })
+        .unwrap(),
+        2
+    );
+    assert_eq!(connects, 2);
+    assert!(full_budget_available(&node.transport_budget()));
+
+    let mut connects = 0;
+    assert!(matches!(
+        node.announce_compact_with_retry(&block, 120, 3, || {
+            connects += 1;
+            Ok(timeout_session(&node, [64; 32]))
+        }),
+        Err(Error::Transport(p2p::Error::Unavailable))
+    ));
+    assert_eq!(connects, 3);
+    assert!(full_budget_available(&node.transport_budget()));
+}
+
+#[test]
+fn compact_protocol_tampering_never_enters_the_transport_retry_path() {
+    let dir = Directory::new();
+    let node = setup(&dir);
+    let block = candidate(node.state(), 1_100_000);
+    let wrong_ack = frame(node.binding(), p2p::END_BATCH, 130, &[5; 32]);
+    let (mut session, _) = scripted(&node, [65; 32], vec![wrong_ack]);
+    // The sender does not consider a mere END_BATCH sufficient; the receiver
+    // must acknowledge the same committed block identity.
+    assert!(matches!(
+        node.announce_compact(&mut session, 130, &block),
+        Err(Error::Transport(p2p::Error::InvalidProtocol))
+    ));
+    drop(session);
+    let mut connects = 0;
+    assert!(matches!(
+        node.announce_compact_with_retry(&block, 130, 3, || {
+            connects += 1;
+            let wrong_ack = frame(node.binding(), p2p::END_BATCH, 130, &[5; 32]);
+            Ok(scripted(&node, [65; 32], vec![wrong_ack]).0)
+        }),
+        Err(Error::Transport(p2p::Error::InvalidProtocol))
+    ));
+    assert_eq!(connects, 1);
     assert!(full_budget_available(&node.transport_budget()));
 }
 
@@ -604,7 +927,7 @@ fn compact_reconstruction_exhaustion_is_retryable_and_keeps_pending_transactions
     let block = pending_compact_block(&mut node);
     let compact = CompactBlock::from_block(&block).unwrap();
     let fingerprint = node.state().fingerprint();
-    node.budget = Budget::new(1024 * 1024);
+    node.budget = Budget::new(128 * 1024);
     let packet = frame(
         node.binding(),
         p2p::COMPACT_BLOCK,
@@ -618,7 +941,7 @@ fn compact_reconstruction_exhaustion_is_retryable_and_keeps_pending_transactions
     ));
     assert_eq!(node.state().fingerprint(), fingerprint);
     assert_eq!(node.mempool().len(), 64);
-    assert!(node.transport_budget().reserve(1024 * 1024).is_ok());
+    assert!(node.transport_budget().reserve(128 * 1024).is_ok());
 }
 
 #[test]
@@ -751,6 +1074,7 @@ fn staging_lookup_exhaustion_after_metadata_discards_attempt_and_preserves_pendi
         channel: Scripted {
             input: std::io::Cursor::new(input),
             output: output.clone(),
+            timeout_at_eof: false,
         },
         budget: budget.clone(),
         pressure: None,

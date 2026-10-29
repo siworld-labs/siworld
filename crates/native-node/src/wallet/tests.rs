@@ -960,3 +960,289 @@ fn permanent_fund_ciphertext_recovers_after_seed_restore_without_private_sidecar
         12_345
     );
 }
+
+fn issuance_request(
+    recipient: &Wallet,
+    key: [u8; native::issuance::ISSUER_KEY_BYTES],
+) -> issuance::IssuanceRequest {
+    issuance::IssuanceRequest {
+        issuer_key: key,
+        sequence: 1,
+        public_supply: 900,
+        metadata: native::issuance::AssetMetadata {
+            name: "Synthetic asset".into(),
+            decimals: 2,
+        },
+        outputs: [300, 200, 400].map(|amount| issuance::InitialOutput {
+            recipient: recipient.address(),
+            amount,
+        }),
+    }
+}
+fn configured_issuance_funding() -> (
+    Config,
+    State,
+    Wallet,
+    Wallet,
+    Wallet,
+    Vec<Block>,
+    DigestBytes,
+) {
+    let network = [91; 32];
+    let mut config = Config::development(network, 0).unwrap();
+    let mut sender = wallet(network, 92);
+    let recipient = wallet(network, 93);
+    let fund = wallet(network, 94);
+    config.issuance = Some(crate::issuance::IssuanceConfig {
+        fee_owner: encode_digest(&fund.address().owner()),
+        max_metadata_bytes: 256,
+        max_per_block: 1,
+    });
+    let mut state = State::new(config.clone()).unwrap();
+    let mut funding = candidate(&state, 2_000_000);
+    let amount = crate::issuance::TESTNET_ISSUANCE_FEE_ATOMS + 1_000_000;
+    let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, amount, 3_000_000);
+    insert_record(&mut funding, record);
+    state.apply(&funding, &TestVerifier).unwrap();
+    sender
+        .reconcile(config.clone(), &[funding.clone()], &TestVerifier)
+        .unwrap();
+    let selected = sender
+        .receipts()
+        .iter()
+        .find(|r| r.note.value == amount)
+        .unwrap()
+        .commitment;
+    (
+        config,
+        state,
+        sender,
+        recipient,
+        fund,
+        vec![funding],
+        selected,
+    )
+}
+#[test]
+fn issuance_fee_uses_air_derived_rho_and_declaration_bound_randomness() {
+    use libcrux_ml_dsa::ml_dsa_65;
+    let (config, state, sender, recipient, fund, _, selected) = configured_issuance_funding();
+    let pair = ml_dsa_65::generate_key_pair([95; 32]);
+    let key = *pair.verification_key.as_ref();
+    let issuance = sender
+        .prepare_issuance(&config, issuance_request(&recipient, key))
+        .unwrap();
+    let fee = sender
+        .prepare_issuance_fee(
+            &state,
+            [Some(selected), None],
+            &fund.address(),
+            issuance.declaration(),
+            FeeTier::Standard,
+            state.timestamp(),
+        )
+        .unwrap();
+    let note =
+        fee.transfer()
+            .witness()
+            .slot
+            .output_note(&Hasher::new(), &fee.transfer().public().nf, 0);
+    assert_eq!(encode_digest(&note.rho), fee.receipt().rho);
+    assert_eq!(
+        note.rseed,
+        crate::issuance::fee_rseed(issuance.declaration().binding())
+    );
+    assert_eq!(note.value, crate::issuance::TESTNET_ISSUANCE_FEE_ATOMS);
+    assert_eq!(note.asset_id, SIP_ASSET_ID);
+    assert_eq!(note.unlock_height, 0);
+    let receipt = crate::issuance::IssuanceRecord {
+        signed: native::issuance::SignedIssuance {
+            declaration: issuance.declaration().clone(),
+            signature: Some(
+                *ml_dsa_65::sign(
+                    &pair.signing_key,
+                    &issuance.signature_message(),
+                    issuance::ISSUER_SIGNATURE_CONTEXT,
+                    [96; 32],
+                )
+                .unwrap()
+                .as_ref(),
+            ),
+        },
+        ciphertexts: vec![vec![0; crate::issuance::CIPHERTEXT_BYTES]; 3],
+        proof: vec![1],
+        fee_commitment: fee.receipt().commitment,
+        fee_rho: fee.receipt().rho,
+    };
+    assert!(same_note(
+        &note,
+        &receipt.fee_note(config.issuance.as_ref().unwrap()).unwrap()
+    ));
+    assert!(
+        sender
+            .prepare_issuance_fee(
+                &state,
+                [Some(selected), None],
+                &recipient.address(),
+                issuance.declaration(),
+                FeeTier::Standard,
+                state.timestamp()
+            )
+            .is_err()
+    );
+}
+
+/// Only the funding prefix is synthetic. Every position, settlement and issuance
+/// in the next block uses the native frozen prover and independent verifier.
+/// This does not establish genesis funding, live P2P or persistent wallet storage.
+#[test]
+#[ignore = "explicit complete native issuance block, durable replay and seed rescan"]
+fn actual_native_issuance_block_recovers_registry_and_seed_wallet_after_restart() {
+    use crate::pool::Padding;
+    use crate::proofs::{NativeProver, NativeVerifier};
+    use crate::state::BlockVerifier;
+    use crate::store::Store;
+    use libcrux_ml_dsa::ml_dsa_65;
+    use native::confidential_fees::FeeOpening;
+    use native::issuance_air::IssuanceProver;
+    let (config, state, sender, recipient, fund, mut blocks, selected) =
+        configured_issuance_funding();
+    let pair = ml_dsa_65::generate_key_pair([95; 32]);
+    let prepared = sender
+        .prepare_issuance(
+            &config,
+            issuance_request(&recipient, *pair.verification_key.as_ref()),
+        )
+        .unwrap();
+    let fee = sender
+        .prepare_issuance_fee(
+            &state,
+            [Some(selected), None],
+            &fund.address(),
+            prepared.declaration(),
+            FeeTier::Standard,
+            state.timestamp(),
+        )
+        .unwrap();
+    let receipt = fee.receipt().clone();
+    let signature = *ml_dsa_65::sign(
+        &pair.signing_key,
+        &prepared.signature_message(),
+        issuance::ISSUER_SIGNATURE_CONTEXT,
+        [96; 32],
+    )
+    .unwrap()
+    .as_ref();
+    let issuance_prover =
+        IssuanceProver::new(crate::issuance::INITIAL_NOTES, crate::issuance::params());
+    let record = prepared
+        .attach_signature(signature)
+        .unwrap()
+        .prove(&issuance_prover, &receipt, &config)
+        .unwrap()
+        .record;
+    let asset_id = record.signed.declaration.asset_id;
+    let prover = NativeProver::new().unwrap();
+    let verifier = NativeVerifier::new().unwrap();
+    let fee_opening = FeeOpening {
+        fee: fee.transfer().sidecar().fee,
+        blind: fee.transfer().sidecar().blind.map(F::from_u32),
+        priority: false,
+        dummy: false,
+    };
+    let fee_payment = fee.into_transfer().prove(&prover).unwrap();
+    let mut positions = vec![Padding {
+        transaction: fee_payment.transaction,
+        opening: fee_opening,
+    }];
+    for _ in 1..64 {
+        positions.push(crate::producer::prepare_padding(&state, &prover).unwrap());
+    }
+    let settings = crate::producer::MiningSettings {
+        mode: crate::state::RewardMode::Voyager,
+        recipient: sender.address(),
+    };
+    let mut block = crate::producer::assemble(
+        &state,
+        &prover,
+        positions,
+        state.timestamp() + 300,
+        &settings,
+    )
+    .unwrap()
+    .block;
+    block.issuances.push(record);
+    let mut accepted = state.clone();
+    accepted.apply(&block, &verifier).unwrap();
+    let expected = accepted.fingerprint();
+    struct PrefixVerifier(NativeVerifier);
+    impl BlockVerifier for PrefixVerifier {
+        fn transaction(
+            &self,
+            p: &PublicTransaction,
+            c: &ProofContext,
+            f: &Digest,
+            r: &Digest,
+            proof: &[u8],
+        ) -> Result<(), String> {
+            if proof == [1] {
+                TestVerifier.transaction(p, c, f, r, proof)
+            } else {
+                self.0.transaction(p, c, f, r, proof)
+            }
+        }
+        fn settlement(
+            &self,
+            f: &[Digest],
+            p: &native::settlement::RewardPlan,
+            n: Hash,
+            l: Hash,
+            r: &[Digest],
+            proof: &[u8],
+        ) -> Result<(), String> {
+            if proof == [1] {
+                TestVerifier.settlement(f, p, n, l, r, proof)
+            } else {
+                self.0.settlement(f, p, n, l, r, proof)
+            }
+        }
+        fn issuance(&self, r: &crate::issuance::IssuanceRecord) -> Result<(), String> {
+            self.0.issuance(r)
+        }
+    }
+    let verifier = PrefixVerifier(verifier);
+    let path = std::env::temp_dir().join(format!(
+        "siworld-native-issuance-replay-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&path).unwrap();
+    let db = path.join("chain.redb");
+    let mut store = Store::open(&db, config.clone(), &verifier).unwrap();
+    store.append(&blocks[0], &verifier).unwrap();
+    store.append(&block, &verifier).unwrap();
+    assert_eq!(store.state().fingerprint(), expected);
+    drop(store);
+    let reopened = Store::open_existing(&db, config.clone(), &verifier).unwrap();
+    assert_eq!(reopened.state().fingerprint(), expected);
+    assert_eq!(
+        reopened
+            .state()
+            .assets
+            .get(&asset_id.0)
+            .unwrap()
+            .public_supply,
+        900
+    );
+    blocks.push(block);
+    let mut restored = wallet(config.network, 93);
+    let report = restored
+        .reconcile(config.clone(), &blocks, &verifier)
+        .unwrap();
+    assert_eq!(report.issued_assets.len(), 1);
+    assert_eq!(
+        restored.balances(reopened.state().height).unwrap()[&asset_id],
+        900
+    );
+    drop(reopened);
+    std::fs::remove_dir_all(path).unwrap();
+}

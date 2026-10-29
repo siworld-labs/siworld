@@ -5,7 +5,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
-const MAGIC: &[u8; 8] = b"SWNDv2\0\0";
+const MAGIC: &[u8; 8] = b"SWNDv3\0\0";
 const CONFIG_BYTES: usize = 8 + crate::state::CONFIG_RULE_BYTES;
 const CONFIG_FILE: &str = "engineering-network.bin";
 const MAX_REWARD_SECRET: usize = crate::producer::MAX_REWARD_SECRET_BYTES;

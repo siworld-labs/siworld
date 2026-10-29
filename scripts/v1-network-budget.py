@@ -123,7 +123,8 @@ def native_protocol_report(positions=576, link_mbps=None,
                            settlement_proof_cap=SETTLEMENT_PROOF_CAP,
                            issuance_proof_cap=ISSUANCE_PROOF_CAP,
                            capacity_headroom_percent=CAPACITY_HEADROOM_PERCENT,
-                           duplicate_settlement=False, economic_rewards=False):
+                           duplicate_settlement=False, economic_rewards=False,
+                           integrated_issuances=None):
     """Budget current native framing with explicitly unqualified channel costs.
 
     The compact body already contains settlement. A separate settlement copy
@@ -137,6 +138,9 @@ def native_protocol_report(positions=576, link_mbps=None,
     two signed fund payouts and two explicit mode/count bytes. The independent
     8-KiB future-record allowance is retained in addition to that encoded size.
     """
+    if integrated_issuances is not None and (not economic_rewards
+            or type(integrated_issuances) is not int or not 0 <= integrated_issuances <= 4):
+        raise ValueError('Integrated issuance requires economic mode and a count from zero to four')
     # Preserve default-report validation and metadata without changing its model.
     result = report(positions, link_mbps, transaction_proof_cap,
                     settlement_proof_cap, issuance_proof_cap,
@@ -151,6 +155,13 @@ def native_protocol_report(positions=576, link_mbps=None,
                    + SIDECAR_BYTES + NATIVE_GOSSIP_LENGTH_BYTES)
     compact_fixed = (NATIVE_ECONOMIC_COMPACT_FIXED_BYTES if economic_rewards
                      else NATIVE_COMPACT_FIXED_BYTES)
+    # Block v4 / compact v3 carry complete issuance records, including proofs.
+    # The activated count is an explicit network setting; four is a codec bound.
+    issuance_record = (4 + 2 + 32 + 1952 + 8 + 32 + 8 + 2 + 256 + 1 + 8
+                       + 3 * (48 + 32 + 1313) + 3309 + 48 + 48 + 4
+                       + issuance_proof_cap)
+    if integrated_issuances is not None:
+        compact_fixed += 1 + integrated_issuances * (4 + issuance_record)
     compact = compact_fixed + positions * NATIVE_REFERENCE_BYTES + settlement_proof_cap
     request_batches = positions // NATIVE_MISSING_BATCH
     request_payload = 2 + NATIVE_MISSING_BATCH * NATIVE_REFERENCE_BYTES
@@ -159,7 +170,8 @@ def native_protocol_report(positions=576, link_mbps=None,
         'settlement_wire': (copies * native_wire(settlement_proof_cap
                                                 + SETTLEMENT_ENVELOPE_BYTES)
                             if duplicate_settlement else 0),
-        'issuance_wire_allowance': copies * native_wire(issuance_proof_cap + 16_384),
+        'issuance_wire_allowance': (copies * native_wire(issuance_proof_cap + 16_384)
+                                  if integrated_issuances is None else 0),
         'inventory_wire_allowance': copies * native_wire(2 + positions * NATIVE_REFERENCE_BYTES),
         'compact_block_and_block_record_wire': copies * native_wire(
             compact + NATIVE_EXTRA_BLOCK_RECORD_BYTES),
@@ -202,6 +214,10 @@ def native_protocol_report(positions=576, link_mbps=None,
             'maximum_signed_fund_payouts': NATIVE_MAXIMUM_FUND_PAYOUTS,
             'signed_fund_payout_bytes': NATIVE_SIGNED_FUND_PAYOUT_BYTES,
         })
+    if integrated_issuances is not None:
+        parameters.update({'integrated_issuance_records': integrated_issuances,
+                           'maximum_issuance_record_bytes': issuance_record,
+                           'issuance_policy_activated': False})
     result.update({
         'model': 'native-protocol-framing-with-conditional-channel-allowances',
         'minimum_link_mbps': minimum_link,
@@ -238,6 +254,8 @@ if __name__ == '__main__':
                         help='with --native-protocol, also charge a separate settlement copy')
     parser.add_argument('--economic-rewards', action='store_true',
                         help='with --native-protocol, include five reward notes and two signed fund payouts')
+    parser.add_argument('--integrated-issuances', type=int,
+                        help='with native economic mode, budget zero to four issuance records inside compact bodies')
     parser.add_argument('--legacy-baseline', action='store_true',
                         help='reproduce the prior 524288-byte proof caps and 30-Mbps link without extra headroom')
     args = parser.parse_args()
@@ -247,11 +265,15 @@ if __name__ == '__main__':
         parser.error('--duplicate-settlement requires --native-protocol')
     if args.economic_rewards and not args.native_protocol:
         parser.error('--economic-rewards requires --native-protocol')
+    if args.integrated_issuances is not None and (not args.economic_rewards
+            or not 0 <= args.integrated_issuances <= 4):
+        parser.error('--integrated-issuances requires native economic mode and a count from zero to four')
     if args.native_protocol:
         print(json.dumps(native_protocol_report(
             args.positions, args.link_mbps, args.transaction_proof_cap_bytes,
             args.settlement_proof_cap_bytes, args.issuance_proof_cap_bytes,
-            args.capacity_headroom_percent, args.duplicate_settlement, args.economic_rewards),
+            args.capacity_headroom_percent, args.duplicate_settlement, args.economic_rewards,
+            args.integrated_issuances),
             indent=2, sort_keys=True))
     elif args.legacy_baseline:
         print(json.dumps(report(args.positions, 30, 524_288, 524_288, 524_288, 0),

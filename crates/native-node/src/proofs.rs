@@ -185,6 +185,7 @@ fn profile_fingerprint_from_keys(
             hash.update(&dimension.to_le_bytes());
         }
     }
+    hash.update(&crate::issuance::profile_id());
     *hash.finalize().as_bytes()
 }
 
@@ -304,6 +305,7 @@ pub struct NativeVerifier {
     settlement_air: SettlementAir,
     settlement_vk: PreprocessedVerifierKey<Cfg>,
     settlement_shape: ProofShape,
+    issuance: crate::issuance::IssuanceVerifier,
 }
 
 impl NativeVerifier {
@@ -351,7 +353,12 @@ impl NativeVerifier {
             settlement_air,
             settlement_vk,
             settlement_shape,
+            issuance: crate::issuance::IssuanceVerifier::new()?,
         })
+    }
+
+    pub fn verify_issuance(&self, record: &crate::issuance::IssuanceRecord) -> Result<(), String> {
+        self.issuance.verify(record)
     }
 
     pub fn verify_transaction(

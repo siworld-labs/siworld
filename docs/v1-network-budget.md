@@ -148,3 +148,34 @@ loss and queue growth with the real provider at the minimum and recommended
 link classes. Report exceedances without lowering 576 positions or weakening
 security. A smaller future proof requires a new security screen, measurements,
 key/profile freeze and complete budget before reducing the uplink requirement.
+
+## Integrated issuance envelope
+
+Block v4 and compact v3 carry complete issuance records inside the compact
+body. The codec can represent at most four fixed-three-note records; the
+activated per-block limit and metadata limit must be explicit network
+configuration. This codec bound does not choose an issuance policy.
+Each record has a 534,181-byte budget allowance, including its independent
+524,288-byte proof cap, issuer key/signature, ciphertexts and declaration-bound
+fee receipt.
+The enclosing compact encoding adds a one-byte count and four-byte record
+lengths. Do not charge those same proofs again as standalone issuance traffic.
+
+Reproduce that layout with the explicit record count:
+
+```sh
+python3 scripts/v1-network-budget.py --native-protocol --economic-rewards --integrated-issuances 1
+python3 scripts/v1-network-budget.py --native-protocol --economic-rewards --integrated-issuances 4
+```
+
+| Configured maximum issuance records | Complete modeled rate | Minimum link with 15% unused |
+| --- | ---: | ---: |
+| 1 | 36.51196859 Mbps | 43 Mbps |
+| 4 | 36.66585163 Mbps | 44 Mbps |
+
+The existing 43-Mbps planning floor covers one issuance per block. Four
+maximum records need 44 Mbps under the same assumptions; at 43 Mbps the spare
+fraction is 14.730578%, below the selected reserve. Preserve the 100-Mbps
+deployment recommendation. Pin the actual admission setting and rerun the
+model before activation; transport overhead and sustained relay still require
+measurement with the reviewed provider.

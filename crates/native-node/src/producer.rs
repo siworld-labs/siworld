@@ -456,6 +456,7 @@ fn prepare_candidate(
         reward_mode: settings.mode,
         rewards: reward.records,
         fund_spends: Vec::new(),
+        issuances: Vec::new(),
         settlement_proof: Vec::new(),
     };
     let witness = FixedSettlementWitness {
@@ -651,6 +652,7 @@ mod tests {
                 nonce: 0,
                 transactions: Vec::new(),
                 fund_spends: Vec::new(),
+                issuances: Vec::new(),
                 reward_mode: mode,
                 rewards: rewards.records,
                 settlement_proof: Vec::new(),

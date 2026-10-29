@@ -316,9 +316,10 @@ prevents these isolated native proof paths.
 Before activation, complete protocol-policy review, production node and wallet
 integration, issuance and block resource bounds, actual-shape parameter review,
 full-load network/resource qualification and independent security review. The
-issuance auditor, public-data backup jobs, wallet recovery acceptance and real
-three-day pruning qualification follow the multi-asset AIR work. They are not
-implemented merely by defining their requirements here.
+native replay auditor checks canonical issued supplies and the fee-bound
+registry through the shared transition. Public-data backup jobs, wallet
+recovery acceptance and real three-day pruning qualification remain separate
+work; their requirements do not establish implementation or acceptance.
 
 The new engineering network must use reviewed new genesis data and independent
 keys. Existing seven-node engineering history remains unchanged. Retained

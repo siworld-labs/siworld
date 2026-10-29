@@ -338,6 +338,8 @@ jobs:
         run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib proofs::tests::fixed_profiles_roundtrip_rejects_context_and_body_mutation -- --ignored --exact
       - name: Actual wallet transfer proof, admission and receiver authentication
         run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib wallet::tests::actual_native_wallet_proof_passes_admission_and_recipient_authentication -- --ignored --exact
+      - name: Actual issuance block, durable registry and seed-wallet rescan
+        run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib wallet::tests::actual_native_issuance_block_recovers_registry_and_seed_wallet_after_restart -- --ignored --exact
       - name: Actual proof block, restart and private reward recovery
         run: cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib producer::tests::actual_block_persists_replays_and_recovers_the_reward -- --ignored --exact
       - name: Actual resident service lifecycle and final independent replay

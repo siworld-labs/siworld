@@ -17,9 +17,9 @@ full-system security claim.
 | Area | Present implementation | Remaining native V1 work |
 | --- | --- | --- |
 | Transaction proof | Private asset IDs, two inputs/three outputs, per-asset conservation, SIP-only fees, ciphertext binding, snapshot-height input locks and measured source-bound profile | Integrated release validation, bounded resource acceptance and complete wallet/node integration |
-| Issuance and settlement | Three-initial-note fixed-supply issuance, declaration-signature checks and fixed-576 SIP-only settlement with one/five mode-dependent reward notes; revised keys and resource measurements | Launch-time fund configuration, atomic issuance-fee collection, complete node/wallet integration and independent review |
+| Issuance and settlement | Three-initial-note fixed-supply issuance, signed declarations, declaration-bound fee receipts, atomic registry insertion and fixed-576 SIP-only settlement with one/five mode-dependent reward notes; revised keys and resource measurements | Launch-time fund and issuance-limit configuration, complete wallet/network integration and independent review |
 | Existing node | Legacy two-output recursive proofs, storage, peer relay and local RPC | It does not activate native V1 |
-| Native engineering runtime | Codecs, shared atomic transition, proof admission and replay interfaces | Authenticated live transport, integrated compact relay, pruning, checkpoint bootstrap and sustained-load qualification |
+| Native engineering runtime | Codecs, shared atomic transition, proof admission, exact missing-slot/proof compact recovery and replay interfaces | Authenticated live transport, deployed compact-relay qualification, pruning, checkpoint bootstrap and sustained-load qualification |
 | Connection privacy | Hybrid authenticated transport and Dandelion++ designs | Reviewed implementation and actual-listener adversarial tests |
 
 A proof executable or proof-tools image is not a node runtime. The retained

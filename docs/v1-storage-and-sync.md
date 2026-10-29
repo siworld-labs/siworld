@@ -236,17 +236,19 @@ cumulative burn, locked subsidy schedules, per-credit fund maturity/vesting,
 valid ML-DSA expenditures and counters, and cumulative SIP emission against
 the curve. Check supply conservation at every height. Public lock/circulation
 figures are scheduled subsidy measures, not private unspent holdings. Transfers and fee recycling are not new issuance.
-The native audit includes signed fund spending but not integrated asset
-issuance admission. Public asset declarations and the native issuance-to-note
-supply relation require separate integration; do not infer private holdings
-or reveal fee openings.
+The native audit includes signed fund spending and canonical asset issuance.
+The shared transition verifies signed declarations, the native issuance-to-note
+supply relation, dedicated declaration-bound fee receipts and one-time registry
+insertion. The public summary records declared supplies, issuance heights and
+declaration bindings; it does not infer private holdings or reveal ordinary
+transaction fee openings.
 
 Authenticate audit inputs through the permanent record/checkpoint manifest.
 Report the first bad height and reproducible cumulative totals. Tests must
 reject altered subsidy, fund credits, payout signatures/counters, duplicate
 issuance and over-minting, and reconcile reorganization rollback. The native
-subsidy/fund audit does not close the asset-issuance audit, authenticated
-checkpoint-input or deployed recovery gates. A size table or unauthenticated
+replay audit does not close authenticated checkpoint-input, proof-pruning or
+deployed recovery gates. A size table or unauthenticated
 JSON sum does not constitute a supply audit.
 
 ## Backup checkpoint freshness

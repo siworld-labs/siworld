@@ -270,6 +270,32 @@ impl Wallet {
                     ));
                 }
             }
+            for (issuance_index, issuance) in block.issuances.iter().enumerate() {
+                for (note_index, ciphertext) in issuance.ciphertexts.iter().enumerate() {
+                    let commitment = issuance.signed.declaration.note_commitments[note_index];
+                    let bytes = ciphertext
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| "wallet issuance ciphertext width")?;
+                    if let Ok(note) = self.keys.recipient.decrypt_payment(
+                        &commitment,
+                        &decode_payment(bytes),
+                        &ec,
+                    ) {
+                        let output_index = u8::try_from(
+                            10 + issuance_index * crate::issuance::INITIAL_NOTES + note_index,
+                        )
+                        .map_err(|_| "issuance receipt index exceeds wallet width")?;
+                        receipts.push(self.receipt(
+                            note,
+                            commitment,
+                            block.height,
+                            block_id,
+                            output_index,
+                        ));
+                    }
+                }
+            }
             for (index, spend) in block.fund_spends.iter().enumerate() {
                 let commitment = decode_digest(&spend.commitment)
                     .map_err(|_| "wallet replay contains invalid fund commitment")?;
@@ -521,6 +547,22 @@ impl Wallet {
         tier: FeeTier,
         now: u64,
     ) -> Result<PreparedTransfer, String> {
+        self.prepare_transfer_with_randomness(
+            state, selected, recipient, asset, amount, tier, now, None,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_transfer_with_randomness(
+        &self,
+        state: &State,
+        selected: [Option<DigestBytes>; 2],
+        recipient: &PaymentAddress,
+        asset: AssetId,
+        amount: u64,
+        tier: FeeTier,
+        now: u64,
+        payment_randomness: Option<Digest>,
+    ) -> Result<PreparedTransfer, String> {
         self.require_state(state)?;
         if amount == 0 || selected == [None, None] {
             return Err("wallet transfer requires a nonzero payment and an owned input".into());
@@ -611,7 +653,10 @@ impl Wallet {
                         owner: recipient.owner(),
                         value: amount,
                         unlock_height: 0,
-                        rseed: random_fields()?,
+                        rseed: match payment_randomness {
+                            Some(randomness) => randomness,
+                            None => random_fields()?,
+                        },
                     },
                     OutputWitness {
                         asset_id: change[0].0,
@@ -843,6 +888,8 @@ impl WalletPayment {
         &self.opening
     }
 }
+
+pub mod issuance;
 
 #[cfg(test)]
 mod tests;

@@ -70,6 +70,7 @@ pub(crate) fn candidate(state: &State, seed: u32) -> Block {
             ciphertext: [0; REWARD_CIPHERTEXT_BYTES],
         }],
         fund_spends: Vec::new(),
+        issuances: Vec::new(),
         settlement_proof: vec![1],
     }
 }
@@ -120,7 +121,8 @@ fn every_height_matches_integer_curve_and_accepted_state() {
             .check_head(state.height, [0; 32], state.fingerprint())
             .is_err()
     );
-    assert!(!report.asset_issuance_supported);
+    assert!(report.asset_issuance_supported);
+    assert!(report.issued_assets.is_empty());
     assert!(report.fund_spending_supported);
 }
 

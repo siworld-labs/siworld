@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod fund_spend;
+pub mod issuance;
 pub mod local;
 pub mod mining;
 pub mod pool;

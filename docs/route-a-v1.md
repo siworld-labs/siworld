@@ -518,13 +518,16 @@ node/wallet integration, independent review or sustained testnet acceptance.
 
 See the [actual multi-asset evaluation](v1-multi-asset-evaluation.md),
 [V1 Multi-Asset Transaction Format](v1-multi-asset.md), and
-[V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md). Node issuance
-application remains integration work. Testnet issuance requires exactly
+[V1 Storage, Retention and Bootstrap](v1-storage-and-sync.md). The native shared
+transition integrates issuance proofs, the persistent registry and
+declaration-bound fee receipts; replay and reorganization restore them together.
+Testnet issuance requires exactly
 **50 SIP (5,000,000,000 atoms)**, credited entirely to a dedicated
 development-fund account. That account is not yet configured; issuance
 admission remains closed and must fail closed until the authenticated
-destination, verified fee payment, one-time consumption and atomic fund credit
-are implemented and configured. No default recipient, fee waiver or miner
+destination and explicit metadata/per-block limits are configured. A receipt
+must identify a verified canonical or same-block SIP payment output and is
+consumed once. No default recipient, fee waiver or miner
 share is permitted. The mainnet issuance fee remains undecided. A valid
 signature cannot replace the supply proof or verified SIP fee payment.
 

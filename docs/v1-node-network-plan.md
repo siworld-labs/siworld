@@ -357,19 +357,23 @@ replays complete supplied canonical history, authenticates ciphertexts and
 note commitments, reconciles orphan receipts/spends, and prepares two-input/
 three-output SIP or asset payments with SIP-only standard/priority fees. It
 returns a matching private sidecar and payment opening after native proving.
-Mnemonic creation/backup, protected key/opening storage, seed-wallet funding,
-issuance admission, network relay and pruned-public-history rescan are not yet
-integrated. A native-proof test with synthetic funding does not complete M2.
+Mnemonic creation/backup, protected key/opening storage, valid-chain seed-wallet
+funding, network relay and pruned-public-history rescan are not yet integrated.
+The issuance API and seed-wallet scan recover initial issued notes through the
+shared transition; the native-proof test uses synthetic funding and does not
+complete M2.
 
 The offline `audit` command and library bind replay to the exact accepted
 head. The economic audit recomputes modes, all reward notes, pool/burn,
 per-credit independent fund unlock/spend state and conservation using the
 shared transition. Its report includes signed fund spending and binds the
 accepted height, tip and fingerprint; earlier audit output does not qualify
-this expanded scope. Asset issuance
-admission still requires its dedicated payment and resource integration; reward-recovery receipts are outside this
-report's scope. The complete public issuance audit remains dependent on those
-unimplemented transitions.
+this expanded scope. Canonical replay also checks signed asset declarations,
+native issuance proofs, dedicated fee receipts and one-time registry insertion;
+its public summary includes declared supplies, issuance heights and declaration
+bindings. Private holdings and reward-recovery receipts remain outside this
+report's scope. Launch-time issuance configuration, authenticated checkpoint
+inputs and deployed recovery remain separate gates.
 
 ## Transport privacy work
 
@@ -432,8 +436,8 @@ recovery, without a production provider/listening service or qualified wire
 measurements. Verified-work forks and atomic depth-24 reorganization are
 implemented with local replay limits. N8 has seed-derived scanning/transfer
 primitives without protected durability or full valid-chain M2 acceptance.
-The offline audit covers SIP subsidy, pool/burn, scheduled locks and
-independent fund credit/vesting/spending; asset issuance remains separate. The dedicated native
+The offline audit covers SIP subsidy, pool/burn, scheduled locks,
+independent fund credit/vesting/spending and canonical asset issuance. The dedicated native
 runtime CI job covers compilation, rejection tests and separately selected
 native-proof integration tests. The frozen pre-revision service observation is not replaced or restarted by
 this library work and does not qualify `native-v1-economics-1`.
@@ -465,6 +469,50 @@ Apply the [native acceptance matrix](prover-acceptance.md), including
 trials, seven-day independent-host observation, real retention lifecycle and
 explicit recovery targets. No short standalone proof run closes those gates.
 None of these milestones imports or migrates retained seven-node state.
+
+## Activation sequence and host handover
+
+Complete the authenticated transport provider and durable wallet path before
+shipping a network-node service package. The existing persistent Ed25519
+identity in the legacy node is not a native dual identity. The native service
+must persist an independently generated ML-DSA-65 identity alongside its
+Ed25519 identity, bind both keys to the handshake transcript and authenticate
+ephemeral X25519 plus ML-KEM-768. Identity storage, rotation and recovery must
+not silently generate a replacement identity on damaged or missing state.
+
+The wallet path must prove a complete accepted-chain cycle: backed-up seed,
+configured mining recipient, mature reward recovery, SIP transfer with both
+fee tiers, issued-asset transfer, restart and mnemonic-only restoration.
+The current seed-derived wallet primitives and private reward receipts do not
+by themselves complete protected wallet persistence or mnemonic restoration.
+Publish only public chain and operation status; wallet seeds, note openings,
+individual fees and recipient classifications stay private.
+
+Native economics already use the shared integer transition for 87/10/3
+allocation, Voyager/Holder mode, pool credit-before-claim, one-SIP tail,
+snapshot-height locks and independent configured fund-wallet allowances.
+Fund ratios and production recipients remain explicit activation inputs.
+Do not substitute a shared fund allowance or restore the superseded fixed
+5%/5% split. SIP is the display and code denomination; fixed pre-existing
+protocol domain strings and serialized field names retain their byte values.
+
+A deployment handover requires the following artifacts from one qualified
+commit. Until the network service exists, there is no deployable native P2P
+port or listener command to supply.
+
+| Handover item | Required evidence |
+| --- | --- |
+| Version | Immutable commit, package checksums, frozen relation manifest and observed required CI results |
+| Binaries | Baseline CPU-admission launcher, optimized native worker and their exact names and hashes |
+| Configuration | Explicit engineering network/genesis, peers, identities, reward mode, backed-up recipient and fund allocation |
+| Service | Validated startup/shutdown commands, service account, durable data paths and resource limits |
+| Networking | Implemented authenticated listener port, firewall policy, handshake profile and reconnect tests |
+| Status | Read-only script reporting accepted height/tip, verified work, freshness and service/resource health |
+| Recovery | Graceful stop/restart, wallet restoration and canonical-state/reorganization checks with preserved data |
+
+An integration PR or isolated proof benchmark does not authorize deployment,
+change an existing node or qualify the public testnet. Stage a new independent
+network only after the relevant service and reward-cycle gates pass.
 
 ## Backup checkpoint freshness
 

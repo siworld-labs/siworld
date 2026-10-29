@@ -189,6 +189,25 @@ class NetworkBudgetTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 budget.report(**arguments)
 
+    def test_integrated_issuance_is_carried_once_in_the_compact_body(self):
+        empty = budget.native_protocol_report(economic_rewards=True, integrated_issuances=0)
+        one = budget.native_protocol_report(economic_rewards=True, integrated_issuances=1)
+        four = budget.native_protocol_report(economic_rewards=True, integrated_issuances=4)
+        for value in (empty, one, four):
+            self.assertEqual(value['components_bytes_per_interval']['issuance_wire_allowance'], 0)
+            self.assertEqual(value['components_bytes_per_interval']['settlement_wire'], 0)
+            self.assertGreaterEqual(value['remaining_percent'], 15)
+        self.assertGreater(four['wire_bytes_per_interval'], one['wire_bytes_per_interval'])
+        self.assertGreater(one['wire_bytes_per_interval'], empty['wire_bytes_per_interval'])
+        self.assertEqual(four['minimum_link_mbps'], 44)
+        self.assertFalse(budget.native_protocol_report(economic_rewards=True,
+            integrated_issuances=4, link_mbps=43)['meets_capacity_headroom'])
+        for arguments in ({'integrated_issuances': 1},
+                          {'economic_rewards': True, 'integrated_issuances': -1},
+                          {'economic_rewards': True, 'integrated_issuances': 5}):
+            with self.assertRaises(ValueError):
+                budget.native_protocol_report(**arguments)
+
 
 if __name__ == '__main__':
     unittest.main()
