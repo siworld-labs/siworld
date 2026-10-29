@@ -124,7 +124,7 @@ impl Config {
             None if !self.fund_verifying_keys.is_empty() => {
                 return Err("fund keys require an immutable genesis allocation".into());
             }
-            Some(allocation) => {
+            Some(allocation)
                 if allocation.basis_points().len() != self.fund_verifying_keys.len()
                     || self.fund_verifying_keys.len() > MAX_FUND_WALLETS
                     || self
@@ -135,12 +135,11 @@ impl Config {
                         .fund_verifying_keys
                         .iter()
                         .enumerate()
-                        .any(|(index, key)| self.fund_verifying_keys[..index].contains(key))
-                {
-                    return Err("invalid immutable fund wallet key registry".into());
-                }
+                        .any(|(index, key)| self.fund_verifying_keys[..index].contains(key)) =>
+            {
+                return Err("invalid immutable fund wallet key registry".into());
             }
-            None => {}
+            _ => {}
         }
         if !self.fixture && self.economics != EconomicsParams::production() {
             return Err("compressed economic timings require an engineering fixture".into());

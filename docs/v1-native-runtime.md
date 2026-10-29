@@ -65,10 +65,13 @@ domains are used throughout.
 
 A new independent engineering directory contains its explicit network configuration,
 `chain.redb` and private reward recovery receipts. Initialization refuses an
-existing directory. The ASERT service uses engineering configuration format v3,
+existing directory. The ASERT service uses engineering configuration format v4,
 which binds a fresh network identity, genesis timestamp, immutable calibrated
 target, 300-second target interval and sequential BLAKE3 work iterations.
-This engineering format version is unrelated to the deferred recursive V2
+The 62,728-byte canonical rules reserve 32 full public-key/share slots and
+bind the team residue index. A launch-time genesis manifest/import CLI remains
+an activation prerequisite; the complete registry is currently supplied through
+the validated library configuration API. This engineering format version is unrelated to the deferred recursive V2
 roadmap. Earlier engineering directories are preserved and are not migrated
 automatically. There is no reset or migration operation. Replay reconstructs
 accepted state by verifying every stored block and checking its recorded state

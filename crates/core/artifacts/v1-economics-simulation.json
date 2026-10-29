@@ -1,35 +1,303 @@
 {
   "schema": 1,
   "status": "executed-accounting-reference",
-  "source_commit": "9f7bf77943d35b60ff76943d0335bf7ff591777d",
-  "workflow_run": "https://github.com/siworld-labs/siworld/actions/runs/40732762783",
+  "source_commit": "7a205abf7f5d1e3b49ed268d37664f6507d3fbb5",
+  "workflow_run": "https://github.com/siworld-labs/siworld/actions/runs/40921706547",
   "test": "v1_economics::tests::seeded_twenty_year_modes_preserve_supply_and_curve",
   "command": "cargo test --release --locked -p siworld-core v1_economics::tests::seeded_twenty_year_modes_preserve_supply_and_curve -- --ignored --exact --nocapture",
   "sources_sha256": {
-    "crates/core/src/v1_economics.rs": "ca8dccd773bac6a58a16ec8f06b4b3d561a8ec972d46a50e1c2f0ec2b8abf6a8",
-    "crates/core/src/v1_economics_tests.rs": "e50927ca5c34d1379a7df548fe00a5f5624481b9487b93b820f754eefc0bfe46"
+    "crates/core/src/v1_economics.rs": "34b0076e32035fe4db3b33d03a5ca0108d32a46c06dd27765a7a65795c09acc6",
+    "crates/core/src/v1_economics_tests.rs": "f8ba765a004f886b2d8b05225d0632d3458fc21c17def6e49d896447a77e55c7"
   },
   "simulation": {
     "height": 2102400,
     "issued": 2112093162237312,
-    "miner_subsidy_credited": 1854911801327964,
-    "holder_pool": 125271866610,
-    "burned": 45846774861618,
-    "locked_subsidy": 3396010253307,
-    "synthetic_equal_fixture_weights": [
-      1,
-      1
+    "miner_subsidy_credited": 1854911800239910,
+    "holder_pool": 125271865958,
+    "burned": 45846774833460,
+    "locked_subsidy": 3396010239013,
+    "synthetic_wallet_basis_points": [
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      800
     ],
-    "fund_entitlement": 211209314181120,
-    "fund_unlocked": 209476718268288,
-    "fund_spent": 206615069454994
+    "team_remainder_index": 23,
+    "wallet_count": 24,
+    "fund_entitlement": 211209315297984,
+    "fund_unlocked": 209476713447456,
+    "fund_spent": 93912546485906,
+    "fund_wallets": [
+      {
+        "index": 0,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 2221558273848,
+        "available": 6157509269448,
+        "spend_count": 2
+      },
+      {
+        "index": 1,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 3844589814128,
+        "available": 4534477729168,
+        "spend_count": 3
+      },
+      {
+        "index": 2,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 2135775649772,
+        "available": 6243291893524,
+        "spend_count": 1
+      },
+      {
+        "index": 3,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 5911630896974,
+        "available": 2467436646322,
+        "spend_count": 2
+      },
+      {
+        "index": 4,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 7765361498351,
+        "available": 613706044945,
+        "spend_count": 5
+      },
+      {
+        "index": 5,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 4408810466086,
+        "available": 3970257077210,
+        "spend_count": 2
+      },
+      {
+        "index": 6,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 4893699929838,
+        "available": 3485367613458,
+        "spend_count": 2
+      },
+      {
+        "index": 7,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 4945636802898,
+        "available": 3433430740398,
+        "spend_count": 2
+      },
+      {
+        "index": 8,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 5584941167890,
+        "available": 2794126375406,
+        "spend_count": 2
+      },
+      {
+        "index": 9,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 0,
+        "available": 8379067543296,
+        "spend_count": 0
+      },
+      {
+        "index": 10,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 0,
+        "available": 8379067543296,
+        "spend_count": 0
+      },
+      {
+        "index": 11,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 0,
+        "available": 8379067543296,
+        "spend_count": 0
+      },
+      {
+        "index": 12,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 3269403986820,
+        "available": 5109663556476,
+        "spend_count": 1
+      },
+      {
+        "index": 13,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 3430752701300,
+        "available": 4948314841996,
+        "spend_count": 1
+      },
+      {
+        "index": 14,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 0,
+        "available": 8379067543296,
+        "spend_count": 0
+      },
+      {
+        "index": 15,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 3426132212164,
+        "available": 4952935331132,
+        "spend_count": 2
+      },
+      {
+        "index": 16,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 1606349878162,
+        "available": 6772717665134,
+        "spend_count": 2
+      },
+      {
+        "index": 17,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 3788607520248,
+        "available": 4590460023048,
+        "spend_count": 1
+      },
+      {
+        "index": 18,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 731641405744,
+        "available": 7647426137552,
+        "spend_count": 1
+      },
+      {
+        "index": 19,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 5555507603840,
+        "available": 2823559939456,
+        "spend_count": 2
+      },
+      {
+        "index": 20,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 7127070772678,
+        "available": 1251996770618,
+        "spend_count": 3
+      },
+      {
+        "index": 21,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 7305403907507,
+        "available": 1073663635789,
+        "spend_count": 4
+      },
+      {
+        "index": 22,
+        "basis_points": 400,
+        "entitlement": 8448371579520,
+        "direct_unlocked": 4224178957344,
+        "vesting_unlocked": 4154888585952,
+        "spent": 3630391842552,
+        "available": 4748675700744,
+        "spend_count": 1
+      },
+      {
+        "index": 23,
+        "basis_points": 800,
+        "entitlement": 16896768969024,
+        "direct_unlocked": 8448371434272,
+        "vesting_unlocked": 8309788517376,
+        "spent": 12329280155106,
+        "available": 4428879796542,
+        "spend_count": 3
+      }
+    ]
   },
   "assertions": {
     "supply_conserved_at_each_height": true,
     "gross_issuance_matches_epoch_projection": true,
-    "scheduled_locked_total_matches_schedule": true
+    "scheduled_locked_total_matches_schedule": true,
+    "all_wallet_release_totals_match_per_credit_oracle": true,
+    "registry_shares_sum_to_10000": true
   },
-  "allocation_scope": "synthetic equal test weights; no launch wallet count or share is selected",
+  "allocation_scope": "synthetic 24-wallet basis-point registry with explicit team residue; no launch allocation is selected",
   "network_acceptance": false,
   "cryptographic_approval": false
 }

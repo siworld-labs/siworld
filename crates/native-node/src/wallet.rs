@@ -137,6 +137,9 @@ pub struct OwnedNote {
     pub nullifier: DigestBytes,
     pub height: u64,
     pub block_id: Hash,
+    /// Local output-category position, not a receipt identity. Transactions
+    /// repeat positions across slots; persistent records must use commitments
+    /// or a complete tagged origin instead of a block/position pair.
     pub output_index: u8,
     pub spent: bool,
     // Canonical timestamp when this note first becomes consensus-spendable.
@@ -283,7 +286,9 @@ impl Wallet {
                         &ec,
                     ) {
                         let output_index = u8::try_from(
-                            10 + issuance_index * crate::issuance::INITIAL_NOTES + note_index,
+                            8 + crate::wire::MAX_FUND_SPENDS
+                                + issuance_index * crate::issuance::INITIAL_NOTES
+                                + note_index,
                         )
                         .map_err(|_| "issuance receipt index exceeds wallet width")?;
                         receipts.push(self.receipt(

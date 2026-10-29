@@ -166,7 +166,7 @@ fn actual_continuous_service_exports_stops_and_replays() {
         .unwrap()
         .with_fund_wallets(
             siworld_core::v1_economics::FundAllocation::new_bps(vec![5000, 5000], 1).unwrap(),
-            Config::development([121; 32], 0)
+            crate::state::Config::development([121; 32], 0)
                 .unwrap()
                 .fund_verifying_keys,
         )

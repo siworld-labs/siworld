@@ -1244,6 +1244,16 @@ fn actual_native_issuance_block_recovers_registry_and_seed_wallet_after_restart(
         .reconcile(config.clone(), &blocks, &verifier)
         .unwrap();
     assert_eq!(report.issued_assets.len(), 1);
+    // The eight reserved fund-claim positions occupy indices 8 through 15.
+    // A restored issuance must not reuse any of those local category indices.
+    assert_eq!(
+        restored
+            .receipts()
+            .iter()
+            .map(|receipt| receipt.output_index)
+            .collect::<Vec<_>>(),
+        vec![16, 17, 18]
+    );
     assert_eq!(
         restored.balances(reopened.state().height).unwrap()[&asset_id],
         900

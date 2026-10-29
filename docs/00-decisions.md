@@ -430,7 +430,7 @@ The runtime must use the revised source-bound keys; retained earlier service
 observations do not qualify the new economic relation.
 
 Continuous production uses a new independent ASERT engineering directory with
-configuration format v3, fresh network identity and genesis, immutable
+configuration format v4, fresh network identity and genesis, immutable
 initially calibrated work rules and a 300-second target interval. Producer and
 validator share the integer-only timestamp, ASERT target and sequential BLAKE3
 work checks. A resident prover and bounded private pre-generation queue supply

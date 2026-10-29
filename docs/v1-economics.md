@@ -190,9 +190,9 @@ about 0.493103% of the gross amount at tail entry; that ratio then decreases as
 gross issuance grows. Burn, pool holdings and mode-dependent lock schedules
 change the distribution, not the gross schedule.
 
-## Accounting simulation evidence
+## Executed accounting simulation
 
-The linked prior reference run, before the basis-point registry revision, advanced 2,102,400 consecutive production
+The remote release-mode deterministic test advanced 2,102,400 consecutive production
 heights with mixed Voyager and Holder modes. It checked supply conservation at
 every height, cross-checked gross issuance against the epoch projection, and
 checked the remaining reward-lock schedule. The
@@ -202,21 +202,25 @@ records the source identity and exact reproduction command.
 | State after 20 protocol years | Atoms |
 | --- | ---: |
 | Cumulative gross subsidy | 2,112,093,162,237,312 |
-| Cumulative miner subsidy credits | 1,854,911,801,327,964 |
-| Holder pool balance | 125,271,866,610 |
-| Cumulative burn | 45,846,774,861,618 |
-| Scheduled locked subsidy | 3,396,010,253,307 |
-| Cumulative fund entitlements | 211,209,314,181,120 |
-| Unlocked fund entitlements | 209,476,718,268,288 |
-| Spent fund entitlements | 206,615,069,454,994 |
+| Cumulative miner subsidy credits | 1,854,911,800,239,910 |
+| Holder pool balance | 125,271,865,958 |
+| Cumulative burn | 45,846,774,833,460 |
+| Scheduled locked subsidy | 3,396,010,239,013 |
+| Cumulative fund entitlements | 211,209,315,297,984 |
+| Unlocked fund entitlements | 209,476,713,447,456 |
+| Spent fund entitlements | 93,912,546,485,906 |
 
-That prior test used synthetic equal fund weights to exercise independently
-tracked accounts. A revised 20-plus-wallet run is required after registry
-changes; no launch allocation is selected. Scheduled locked subsidy is
-a subset of miner credits; unlocked and spent fund amounts are subsets of
-fund entitlements. These subsets must not be added again in the supply sum.
-This is an accounting simulation, not a long-running network or proof-resource
-qualification.
+The test uses 24 synthetic wallets: 23 shares of 400 basis points and a
+team wallet with 800 basis points at index 23. Every height checks supply
+conservation; the final entitlement and unlocked components of every wallet
+also match an independent per-deposit oracle. Randomized mode choices and
+wallet claims exercise separate balances and counters. The evidence lists
+every wallet; it selects no launch recipient or share.
+
+Scheduled locked subsidy is a subset of miner credits; unlocked and spent
+fund amounts are subsets of fund entitlements. These subsets must not be
+added again in the supply sum. This is an executed accounting simulation,
+not a long-running network or proof-resource qualification.
 
 ## Engineering timing and acceptance
 
