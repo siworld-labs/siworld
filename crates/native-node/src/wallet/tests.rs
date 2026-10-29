@@ -1000,7 +1000,12 @@ fn configured_issuance_funding() -> (
     });
     let mut state = State::new(config.clone()).unwrap();
     let mut funding = candidate(&state, 2_000_000);
-    let amount = crate::issuance::TESTNET_ISSUANCE_FEE_ATOMS + 1_000_000;
+    // Cover the issuance payment and the largest ordinary fee tier selected
+    // by the canonical funding snapshot, with nonzero change left over.
+    let amount = crate::issuance::TESTNET_ISSUANCE_FEE_ATOMS
+        .checked_add(base_fee(funding.height).checked_mul(4).unwrap())
+        .and_then(|value| value.checked_add(1_000_000))
+        .unwrap();
     let (record, _, _) = encrypted_record(&state, &sender, SIP_ASSET_ID, amount, 3_000_000);
     insert_record(&mut funding, record);
     state.apply(&funding, &TestVerifier).unwrap();

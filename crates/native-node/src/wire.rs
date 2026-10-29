@@ -1035,9 +1035,10 @@ mod tests {
         assert!(Block::decode(&bytes, &[8; 32]).is_err());
         for count in [0u16, 63, 65, 577, u16::MAX] {
             let mut bad = bytes.clone();
-            bad[BLOCK_HEADER_BYTES - 4..BLOCK_HEADER_BYTES - 2]
+            // Slot count precedes mode, fund count and issuance count in v4.
+            bad[BLOCK_HEADER_BYTES - 5..BLOCK_HEADER_BYTES - 3]
                 .copy_from_slice(&count.to_le_bytes());
-            assert!(Block::decode(&bad, &[9; 32]).is_err());
+            assert!(Block::decode(&bad, &[9; 32]).is_err(), "slot count {count}");
         }
         let mut bad = bytes.clone();
         bad[BLOCK_HEADER_BYTES..BLOCK_HEADER_BYTES + 4].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -1286,7 +1287,7 @@ mod tests {
             holder
         );
         let mut unknown = encoded.clone();
-        unknown[BLOCK_HEADER_BYTES - 2] = 2;
+        unknown[BLOCK_HEADER_BYTES - 3] = 2;
         assert!(Block::decode(&unknown, &holder.network).is_err());
         let mut truncated = holder.clone();
         truncated.rewards.pop();
