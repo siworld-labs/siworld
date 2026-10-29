@@ -63,7 +63,7 @@ pub struct IssuanceConfig {
 }
 impl IssuanceConfig {
     pub fn validate(&self) -> Result<(), String> {
-        decode_digest(&self.fee_owner).map_err(|_| "invalid issuance fund owner")?;
+        let _ = decode_digest(&self.fee_owner).map_err(|_| "invalid issuance fund owner")?;
         if self.fee_owner == [0; 48]
             || self.max_metadata_bytes == 0
             || usize::from(self.max_metadata_bytes) > METADATA_CODEC_LIMIT
@@ -156,8 +156,9 @@ impl IssuanceRecord {
         {
             return Err("issuance record codec bounds".into());
         }
-        decode_digest(&self.fee_commitment).map_err(|_| "noncanonical issuance fee commitment")?;
-        decode_digest(&self.fee_rho).map_err(|_| "noncanonical issuance fee rho")?;
+        let _ = decode_digest(&self.fee_commitment)
+            .map_err(|_| "noncanonical issuance fee commitment")?;
+        let _ = decode_digest(&self.fee_rho).map_err(|_| "noncanonical issuance fee rho")?;
         Ok(())
     }
     pub fn validate(&self, config: &Config) -> Result<(), String> {
