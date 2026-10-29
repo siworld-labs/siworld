@@ -18,6 +18,8 @@ pub const BLOCKS_PER_YEAR: u64 = 365 * BLOCKS_PER_DAY;
 pub const FUND_VESTING_DAYS: u64 = 1_461;
 pub const HOLDER_UNLOCK_OFFSETS: [u64; 4] = [52_560, 105_120, 157_680, 210_240];
 pub const POOL_PAYOUT_DIVISOR: u128 = 4_032;
+pub const MAX_FUND_WALLETS: usize = 32;
+pub const FUND_BASIS_POINTS: u16 = 10_000;
 const DECAY_Q32: u64 = crate::params::DECAY_Q32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +33,7 @@ pub enum EconomicsError {
     Overflow,
     FundCounter,
     FundOverdraft,
+    InvalidFundAccount,
     SupplyMismatch,
     RewardMismatch,
 }
@@ -46,6 +49,7 @@ impl std::fmt::Display for EconomicsError {
             Self::Overflow => "economic accounting overflow",
             Self::FundCounter => "fund expenditure counter is not the next counter",
             Self::FundOverdraft => "fund expenditure exceeds unlocked unspent entitlement",
+            Self::InvalidFundAccount => "fund wallet index is not configured",
             Self::SupplyMismatch => "subsidy conservation invariant failed",
             Self::RewardMismatch => "reward notes differ from the selected mode allocation",
         })
@@ -118,35 +122,62 @@ impl EconomicsParams {
     }
 }
 
-/// Explicit relative wallet weights within the subsidy fund allocation.
+/// Exact wallet shares within the ten-percent subsidy fund allocation.
 /// There is no default count, ratio, key or address. Every wallet has an
 /// independent entitlement and expenditure budget. Key authentication belongs
 /// to the network configuration, outside this arithmetic interface.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FundAllocation {
-    weights: Vec<u64>,
-    sum: u64,
+    basis_points: Vec<u16>,
+    team_index: usize,
 }
 impl FundAllocation {
-    pub fn new(weights: Vec<u64>) -> Result<Self> {
-        if weights.is_empty() || weights.len() > 256 || weights.contains(&0) {
+    pub fn new_bps(basis_points: Vec<u16>, team_index: usize) -> Result<Self> {
+        if basis_points.is_empty()
+            || basis_points.len() > MAX_FUND_WALLETS
+            || team_index >= basis_points.len()
+            || basis_points.contains(&0)
+        {
             return Err(EconomicsError::InvalidParameters);
         }
-        let sum = weights
+        let sum = basis_points
             .iter()
-            .try_fold(0u64, |sum, weight| sum.checked_add(*weight))
+            .try_fold(0u32, |sum, share| sum.checked_add(u32::from(*share)))
             .ok_or(EconomicsError::Overflow)?;
-        Ok(Self { weights, sum })
+        if sum != u32::from(FUND_BASIS_POINTS) {
+            return Err(EconomicsError::InvalidParameters);
+        }
+        Ok(Self {
+            basis_points,
+            team_index,
+        })
     }
-    pub fn weights(&self) -> &[u64] {
-        &self.weights
+    pub fn basis_points(&self) -> &[u16] {
+        &self.basis_points
+    }
+    pub fn team_index(&self) -> usize {
+        self.team_index
+    }
+    /// Heap capacity owned by the shares, excluding the inline allocation.
+    pub fn owned_bytes(&self) -> Option<usize> {
+        self.basis_points
+            .capacity()
+            .checked_mul(std::mem::size_of::<u16>())
     }
     pub fn credits(&self, subsidy: u64) -> Vec<u64> {
-        let denominator = u128::from(self.sum) * 10;
-        self.weights
+        let total_fund = subsidy / 10;
+        let mut credits: Vec<_> = self
+            .basis_points
             .iter()
-            .map(|weight| (u128::from(subsidy) * u128::from(*weight) / denominator) as u64)
-            .collect()
+            .map(|share| {
+                (u128::from(total_fund) * u128::from(*share) / u128::from(FUND_BASIS_POINTS)) as u64
+            })
+            .collect();
+        // Exact positive basis points sum to 10,000, so floors cannot exceed
+        // total_fund, and assigning their remainder cannot overflow any share.
+        let residual = total_fund - credits.iter().sum::<u64>();
+        credits[self.team_index] += residual;
+        credits
     }
 }
 
@@ -289,7 +320,8 @@ fn percent(amount: u64, numerator: u64) -> u64 {
 }
 
 /// Allocate one subsidy with same-block pool credit preceding a Holder claim.
-/// Non-residual components round down; the immediate miner note takes residuals.
+/// The fund receives floor(subsidy / 10), with wallet split residuals assigned
+/// to its configured team wallet. Other splits round down to the miner note.
 pub fn allocate_reward(
     params: &EconomicsParams,
     funds: &FundAllocation,
@@ -368,16 +400,18 @@ pub fn allocate_reward(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FundAccount {
-    First,
-    Second,
-}
+pub struct FundAccount(u8);
 impl FundAccount {
-    pub const fn index(self) -> usize {
-        match self {
-            Self::First => 0,
-            Self::Second => 1,
+    pub const FIRST: Self = Self(0);
+    pub const SECOND: Self = Self(1);
+    pub fn new(index: usize) -> Result<Self> {
+        if index >= MAX_FUND_WALLETS {
+            return Err(EconomicsError::InvalidFundAccount);
         }
+        Ok(Self(index as u8))
+    }
+    pub const fn index(self) -> usize {
+        self.0 as usize
     }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -418,7 +452,7 @@ pub struct EconomicsTotals {
 struct FundCohort {
     start: u64,
     end: u64,
-    credit: [u64; 2],
+    credit: Vec<u64>,
 }
 impl FundCohort {
     fn direct(&self, index: usize) -> u64 {
@@ -438,7 +472,7 @@ pub struct EconomicsLedger {
     height: u64,
     current_subsidy: u64,
     totals: EconomicsTotals,
-    funds: [FundBalance; 2],
+    funds: Vec<FundBalance>,
     fund_allocation: Option<FundAllocation>,
     locked_schedule: BTreeMap<u64, u128>,
     fund_cohorts: VecDeque<FundCohort>,
@@ -451,18 +485,18 @@ impl EconomicsLedger {
             height: 0,
             current_subsidy: INITIAL_REWARD,
             totals: EconomicsTotals::default(),
-            funds: [FundBalance::default(); 2],
+            funds: Vec::new(),
             fund_allocation: None,
             locked_schedule: BTreeMap::new(),
             fund_cohorts: VecDeque::new(),
         })
     }
-    /// This ledger currently authenticates two native key slots. The generic
-    /// allocation builder reserves other wallet counts without activating them.
+    /// Configure immutable per-wallet arithmetic before the first block.
     pub fn with_fund_allocation(mut self, allocation: FundAllocation) -> Result<Self> {
-        if self.height != 0 || allocation.weights().len() != self.funds.len() {
+        if self.height != 0 || self.fund_allocation.is_some() {
             return Err(EconomicsError::InvalidParameters);
         }
+        self.funds = vec![FundBalance::default(); allocation.basis_points().len()];
         self.fund_allocation = Some(allocation);
         Ok(self)
     }
@@ -475,8 +509,17 @@ impl EconomicsLedger {
     pub fn totals(&self) -> EconomicsTotals {
         self.totals
     }
-    pub fn fund(&self, account: FundAccount) -> FundBalance {
-        self.funds[account.index()]
+    pub fn fund(&self, account: FundAccount) -> Result<FundBalance> {
+        self.funds
+            .get(account.index())
+            .copied()
+            .ok_or(EconomicsError::InvalidFundAccount)
+    }
+    pub fn funds(&self) -> &[FundBalance] {
+        &self.funds
+    }
+    pub fn fund_allocation(&self) -> Option<&FundAllocation> {
+        self.fund_allocation.as_ref()
     }
     pub fn locked_schedule(&self) -> &BTreeMap<u64, u128> {
         &self.locked_schedule
@@ -485,6 +528,18 @@ impl EconomicsLedger {
     /// Conservative owned-data accounting for a caller's local resource policy.
     /// This is not an allocator or process resident-memory measurement.
     pub fn logical_memory_bytes(&self) -> Option<usize> {
+        let cohort_data = self.fund_cohorts.iter().try_fold(0usize, |total, cohort| {
+            total.checked_add(
+                cohort
+                    .credit
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<u64>())?,
+            )
+        })?;
+        let allocation_data = self
+            .fund_allocation
+            .as_ref()
+            .map_or(Some(0), FundAllocation::owned_bytes)?;
         self.locked_schedule
             .len()
             .checked_mul(128)?
@@ -493,24 +548,29 @@ impl EconomicsLedger {
                     .capacity()
                     .checked_mul(std::mem::size_of::<FundCohort>())?,
             )?
-            .checked_add(self.fund_allocation.as_ref().map_or(0, |allocation| {
-                allocation.weights.capacity() * std::mem::size_of::<u64>()
-            }))?
+            .checked_add(cohort_data)?
+            .checked_add(allocation_data)?
+            .checked_add(
+                self.funds
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<FundBalance>())?,
+            )?
             .checked_add(std::mem::size_of::<Self>())
     }
 
     /// Stream every field, including future release schedules, into a caller's
     /// authenticated state encoding without allocating a second schedule copy.
     pub fn visit_encoding(&self, emit: &mut impl FnMut(&[u8])) {
-        emit(&1u16.to_le_bytes());
+        emit(&2u16.to_le_bytes());
         emit(&self.params.canonical_bytes());
         emit(&self.height.to_le_bytes());
         emit(&self.current_subsidy.to_le_bytes());
         emit(&[u8::from(self.fund_allocation.is_some())]);
         if let Some(allocation) = &self.fund_allocation {
-            emit(&(allocation.weights().len() as u16).to_le_bytes());
-            for weight in allocation.weights() {
-                emit(&weight.to_le_bytes());
+            emit(&(allocation.basis_points().len() as u16).to_le_bytes());
+            emit(&(allocation.team_index() as u16).to_le_bytes());
+            for share in allocation.basis_points() {
+                emit(&share.to_le_bytes());
             }
         }
         for value in [
@@ -522,7 +582,8 @@ impl EconomicsLedger {
         ] {
             emit(&value.to_le_bytes());
         }
-        for fund in self.funds {
+        emit(&(self.funds.len() as u16).to_le_bytes());
+        for fund in &self.funds {
             for value in [
                 fund.entitlement,
                 fund.direct_unlocked,
@@ -542,7 +603,7 @@ impl EconomicsLedger {
         for cohort in &self.fund_cohorts {
             emit(&cohort.start.to_le_bytes());
             emit(&cohort.end.to_le_bytes());
-            for credit in cohort.credit {
+            for credit in &cohort.credit {
                 emit(&credit.to_le_bytes());
             }
         }
@@ -555,15 +616,26 @@ impl EconomicsLedger {
             .miner_subsidy_credited
             .checked_add(self.totals.holder_pool)
             .and_then(|v| v.checked_add(self.totals.burned))
-            .and_then(|v| v.checked_add(self.funds[0].entitlement))
-            .and_then(|v| v.checked_add(self.funds[1].entitlement))
+            .and_then(|v| {
+                self.funds
+                    .iter()
+                    .try_fold(v, |total, fund| total.checked_add(fund.entitlement))
+            })
             .ok_or(EconomicsError::Overflow)?;
         if accounted != self.totals.issued
             || self.totals.locked_subsidy > self.totals.miner_subsidy_credited
         {
             return Err(EconomicsError::SupplyMismatch);
         }
-        for fund in self.funds {
+        if self
+            .fund_allocation
+            .as_ref()
+            .map_or(0, |allocation| allocation.basis_points().len())
+            != self.funds.len()
+        {
+            return Err(EconomicsError::SupplyMismatch);
+        }
+        for fund in &self.funds {
             if fund.unlocked()? > fund.entitlement || fund.spent > fund.unlocked()? {
                 return Err(EconomicsError::SupplyMismatch);
             }
@@ -580,7 +652,7 @@ impl EconomicsLedger {
             .checked_add(self.totals.burned)
             .and_then(|v| v.checked_add(self.totals.locked_subsidy))
             .ok_or(EconomicsError::Overflow)?;
-        for fund in self.funds {
+        for fund in &self.funds {
             let locked = fund
                 .entitlement
                 .checked_sub(fund.unlocked()?)
@@ -597,19 +669,26 @@ impl EconomicsLedger {
 
     /// Exact daily release increments, telescoped over equal-credit intervals.
     /// For a deposit, day d releases floor(v*d/T)-floor(v*(d-1)/T).
-    fn fund_release_increment(&self, height: u64) -> Result<[u128; 2]> {
+    fn fund_release_increment(&self, height: u64) -> Result<Vec<u128>> {
         let day = self.params.blocks_per_day;
         let duration = self.params.fund_vesting_days;
-        let mut total = [0u128; 2];
+        let mut total = vec![0u128; self.funds.len()];
         for cohort in &self.fund_cohorts {
             let first_day = height.saturating_sub(cohort.end).div_ceil(day).max(1);
             let last_day = height.saturating_sub(cohort.start) / day;
             let last_day = last_day.min(duration);
             if first_day <= last_day {
+                let mut previous_credit = None;
+                let mut released = 0;
                 for (index, total) in total.iter_mut().enumerate() {
-                    let value = u128::from(cohort.vested(index));
-                    let released = value * u128::from(last_day) / u128::from(duration)
-                        - value * u128::from(first_day - 1) / u128::from(duration);
+                    let value = cohort.vested(index);
+                    // Adjacent equal shares have identical per-deposit release
+                    // increments; reuse the arithmetic without merging ledgers.
+                    if previous_credit != Some(value) {
+                        released = u128::from(value) * u128::from(last_day) / u128::from(duration)
+                            - u128::from(value) * u128::from(first_day - 1) / u128::from(duration);
+                        previous_credit = Some(value);
+                    }
                     *total = total
                         .checked_add(released)
                         .ok_or(EconomicsError::Overflow)?;
@@ -641,11 +720,10 @@ impl EconomicsLedger {
             reward,
             self.totals.holder_pool,
         )?;
-        let credits: [u64; 2] = allocation
-            .fund_credit
-            .as_slice()
-            .try_into()
-            .map_err(|_| EconomicsError::InvalidParameters)?;
+        let credits = &allocation.fund_credit;
+        if credits.len() != self.funds.len() {
+            return Err(EconomicsError::InvalidParameters);
+        }
         let release = self.fund_release_increment(height)?;
         let matured = height
             .checked_sub(self.params.maturity)
@@ -655,9 +733,8 @@ impl EconomicsLedger {
                     .iter()
                     .rev()
                     .find(|c| c.start <= h && h <= c.end)
-            })
-            .map_or([0; 2], |c| [c.direct(0), c.direct(1)]);
-        let mut funds = self.funds;
+            });
+        let mut funds = self.funds.clone();
         for (index, fund) in funds.iter_mut().enumerate() {
             fund.entitlement = fund
                 .entitlement
@@ -665,7 +742,7 @@ impl EconomicsLedger {
                 .ok_or(EconomicsError::Overflow)?;
             fund.direct_unlocked = fund
                 .direct_unlocked
-                .checked_add(u128::from(matured[index]))
+                .checked_add(u128::from(matured.map_or(0, |cohort| cohort.direct(index))))
                 .ok_or(EconomicsError::Overflow)?;
             fund.vesting_unlocked = fund
                 .vesting_unlocked
@@ -738,13 +815,17 @@ impl EconomicsLedger {
         for _ in 0..retired {
             self.fund_cohorts.pop_front();
         }
-        if let Some(last) = self.fund_cohorts.back_mut().filter(|c| c.credit == credits) {
+        if let Some(last) = self
+            .fund_cohorts
+            .back_mut()
+            .filter(|c| &c.credit == credits)
+        {
             last.end = height;
         } else {
             self.fund_cohorts.push_back(FundCohort {
                 start: height,
                 end: height,
-                credit: credits,
+                credit: credits.clone(),
             });
         }
         Ok(allocation)
@@ -752,7 +833,7 @@ impl EconomicsLedger {
 
     /// This check does not authenticate an ML-DSA signature or consume a counter.
     pub fn check_fund_spend(&self, account: FundAccount, amount: u128, counter: u64) -> Result<()> {
-        let fund = self.funds[account.index()];
+        let fund = self.fund(account)?;
         if amount == 0 {
             return Err(EconomicsError::InvalidAmount);
         }
@@ -775,6 +856,35 @@ impl EconomicsLedger {
         let fund = &mut self.funds[account.index()];
         fund.spent += amount;
         fund.spend_count += 1;
+        Ok(())
+    }
+    /// Apply a caller-bounded list of independently authenticated claims.
+    /// A later invalid claim leaves every wallet and counter unchanged.
+    pub fn spend_funds(&mut self, claims: &[(FundAccount, u128, u64)]) -> Result<()> {
+        let mut funds = self.funds.clone();
+        for (account, amount, counter) in claims {
+            let fund = funds
+                .get_mut(account.index())
+                .ok_or(EconomicsError::InvalidFundAccount)?;
+            if *amount == 0 {
+                return Err(EconomicsError::InvalidAmount);
+            }
+            if *counter != fund.spend_count {
+                return Err(EconomicsError::FundCounter);
+            }
+            if *amount > fund.available()? {
+                return Err(EconomicsError::FundOverdraft);
+            }
+            fund.spent = fund
+                .spent
+                .checked_add(*amount)
+                .ok_or(EconomicsError::Overflow)?;
+            fund.spend_count = fund
+                .spend_count
+                .checked_add(1)
+                .ok_or(EconomicsError::Overflow)?;
+        }
+        self.funds = funds;
         Ok(())
     }
 }

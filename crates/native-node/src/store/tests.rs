@@ -421,7 +421,12 @@ fn asert_rules_and_replayed_work_are_durable_and_wrong_rules_fail_closed() {
     let dir = TestDir::new();
     let base = Config::asert_development([93; 32], 1_700_000_000, [0xff; 32], 1)
         .unwrap()
-        .with_fund_allocation(siworld_core::v1_economics::FundAllocation::new(vec![1, 1]).unwrap())
+        .with_fund_wallets(
+            siworld_core::v1_economics::FundAllocation::new_bps(vec![5000, 5000], 1).unwrap(),
+            Config::development([121; 32], 0)
+                .unwrap()
+                .fund_verifying_keys,
+        )
         .unwrap();
     let mut store = Store::open(dir.db(), base.clone(), &TestVerifier::default()).unwrap();
     let block = candidate(store.state(), 1);
@@ -649,12 +654,16 @@ fn mixed_mode_reorganization_restores_maturity_vesting_and_independent_fund_spen
         let mut cfg = config()
             .with_economics(EconomicsParams::engineering([60, 120, 180, 240], 3).unwrap())
             .unwrap()
-            .with_fund_allocation(FundAllocation::new(vec![3, 7]).unwrap())
+            .with_fund_wallets(
+                FundAllocation::new_bps(vec![3000, 7000], 1).unwrap(),
+                Config::development([121; 32], 0)
+                    .unwrap()
+                    .fund_verifying_keys,
+            )
             .unwrap();
         for account in 0..2u8 {
             let spend = signed_economic_fund_spend(cfg.network, account, 1);
-            cfg.fund_key_hashes[usize::from(account)] =
-                *blake3::hash(&spend.verifying_key).as_bytes();
+            cfg.fund_verifying_keys[usize::from(account)] = spend.verifying_key;
         }
         let mut store = Store::open(directory.db(), cfg.clone(), &TestVerifier::default()).unwrap();
         for height in 1..=(boundary - 2) {
@@ -675,10 +684,10 @@ fn mixed_mode_reorganization_restores_maturity_vesting_and_independent_fund_spen
                 RewardMode::Voyager,
             );
             if block.height == boundary {
-                let before = store.state().economics.fund(FundAccount::First);
+                let before = store.state().economics.fund(FundAccount::FIRST).unwrap();
                 let mut released = store.state().economics.clone();
                 released.advance(boundary, block.reward_mode).unwrap();
-                let after = released.fund(FundAccount::First);
+                let after = released.fund(FundAccount::FIRST).unwrap();
                 assert!(after.direct_unlocked > before.direct_unlocked);
                 if boundary == 25 {
                     assert_eq!(before.direct_unlocked, 0);
@@ -698,8 +707,8 @@ fn mixed_mode_reorganization_restores_maturity_vesting_and_independent_fund_spen
             old.push(block);
         }
         let orphan = store.state().clone();
-        assert!(orphan.economics.fund(FundAccount::First).spent > 0);
-        assert_eq!(orphan.economics.fund(FundAccount::Second).spent, 0);
+        assert!(orphan.economics.fund(FundAccount::FIRST).unwrap().spent > 0);
+        assert_eq!(orphan.economics.fund(FundAccount::SECOND).unwrap().spent, 0);
         let orphan_payout = old[1].fund_spends[0].commitment;
 
         let mut expected = ancestor.clone();
@@ -716,10 +725,22 @@ fn mixed_mode_reorganization_restores_maturity_vesting_and_independent_fund_spen
                 spend_parent = Some(expected.clone());
                 let mut released = expected.economics.clone();
                 released.advance(boundary, mode).unwrap();
-                first_available =
-                    u64::try_from(released.fund(FundAccount::First).available().unwrap()).unwrap();
-                let second_available =
-                    u64::try_from(released.fund(FundAccount::Second).available().unwrap()).unwrap();
+                first_available = u64::try_from(
+                    released
+                        .fund(FundAccount::FIRST)
+                        .unwrap()
+                        .available()
+                        .unwrap(),
+                )
+                .unwrap();
+                let second_available = u64::try_from(
+                    released
+                        .fund(FundAccount::SECOND)
+                        .unwrap()
+                        .available()
+                        .unwrap(),
+                )
+                .unwrap();
                 assert!(second_available > first_available + 1);
                 block.fund_spends.push(signed_economic_fund_spend(
                     cfg.network,
@@ -776,10 +797,27 @@ fn mixed_mode_reorganization_restores_maturity_vesting_and_independent_fund_spen
             orphan.economics.locked_schedule(),
             expected.economics.locked_schedule()
         );
-        assert_eq!(expected.economics.fund(FundAccount::First).spent, 0);
-        assert_eq!(expected.economics.fund(FundAccount::First).spend_count, 0);
-        assert!(expected.economics.fund(FundAccount::Second).spent > 0);
-        assert_eq!(expected.economics.fund(FundAccount::Second).spend_count, 1);
+        assert_eq!(
+            expected.economics.fund(FundAccount::FIRST).unwrap().spent,
+            0
+        );
+        assert_eq!(
+            expected
+                .economics
+                .fund(FundAccount::FIRST)
+                .unwrap()
+                .spend_count,
+            0
+        );
+        assert!(expected.economics.fund(FundAccount::SECOND).unwrap().spent > 0);
+        assert_eq!(
+            expected
+                .economics
+                .fund(FundAccount::SECOND)
+                .unwrap()
+                .spend_count,
+            1
+        );
         assert_eq!(store.state().fingerprint(), expected.fingerprint());
         assert_eq!(store.state().economics, expected.economics);
         assert!(!store.state().commitments.contains(&orphan_payout));
@@ -798,6 +836,112 @@ fn mixed_mode_reorganization_restores_maturity_vesting_and_independent_fund_spen
         assert_eq!(reopened.block(boundary).unwrap(), replacement[1]);
         assert_eq!(reopened.detached_count().unwrap(), 2);
     }
+}
+
+#[test]
+fn twenty_four_wallet_registry_claims_roll_back_atomically_and_recover_after_restart() {
+    use crate::chain::{BranchOutcome, CandidatePolicy};
+    use crate::state::RewardMode;
+    use siworld_core::v1_economics::{FundAccount, FundAllocation};
+    let directory = TestDir::new();
+    let base = config();
+    let mut shares = vec![400; 24];
+    shares[23] = 800;
+    let keys = (0..24u8)
+        .map(|account| signed_economic_fund_spend(base.network, account, 1).verifying_key)
+        .collect();
+    let cfg = base
+        .with_fund_wallets(FundAllocation::new_bps(shares, 23).unwrap(), keys)
+        .unwrap();
+    let mut store = Store::open(directory.db(), cfg.clone(), &TestVerifier::default()).unwrap();
+    for height in 1..=24u32 {
+        let block = economic_candidate(store.state(), height * 100_000, RewardMode::Voyager);
+        store.append(&block, &TestVerifier::default()).unwrap();
+    }
+    let ancestor = store.state().clone();
+    let mut old = economic_candidate(store.state(), 40_000_000, RewardMode::Voyager);
+    old.fund_spends
+        .push(signed_economic_fund_spend(cfg.network, 23, 1));
+    remine(&mut old, store.state());
+    store.append(&old, &TestVerifier::default()).unwrap();
+    let old_commitment = old.fund_spends[0].commitment;
+    let orphan = store.state().clone();
+    let mut replacement = Vec::new();
+    let mut expected = ancestor.clone();
+    for index in 0..2u32 {
+        let mut block =
+            economic_candidate(&expected, 60_000_000 + index * 100_000, RewardMode::Holder);
+        if index == 0 {
+            block.fund_spends = [0, 20]
+                .into_iter()
+                .map(|account| signed_economic_fund_spend(cfg.network, account, 1))
+                .collect();
+        }
+        remine(&mut block, &expected);
+        expected.apply(&block, &TestVerifier::default()).unwrap();
+        replacement.push(block);
+    }
+    let mut invalid = replacement.clone();
+    invalid[0].fund_spends[1] = signed_economic_fund_spend(cfg.network, 20, u64::MAX);
+    remine(&mut invalid[0], &ancestor);
+    assert!(
+        store
+            .consider_branch(
+                ancestor.height,
+                &invalid,
+                CandidatePolicy::default(),
+                &TestVerifier::default()
+            )
+            .is_err()
+    );
+    assert_eq!(store.state().fingerprint(), orphan.fingerprint());
+    assert_eq!(store.state().economics, orphan.economics);
+    assert!(matches!(
+        store.consider_branch(
+            ancestor.height,
+            &replacement,
+            CandidatePolicy::default(),
+            &TestVerifier::default()
+        ),
+        Ok(BranchOutcome::Adopted { .. })
+    ));
+    assert_eq!(
+        store
+            .state()
+            .economics
+            .fund(FundAccount::new(23).unwrap())
+            .unwrap()
+            .spent,
+        0
+    );
+    assert_eq!(
+        store
+            .state()
+            .economics
+            .fund(FundAccount::new(20).unwrap())
+            .unwrap()
+            .spent,
+        1
+    );
+    assert_eq!(
+        store
+            .state()
+            .economics
+            .fund(FundAccount::new(0).unwrap())
+            .unwrap()
+            .spent,
+        1
+    );
+    assert!(!store.state().commitments.contains(&old_commitment));
+    assert_eq!(store.state().economics.funds().len(), 24);
+    drop(store);
+    let reopened = Store::open_existing(directory.db(), cfg, &TestVerifier::default()).unwrap();
+    assert_eq!(reopened.state().fingerprint(), expected.fingerprint());
+    assert_eq!(
+        reopened.state().economics.funds(),
+        expected.economics.funds()
+    );
+    assert!(!reopened.state().commitments.contains(&old_commitment));
 }
 
 #[test]

@@ -2,7 +2,8 @@
 
 Status: conditional planning model for the [V1 economic revision](v1-economics.md).
 The current codec permits one Voyager or five Holder reward notes and up to
-two signed fund payouts per block. The model includes those maximum records;
+eight signed fund claims per block, independently of the 32-wallet genesis
+registry limit. The model includes those maximum records;
 it does not establish measured network throughput. The
 `native-v1-economics-1` proof profiles have fresh source-bound reference-host
 evidence; public-key reproduction, complete CI, final admission policy and
@@ -53,27 +54,30 @@ private sidecar and a four-byte gossip length prefix: **657,626 bytes** before
 native application framing. Native messages have a 51-byte header. Compact
 references contain both a statement digest and proof digest, **64 bytes** each.
 
-The maximum economic compact fixed fields occupy **20,537 bytes**, including
-five 1,361-byte reward records, two 6,783-byte signed fund payout records and
+The maximum economic compact fixed fields occupy **61,235 bytes**, including
+five 1,361-byte reward records, eight 6,783-byte signed fund claim records and
 the mode/count fields. At 576 positions and the separate settlement cap, the
 compact payload is:
 
 ```text
-20,537 + 576 * 64 + 524,288 = 581,689 bytes
+61,235 + 576 * 64 + 524,288 = 622,387 bytes
 ```
 
 Settlement is already carried in this compact body. Do not charge or send an
 additional standalone copy in the selected relay schedule. Three transaction
-copies and three compact bodies total **1,138,122,795 payload bytes** per
+copies and three compact bodies total **1,138,244,889 payload bytes** per
 interval, before the remaining wire costs. An independent 8-KiB future block
 record allowance is also charged per compact copy. It is additional planning
 space, not an extracted database measurement.
 
-The two payout slots are a current native codec limit, not a decision that the
-launch fund must use two equally weighted wallets. Launch wallet count and
-individual shares remain pending. The service fails closed without an
-explicit genesis-bound allocation; a different count requires a versioned
-configuration/codec change and new bandwidth/storage accounting.
+The registry permits 1–32 wallets with positive basis-point shares totaling
+10,000 and immutable ML-DSA-65 public keys. Its fixed 62,530-byte genesis
+section is fetched once, not carried in each compact block. Each block credits
+the per-wallet consensus ledger; it does not create an output for every
+wallet. The eight-claim cap bounds signed withdrawals in a block independently
+of the registry size. The designated development-team wallet receives fund
+allocation residue. Actual shares and keys must be provided before genesis
+activation; no V1 replacement or share-adjustment mechanism exists.
 
 ## Transport and load assumptions
 
@@ -127,19 +131,19 @@ Multiplying load by 1.15 would leave less than 15% unused. The script uses
 integer byte/rate arithmetic to select the link and checks that one lower
 integer-Mbps link fails the reserve requirement.
 
-The economic model uses **1,369,222,560 wire bytes per 300 seconds**, or
-**36.51260160 Mbps**. Its minimum is **43 Mbps**; 42 Mbps fails the reserve.
+The economic model uses **1,369,369,494 wire bytes per 300 seconds**, or
+**36.51651984 Mbps**. Its minimum is **43 Mbps**; 42 Mbps fails the reserve.
 
 | Link | Serialization at modeled load | Remaining rate | Remaining fraction |
 | --- | ---: | ---: | ---: |
-| 43 Mbps conditional minimum | 254.74 seconds | 6.487 Mbps | 15.086973% |
-| 100 Mbps recommended | 109.54 seconds | 63.487 Mbps | 63.487398% |
+| 43 Mbps conditional minimum | 254.77 seconds | 6.483 Mbps | 15.077861% |
+| 100 Mbps recommended | 109.55 seconds | 63.483 Mbps | 63.483480% |
 
 For sensitivity, `--native-protocol --economic-rewards --duplicate-settlement`
-adds a standalone settlement copy: **1,371,111,374 bytes**, **36.56296997 Mbps**
+adds a standalone settlement copy: **1,371,258,310 bytes**, **36.56688827 Mbps**
 and a **44-Mbps** minimum. It is not the selected relay schedule. The historical
 native single-reward calculation was 1,369,154,385 bytes / 36.51078360 Mbps;
-the additional economic records therefore add 68,175 modeled wire bytes per
+the additional economic records therefore add 215,109 modeled wire bytes per
 interval under the selected schedule.
 
 These are interval-average serialization figures, not propagation-latency
@@ -170,12 +174,12 @@ python3 scripts/v1-network-budget.py --native-protocol --economic-rewards --inte
 
 | Configured maximum issuance records | Complete modeled rate | Minimum link with 15% unused |
 | --- | ---: | ---: |
-| 1 | 36.51196859 Mbps | 43 Mbps |
-| 4 | 36.66585163 Mbps | 44 Mbps |
+| 1 | 36.51587963 Mbps | 43 Mbps |
+| 4 | 36.66976011 Mbps | 44 Mbps |
 
 The existing 43-Mbps planning floor covers one issuance per block. Four
 maximum records need 44 Mbps under the same assumptions; at 43 Mbps the spare
-fraction is 14.730578%, below the selected reserve. Preserve the 100-Mbps
+fraction is 14.721488%, below the selected reserve. Preserve the 100-Mbps
 deployment recommendation. Pin the actual admission setting and rerun the
 model before activation; transport overhead and sustained relay still require
 measurement with the reviewed provider.

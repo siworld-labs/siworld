@@ -26,7 +26,7 @@ pub const TX_PREFIX_BYTES: usize = 4 + 2 + 27 + 32 + 40 + PUBLIC_BYTES + 48 + 4;
 pub const MAX_ENVELOPE_BYTES: usize = TX_PREFIX_BYTES + MAX_TX_PROOF;
 pub const BLOCK_VERSION: u16 = 4;
 pub const BLOCK_HEADER_BYTES: usize = 4 + 2 + 27 + 32 + 8 + 32 + 8 + 32 + 8 + 2 + 1 + 1 + 1;
-pub const MAX_FUND_SPENDS: usize = 2;
+pub const MAX_FUND_SPENDS: usize = 8;
 pub const REWARD_RECORD_BYTES: usize = 48 + REWARD_CIPHERTEXT_BYTES;
 pub const MAX_REWARDS: usize = 5;
 pub const BLOCK_FIXED_BYTES: usize = BLOCK_HEADER_BYTES + REWARD_RECORD_BYTES + 4;
@@ -753,7 +753,9 @@ impl<'a> Reader<'a> {
 
 pub fn validate_fund_spends(spends: &[crate::fund_spend::FundSpend]) -> Result<(), String> {
     if spends.len() > MAX_FUND_SPENDS
-        || spends.iter().any(|s| s.account > 1)
+        || spends
+            .iter()
+            .any(|s| usize::from(s.account) >= siworld_core::v1_economics::MAX_FUND_WALLETS)
         || spends
             .windows(2)
             .any(|pair| pair[0].account >= pair[1].account)

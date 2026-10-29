@@ -11,7 +11,7 @@ use siworld_core::pow::{self, Work};
 pub use siworld_core::v1_economics::RewardMode;
 use siworld_core::v1_economics::{
     self as economics, EconomicsLedger, EconomicsParams, FundAccount, FundAllocation,
-    RewardAllocation,
+    MAX_FUND_WALLETS, RewardAllocation,
 };
 use std::collections::{BTreeSet, VecDeque};
 
@@ -20,7 +20,10 @@ pub const MAX_REORG_DEPTH: u64 = 24;
 
 pub const TARGET_INTERVAL: u64 = 300;
 pub const MAX_POW_ITERATIONS: u64 = 1_000_000;
-pub const CONFIG_RULE_BYTES: usize = 279;
+const FUND_CONFIG_OFFSET: usize = 146;
+const FUND_WALLET_BYTES: usize = 2 + crate::fund_spend::VERIFYING_KEY_BYTES;
+const ISSUANCE_CONFIG_OFFSET: usize = FUND_CONFIG_OFFSET + 2 + MAX_FUND_WALLETS * FUND_WALLET_BYTES;
+pub const CONFIG_RULE_BYTES: usize = ISSUANCE_CONFIG_OFFSET + 52;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {
@@ -34,8 +37,8 @@ pub struct Config {
     pub fixture: bool,
     pub economics: EconomicsParams,
     pub fund_allocation: Option<FundAllocation>,
-    /// Immutable ML-DSA verification-key fingerprints; zero disables spending.
-    pub fund_key_hashes: [Hash; 2],
+    /// Immutable public ML-DSA-65 keys, ordered with the genesis allocation.
+    pub fund_verifying_keys: Vec<[u8; crate::fund_spend::VERIFYING_KEY_BYTES]>,
     /// Explicit isolated-network issuance policy and dedicated fee owner.
     pub issuance: Option<crate::issuance::IssuanceConfig>,
 }
@@ -56,9 +59,10 @@ impl Config {
             fixture: true,
             economics: EconomicsParams::production(),
             fund_allocation: Some(
-                FundAllocation::new(vec![1, 1]).expect("synthetic fixture weights"),
+                FundAllocation::new_bps(vec![5000, 5000], 1)
+                    .expect("synthetic fixture basis points"),
             ),
-            fund_key_hashes: [[0; 32]; 2],
+            fund_verifying_keys: synthetic_fund_keys(),
             issuance: None,
         })
     }
@@ -86,7 +90,7 @@ impl Config {
             fixture: false,
             economics: EconomicsParams::production(),
             fund_allocation: None,
-            fund_key_hashes: [[0; 32]; 2],
+            fund_verifying_keys: Vec::new(),
             issuance: None,
         })
     }
@@ -100,14 +104,14 @@ impl Config {
         self.validate()?;
         Ok(self)
     }
-    /// Allocation weights must be explicit before a service can issue blocks.
-    /// The current native key codec reserves two slots; other counts require
-    /// an explicit versioned configuration change before network activation.
-    pub fn with_fund_allocation(mut self, allocation: FundAllocation) -> Result<Self, String> {
-        if allocation.weights().len() != self.fund_key_hashes.len() {
-            return Err("fund wallet count is not supported by native key configuration".into());
-        }
+    /// A complete immutable public genesis registry is required before production.
+    pub fn with_fund_wallets(
+        mut self,
+        allocation: FundAllocation,
+        verifying_keys: Vec<[u8; crate::fund_spend::VERIFYING_KEY_BYTES]>,
+    ) -> Result<Self, String> {
         self.fund_allocation = Some(allocation);
+        self.fund_verifying_keys = verifying_keys;
         self.validate()?;
         Ok(self)
     }
@@ -116,12 +120,27 @@ impl Config {
         if let Some(policy) = &self.issuance {
             policy.validate()?;
         }
-        if self
-            .fund_allocation
-            .as_ref()
-            .is_some_and(|allocation| allocation.weights().len() != self.fund_key_hashes.len())
-        {
-            return Err("fund wallet count is not supported by native key configuration".into());
+        match &self.fund_allocation {
+            None if !self.fund_verifying_keys.is_empty() => {
+                return Err("fund keys require an immutable genesis allocation".into());
+            }
+            Some(allocation) => {
+                if allocation.basis_points().len() != self.fund_verifying_keys.len()
+                    || self.fund_verifying_keys.len() > MAX_FUND_WALLETS
+                    || self
+                        .fund_verifying_keys
+                        .iter()
+                        .any(|key| key.iter().all(|byte| *byte == 0))
+                    || self
+                        .fund_verifying_keys
+                        .iter()
+                        .enumerate()
+                        .any(|(index, key)| self.fund_verifying_keys[..index].contains(key))
+                {
+                    return Err("invalid immutable fund wallet key registry".into());
+                }
+            }
+            None => {}
         }
         if !self.fixture && self.economics != EconomicsParams::production() {
             return Err("compressed economic timings require an engineering fixture".into());
@@ -138,7 +157,7 @@ impl Config {
         };
         expected.economics = self.economics.clone();
         expected.fund_allocation = self.fund_allocation.clone();
-        expected.fund_key_hashes = self.fund_key_hashes;
+        expected.fund_verifying_keys = self.fund_verifying_keys.clone();
         expected.issuance = self.issuance.clone();
         if &expected != self {
             return Err("noncanonical engineering network rules".into());
@@ -156,31 +175,60 @@ impl Config {
         bytes[74..82].copy_from_slice(&self.target_interval.to_le_bytes());
         bytes[82..90].copy_from_slice(&self.pow_iterations.to_le_bytes());
         bytes[90..146].copy_from_slice(&self.economics.canonical_bytes());
-        bytes[146..178].copy_from_slice(&self.fund_key_hashes[0]);
-        bytes[178..210].copy_from_slice(&self.fund_key_hashes[1]);
         if let Some(allocation) = &self.fund_allocation {
-            bytes[210] = 1;
-            for (index, weight) in allocation.weights().iter().enumerate() {
-                bytes[211 + index * 8..219 + index * 8].copy_from_slice(&weight.to_le_bytes());
+            bytes[FUND_CONFIG_OFFSET] = allocation.basis_points().len() as u8;
+            bytes[FUND_CONFIG_OFFSET + 1] = allocation.team_index() as u8;
+            for (index, (share, key)) in allocation
+                .basis_points()
+                .iter()
+                .zip(&self.fund_verifying_keys)
+                .enumerate()
+            {
+                let offset = FUND_CONFIG_OFFSET + 2 + index * FUND_WALLET_BYTES;
+                bytes[offset..offset + 2].copy_from_slice(&share.to_le_bytes());
+                bytes[offset + 2..offset + FUND_WALLET_BYTES].copy_from_slice(key);
             }
         }
         if let Some(policy) = &self.issuance {
-            bytes[227] = 1;
-            bytes[228..276].copy_from_slice(&policy.fee_owner);
-            bytes[276..278].copy_from_slice(&policy.max_metadata_bytes.to_le_bytes());
-            bytes[278] = policy.max_per_block;
+            let offset = ISSUANCE_CONFIG_OFFSET;
+            bytes[offset] = 1;
+            bytes[offset + 1..offset + 49].copy_from_slice(&policy.fee_owner);
+            bytes[offset + 49..offset + 51]
+                .copy_from_slice(&policy.max_metadata_bytes.to_le_bytes());
+            bytes[offset + 51] = policy.max_per_block;
         }
         bytes
     }
     pub fn decode_rules(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.len() != CONFIG_RULE_BYTES
-            || bytes[33] > 1
-            || bytes[210] > 1
-            || bytes[227] > 1
-            || (bytes[227] == 0 && bytes[228..279].iter().any(|v| *v != 0))
-            || (bytes[210] == 0 && bytes[211..227].iter().any(|value| *value != 0))
-        {
+        if bytes.len() != CONFIG_RULE_BYTES || bytes[33] > 1 {
             return Err("invalid engineering rule encoding".into());
+        }
+        let count = usize::from(bytes[FUND_CONFIG_OFFSET]);
+        let team = usize::from(bytes[FUND_CONFIG_OFFSET + 1]);
+        let policy_offset = ISSUANCE_CONFIG_OFFSET;
+        if count > MAX_FUND_WALLETS
+            || (count == 0 && team != 0)
+            || bytes[FUND_CONFIG_OFFSET + 2 + count * FUND_WALLET_BYTES..policy_offset]
+                .iter()
+                .any(|value| *value != 0)
+            || bytes[policy_offset] > 1
+            || (bytes[policy_offset] == 0
+                && bytes[policy_offset + 1..].iter().any(|value| *value != 0))
+        {
+            return Err("noncanonical fund registry or issuance configuration".into());
+        }
+        let mut basis_points = Vec::with_capacity(count);
+        let mut fund_verifying_keys = Vec::with_capacity(count);
+        for index in 0..count {
+            let offset = FUND_CONFIG_OFFSET + 2 + index * FUND_WALLET_BYTES;
+            basis_points.push(u16::from_le_bytes(
+                bytes[offset..offset + 2].try_into().expect("fixed share"),
+            ));
+            fund_verifying_keys.push(
+                bytes[offset + 2..offset + FUND_WALLET_BYTES]
+                    .try_into()
+                    .expect("fixed fund key"),
+            );
         }
         let config = Self {
             network: bytes[..32].try_into().expect("fixed network width"),
@@ -192,40 +240,25 @@ impl Config {
             genesis_target: bytes[42..74].try_into().expect("fixed target"),
             target_interval: u64::from_le_bytes(bytes[74..82].try_into().expect("fixed interval")),
             pow_iterations: u64::from_le_bytes(bytes[82..90].try_into().expect("fixed iterations")),
-            fund_allocation: if bytes[210] == 0 {
+            fund_allocation: if count == 0 {
                 None
             } else {
-                Some(
-                    FundAllocation::new(vec![
-                        u64::from_le_bytes(
-                            bytes[211..219].try_into().expect("fixed first fund weight"),
-                        ),
-                        u64::from_le_bytes(
-                            bytes[219..227]
-                                .try_into()
-                                .expect("fixed second fund weight"),
-                        ),
-                    ])
-                    .map_err(|e| e.to_string())?,
-                )
+                Some(FundAllocation::new_bps(basis_points, team).map_err(|e| e.to_string())?)
             },
-            fund_key_hashes: [
-                bytes[146..178].try_into().expect("fixed first fund key"),
-                bytes[178..210].try_into().expect("fixed second fund key"),
-            ],
-            issuance: if bytes[227] == 0 {
+            fund_verifying_keys,
+            issuance: if bytes[policy_offset] == 0 {
                 None
             } else {
                 Some(crate::issuance::IssuanceConfig {
-                    fee_owner: bytes[228..276]
+                    fee_owner: bytes[policy_offset + 1..policy_offset + 49]
                         .try_into()
                         .expect("fixed issuance fee owner"),
                     max_metadata_bytes: u16::from_le_bytes(
-                        bytes[276..278]
+                        bytes[policy_offset + 49..policy_offset + 51]
                             .try_into()
                             .expect("fixed issuance metadata limit"),
                     ),
-                    max_per_block: bytes[278],
+                    max_per_block: bytes[policy_offset + 51],
                 })
             },
             economics: EconomicsParams {
@@ -259,6 +292,23 @@ impl Config {
         h.update(profile);
         *h.finalize().as_bytes()
     }
+}
+
+/// Deterministic public keys for disposable fixtures; never production allocations.
+fn synthetic_fund_keys() -> Vec<[u8; crate::fund_spend::VERIFYING_KEY_BYTES]> {
+    static KEYS: std::sync::OnceLock<Vec<[u8; crate::fund_spend::VERIFYING_KEY_BYTES]>> =
+        std::sync::OnceLock::new();
+    KEYS.get_or_init(|| {
+        [83, 84]
+            .into_iter()
+            .map(|seed| {
+                *libcrux_ml_dsa::ml_dsa_65::generate_key_pair([seed; 32])
+                    .verification_key
+                    .as_ref()
+            })
+            .collect()
+    })
+    .clone()
 }
 
 pub trait BlockVerifier {
@@ -629,15 +679,14 @@ impl State {
             &block.settlement_proof,
         )?;
         for spend in &block.fund_spends {
-            let account = match spend.account {
-                0 => FundAccount::First,
-                1 => FundAccount::Second,
-                _ => return Err("invalid fund account".into()),
-            };
-            let note = spend.verify(
-                self.config.network,
-                &self.config.fund_key_hashes[account.index()],
-            )?;
+            let account =
+                FundAccount::new(usize::from(spend.account)).map_err(|e| e.to_string())?;
+            let key = self
+                .config
+                .fund_verifying_keys
+                .get(account.index())
+                .ok_or("fund wallet is not configured by genesis")?;
+            let note = spend.verify(self.config.network, key)?;
             trial_economics
                 .spend_fund(account, u128::from(spend.amount), spend.counter)
                 .map_err(|e| e.to_string())?;

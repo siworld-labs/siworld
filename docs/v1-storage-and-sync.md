@@ -2,9 +2,10 @@
 
 Status: selected retention policy and conditional component model for the
 [V1 economic revision](v1-economics.md). The tables use the explicit
-`--economic-rewards` planning mode: five reward notes and two current native
-fund-payout slots are covered by a provisional 32-KiB permanent block-record
-allowance. The `native-v1-economics-1` proof profiles have fresh reference-host
+`--economic-rewards` planning mode: five reward notes and eight native signed
+fund claims are covered by a provisional 64-KiB permanent block-record
+allowance. A separate 64-KiB one-time genesis-registry allowance covers up to
+32 immutable fund wallets. The `native-v1-economics-1` proof profiles have fresh reference-host
 evidence; the record allowances are not measured database overhead. Final issuance limits, persistent records and long-run
 whole-node resource qualification remain incomplete. Transaction, settlement
 and issuance proof limits are independent.
@@ -117,19 +118,22 @@ the other categories explicitly, the revised planning scenario uses:
 
 | Category | Finite planning allowance | Qualification requirement |
 | --- | ---: | --- |
-| Permanent block records | 32 KiB/block | Cover up to five reward notes and two current native signed fund payouts; extract headers/PoW, settlement declaration, public economic records, snapshot metadata and container overhead from final persistent encoding |
+| Permanent block records | 64 KiB/block | Cover up to five reward notes and eight 6,783-byte signed fund claims; extract headers/PoW, settlement declaration, public economic records, snapshot metadata and container overhead from final persistent encoding |
+| Immutable fund genesis registry | 64 KiB once | Cover the 62,530-byte section holding a count, development-team index and 32 fixed share/public-key slots; not repeated in each block |
 | Permanent issuance records | 16 KiB/block | Bound metadata, issuer key/signature, initial commitments and record count; this is an average budget ceiling to adopt, not an enacted consensus rule |
 | Issuance proof bodies | One additional 512-KiB proof/block in the rolling window | Freeze actual native issuance proof size and byte/work admission limits |
-| Indexes and accepted state | 25% of all permanent position, block and issuance bytes | Measure real commitment/nullifier/asset trees, redb pages, allocator/file and index overhead |
+| Indexes and accepted state | 25% of all permanent position, block, issuance and genesis-registry bytes | Measure real commitment/nullifier/asset trees, redb pages, allocator/file and index overhead |
 | Database working space | 16 GB above steady records/state | Measure WAL, crash recovery and worst atomic-write/compaction peaks; use in-place/segmented compaction or increase this allowance if a full copy is required |
 | System and service recovery | 20 GB | Measure OS, package, bounded logs and service artifacts; independent backups are additional |
 | Device free reserve | 20% | Preserve free space after all modeled used bytes |
 
-The two payout slots are the current native codec's capacity, not an adopted
-launch wallet count or equal-share policy. Fund wallet count and individual
-shares remain pending; production fails closed without explicit genesis-bound
-weights. Other counts require a versioned codec/configuration change and new
-record allowances.
+The immutable genesis registry accepts 1–32 fund wallets with positive
+basis-point shares totaling 10,000 and ML-DSA-65 public keys. A designated
+development-team wallet receives fund-allocation residue. All wallet credits
+accumulate in independent ledgers; blocks do not issue one output per wallet.
+The eight-claim block cap limits actual signed withdrawals independently of
+registry size. Exact shares and keys remain launch inputs, and production
+fails closed without them. V1 provides no key/share replacement mechanism.
 
 The block/issuance allowances are sizing assumptions requiring final byte
 ceilings and tests. ML-DSA-65's 1,952-byte public key and 3,309-byte signature
@@ -141,11 +145,11 @@ allowances as actual database overhead or finalized consensus limits.
 
 | Maximum load | Permanent positions | Block allowance | Issuance allowance | Index/state allowance | Used capacity | Device with 20% free |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Year 1 | 128.061 GB | 3.445 GB | 1.722 GB | 33.307 GB | 538.715 GB | 673.394 GB |
-| Year 3 | 384.184 GB | 10.334 GB | 5.167 GB | 99.921 GB | 871.786 GB | 1,089.732 GB |
-| Year 5 | 640.307 GB | 17.223 GB | 8.611 GB | 166.535 GB | 1,204.856 GB | 1,506.070 GB |
+| Year 1 | 128.061 GB | 6.889 GB | 1.722 GB | 34.168 GB | 543.021 GB | 678.776 GB |
+| Year 3 | 384.184 GB | 20.667 GB | 5.167 GB | 102.505 GB | 884.703 GB | 1,105.879 GB |
+| Year 5 | 640.307 GB | 34.446 GB | 8.611 GB | 170.841 GB | 1,226.385 GB | 1,532.981 GB |
 
-Used capacity includes the rolling allowance, 16-GB database working space
+Used capacity includes the one-time 64-KiB genesis registry, rolling allowance, 16-GB database working space
 and 20-GB system allowance. Required device capacity divides used bytes by
 0.8 to preserve the free-space reserve; it is not additional retained data.
 
@@ -156,17 +160,17 @@ issuance/block allowances even at low demand:
 
 | Workload | Rolling store | Used year 1 | Used year 3 | Used year 5 |
 | --- | ---: | ---: | ---: | ---: |
-| Maximum 576 positions/block | 336.180 GB | 538.715 GB | 871.786 GB | 1,204.856 GB |
-| 10,000/day, minimum 64-position blocks | 38.181 GB | 98.426 GB | 146.916 GB | 195.405 GB |
-| 50,000/day, adaptive grouping | 101.984 GB | 192.691 GB | 302.105 GB | 411.519 GB |
-| 50,000/day, uniform 176 positions | 103.368 GB | 194.739 GB | 305.481 GB | 416.223 GB |
+| Maximum 576 positions/block | 336.180 GB | 543.021 GB | 884.703 GB | 1,226.385 GB |
+| 10,000/day, minimum 64-position blocks | 38.181 GB | 102.732 GB | 159.833 GB | 216.934 GB |
+| 50,000/day, adaptive grouping | 101.984 GB | 196.997 GB | 315.022 GB | 433.048 GB |
+| 50,000/day, uniform 176 positions | 103.368 GB | 199.045 GB | 318.398 GB | 437.751 GB |
 
 | Workload | Device year 1 | Device year 3 | Device year 5 |
 | --- | ---: | ---: | ---: |
-| Maximum 576 positions/block | 673.394 GB | 1,089.732 GB | 1,506.070 GB |
-| 10,000/day, minimum 64-position blocks | 123.032 GB | 183.645 GB | 244.257 GB |
-| 50,000/day, adaptive grouping | 240.864 GB | 377.631 GB | 514.399 GB |
-| 50,000/day, uniform 176 positions | 243.424 GB | 381.851 GB | 520.278 GB |
+| Maximum 576 positions/block | 678.776 GB | 1,105.879 GB | 1,532.981 GB |
+| 10,000/day, minimum 64-position blocks | 128.415 GB | 199.791 GB | 271.168 GB |
+| 50,000/day, adaptive grouping | 246.246 GB | 393.778 GB | 541.310 GB |
+| 50,000/day, uniform 176 positions | 248.806 GB | 397.998 GB | 547.189 GB |
 
 Reproduce these tables with
 `python3 scripts/v1-storage-budget.py --economic-rewards`, using
@@ -184,14 +188,14 @@ measured costs beyond these allowances without hiding them.
 Both miners and validators retain **500 GB usable SSD as the installation
 minimum**, with **1 TB recommended**. The installation minimum does not qualify
 continuous maximum load: year-one used bytes already exceed 500 GB and require
-673.394 GB with the free reserve. At full load a 1-TB device reaches the modeled
-20% free threshold after approximately **2.57 years**. Year three requires
-1,089.732 GB, so a 1-TB device does not meet the modeled three-year full-load
+678.776 GB with the free reserve. At full load a 1-TB device reaches the modeled
+20% free threshold after approximately **2.50 years**. Year three requires
+1,105.879 GB, so a 1-TB device does not meet the modeled three-year full-load
 requirement.
 
 At 10,000/day, 500 GB has substantial modeled headroom beyond five years:
-the year-five device estimate is 244.257 GB. At 50,000/day, year five needs
-514.399 GB with adaptive packing or 520.278 GB with uniform 176-position
+the year-five device estimate is 271.168 GB. At 50,000/day, year five needs
+541.310 GB with adaptive packing or 547.189 GB with uniform 176-position
 blocks. Both exceed 500 GB when the required free reserve is included.
 A blanket five-year claim for a 500-GB device is therefore unsupported;
 packing, bursts and measured database overhead affect that horizon.
@@ -230,12 +234,15 @@ One real three-day-after-finality lifecycle is required by
 
 The native integer-only height-by-height SIP auditor uses the shared subsidy
 schedule and [monetary transition](v1-economics.md). It replays nominal 87/10/3
-allocations and explicit independent fund-wallet ratios, mode-specific rewards,
+allocations and explicit immutable per-wallet basis-point shares, mode-specific rewards,
 Holder pool deposits/claims,
 cumulative burn, locked subsidy schedules, per-credit fund maturity/vesting,
 valid ML-DSA expenditures and counters, and cumulative SIP emission against
 the curve. Check supply conservation at every height. Public lock/circulation
 figures are scheduled subsidy measures, not private unspent holdings. Transfers and fee recycling are not new issuance.
+For each fund wallet, expose its public key, share, cumulative unlocked amount,
+cumulative spent amount and available balance. Apply the claim cap per block
+without sharing a spending allowance across wallets.
 The native audit includes signed fund spending and canonical asset issuance.
 The shared transition verifies signed declarations, the native issuance-to-note
 supply relation, dedicated declaration-bound fee receipts and one-time registry

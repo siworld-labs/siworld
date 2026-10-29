@@ -389,13 +389,13 @@ with its 78-byte private sidecar the relay payload is 657,622 bytes.
 Keep the block maximum at 576 positions. Reproduce the economic-format
 [wire model](v1-network-budget.md) with
 `python3 scripts/v1-network-budget.py --native-protocol --economic-rewards`.
-It includes three copies, a 20,537-byte compact fixed record for five reward
-notes and two current native signed fund payouts, the settlement proof once
+It includes three copies, a 61,235-byte compact fixed record for five reward
+notes and eight native signed fund claims, the settlement proof once
 inside the compact body, bounded issuance, inventory/requests, AEAD/multiplexing,
 IPv6/TCP/link framing, reciprocal ACKs, handshakes, retransmission and recovery.
-The conditional load is **1,369,222,560 bytes / 300 seconds**, or
-**36.51260160 Mbps**. `ceil(36.51260160 / 0.85)` gives a **43-Mbps** uplink floor,
-leaving **15.086973%** unused; recommend 100 Mbps. This is a planning result,
+The conditional load is **1,369,369,494 bytes / 300 seconds**, or
+**36.51651984 Mbps**. `ceil(36.51651984 / 0.85)` gives a **43-Mbps** uplink floor,
+leaving **15.077861%** unused; recommend 100 Mbps. This is a planning result,
 not measured transport acceptance. The unflagged and native-only script modes
 preserve earlier format evidence. Qualify the actual provider and offered
 load before launch, and rerun both resource models if revised proof caps change.
@@ -403,21 +403,21 @@ load before launch, and rerun both resource models if revised proof caps change.
 Use `python3 scripts/v1-storage-budget.py --economic-rewards` for the matching
 [storage model](v1-storage-and-sync.md). It keeps the nominal 336.180-GB rolling
 proof allowance and 2,115 permanent bytes/position, and raises the provisional
-permanent block reserve to 32 KiB for economic reward/fund records. Including
+permanent block reserve to 64 KiB for economic reward/fund records. Including
 indexes/state, system/working space and 20% device free, maximum-load device
-needs at years 1/3/5 are **673.394 / 1,089.732 / 1,506.070 GB**. A 1-TB device
-reaches that reserve after approximately **2.57 full-load years**. Keep the
+needs at years 1/3/5 are **678.776 / 1,105.879 / 1,532.981 GB**. A 1-TB device
+reaches that reserve after approximately **2.50 full-load years**. Keep the
 500-GB installation minimum and 1-TB recommendation as workload-qualified
-profiles: 10,000/day needs 244.257 GB at year five, while 50,000/day needs
-514.399 GB with adaptive packing or 520.278 GB at uniform 176 positions.
+profiles: 10,000/day needs 271.168 GB at year five, while 50,000/day needs
+541.310 GB with adaptive packing or 547.189 GB at uniform 176 positions.
 A general five-year claim for 500 GB is unsupported. Actual persistent
 overhead and growth still require measurement; never prune permanent data or
 unexpired proofs to fit a device target.
 
-The two native payout slots do not fix launch fund wallet count or shares.
-Those remain pending; production fails closed without explicit genesis-bound
-weights. Other counts need a versioned codec/configuration change and fresh
-wire/storage allowances.
+The native registry supports 1–32 immutable wallets, while eight claims may
+enter a block. Launch keys, exact basis-point shares and team residue index
+remain explicit activation inputs. The storage model also reserves 64 KiB
+once for the public genesis registry; it is not repeated per block.
 
 Source, dependencies, actual AIR dimensions, key, parameters and the measured
 binary identity are bound by the engineering profile. Node/wallet integration

@@ -209,10 +209,10 @@ Height equality or a cached busy response is insufficient.
 
 At the 43-Mbps uplink floor, the capped multi-asset three-copy transaction
 and settlement payload requires 30.345178 Mbps. The
-[complete economic wire model](v1-network-budget.md) requires 36.51260160 Mbps
+[complete economic wire model](v1-network-budget.md) requires 36.51651984 Mbps
 after control, transport, reciprocal ACK, bounded issuance, all five reward
-records, two signed fund payout slots, retransmission and recovery costs.
-The floor leaves 15.086973% capacity unused; recommend 100 Mbps.
+records, eight signed fund claim slots, retransmission and recovery costs.
+The floor leaves 15.077861% capacity unused; recommend 100 Mbps.
 Reconcile every assumption against packet/application counters and qualify
 both bandwidth profiles using the actual hybrid listener, concurrent ingress,
 losses, missing bodies and handshake churn. Report overload without silently

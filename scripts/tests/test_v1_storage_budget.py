@@ -101,7 +101,8 @@ class StorageBudgetTests(unittest.TestCase):
     def test_economic_reward_block_records_add_permanent_growth_once(self):
         historical = budget.report()
         result = budget.report(economic_rewards=True)
-        self.assertEqual(result['block_record_allowance_bytes_per_block'], 32_768)
+        self.assertEqual(result['block_record_allowance_bytes_per_block'], 65_536)
+        self.assertEqual(result['genesis_registry_allowance_bytes'], 65_536)
         self.assertEqual(result['permanent_bytes_per_position'], 2115)
         self.assertTrue(result['planning_only'])
         self.assertFalse(result['measured_database_bound'])
@@ -110,18 +111,34 @@ class StorageBudgetTests(unittest.TestCase):
         for name, rows in result['cases'].items():
             for before, after in zip(historical['cases'][name], rows):
                 years = after['years']
-                added_records = 288 * 365 * years * (32_768 - 8192)
+                added_records = 288 * 365 * years * (65_536 - 8192)
                 self.assertEqual(after['permanent_block_record_allowance_bytes'],
-                                 288 * 365 * years * 32_768)
+                                 288 * 365 * years * 65_536)
+                self.assertEqual(after['genesis_registry_allowance_bytes'], 65_536)
                 self.assertEqual(after['index_state_allowance_bytes'] -
-                                 before['index_state_allowance_bytes'], added_records // 4)
+                                 before['index_state_allowance_bytes'], (added_records + 65_536) // 4)
                 self.assertEqual(after['used_bytes'] - before['used_bytes'],
-                                 added_records * 5 // 4)
+                                 (added_records + 65_536) * 5 // 4)
                 for component in ('rolling_bytes', 'permanent_public_bytes',
                                   'permanent_issuance_allowance_bytes',
                                   'database_working_allowance_bytes', 'system_bytes'):
                     self.assertEqual(after[component], before[component])
-        self.assertEqual(result['cases']['maximum'][0]['used_bytes'], 538_715_116_032)
+        self.assertEqual(result['cases']['maximum'][0]['used_bytes'], 543_020_913_152)
+
+    def test_genesis_registry_is_one_time_and_independent_of_workload(self):
+        result = budget.report(economic_rewards=True)
+        self.assertEqual(result['parameters']['encoded_genesis_fund_registry_bytes'], 62_530)
+        self.assertGreaterEqual(result['genesis_registry_allowance_bytes'], 62_530)
+        self.assertEqual(result['parameters']['maximum_registered_fund_wallets'], 32)
+        self.assertEqual(result['parameters']['maximum_signed_fund_payouts_per_block'], 8)
+        for rows in result['cases'].values():
+            self.assertEqual({row['genesis_registry_allowance_bytes'] for row in rows}, {65_536})
+        base = budget.estimate(50_000, 5)
+        registered = budget.estimate(50_000, 5, genesis_registry_bytes=65_536)
+        self.assertEqual(registered['used_bytes'] - base['used_bytes'], 81_920)
+        self.assertEqual(registered['rolling_bytes'], base['rolling_bytes'])
+        with self.assertRaises(ValueError):
+            budget.estimate(50_000, 5, genesis_registry_bytes=-1)
 
     def test_economic_reward_storage_cli_is_explicit_and_legacy_output_is_unchanged(self):
         result = json.loads(subprocess.check_output(

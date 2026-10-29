@@ -49,15 +49,20 @@ remaining atoms on the last day. A wallet may spend only its own released
 unspent entitlement, authenticated by its existing ML-DSA-65 authorization.
 Fund wallets do not share expenditure allowances.
 
-The launch-time number of fund wallets and individual shares remain
-unconfigured. Reserve an explicit allocation interface, bind the selected
-configuration to genesis and reject new-network block production without it.
-Do not infer equal shares or create replacement keys. Synthetic allocations
-used by tests are not a production allocation decision.
-The reserved arithmetic interface accepts variable wallet counts, but the
-current native state codec/authentication supports two key slots. A different
-launch count requires a versioned configuration and ledger update before
-activation; it is rejected by the current runtime.
+The immutable genesis registry supports 1–32 wallets. Positive shares are
+basis points totaling exactly 10,000; canonical parameters include each
+ML-DSA-65 public key and an explicit development-team wallet index. First
+compute `T = floor(subsidy / 10)`, then `floor(T * share[i] / 10000)` for each
+wallet; credit the residue to the team wallet. No V1 key or share replacement
+mechanism exists. Unconfigured production fails closed; launch recipients and
+shares remain explicit activation inputs, not synthetic test defaults.
+
+Each wallet accumulates entitlement without a per-block output. Up to eight
+signed claims may enter one block, with independent wallet counters and
+released-minus-spent checks. This throughput limit does not limit the genesis
+registry to eight wallets. The native configuration/ledger encodings are
+versioned and reject older engineering stores without migration. The retained
+legacy `DevFundKeys` and its payout interface are not native V1 registry rules.
 
 The public block mode is explicitly selected without a miner default:
 
@@ -170,11 +175,11 @@ issuance, inventories, requests, AEAD/multiplexing, IPv6/TCP/link framing,
 reciprocal ACKs, handshakes, retransmission and recovery must use the explicit
 economic-record model:
 `python3 scripts/v1-network-budget.py --native-protocol --economic-rewards`.
-Its maximum compact fixed record is 20,537 bytes for five reward notes and
-two current native signed fund payouts; settlement appears once inside the
-compact body. The model charges 1,369,222,560 bytes per target interval, or
-36.51260160 Mbps. Require at least 43 Mbps sustained uplink, computed as
-`ceil(wire_mbps / 0.85)`; 15.086973% remains unused at that floor. Deployment
+Its maximum compact fixed record is 61,235 bytes for five reward notes and
+eight native signed fund claims; settlement appears once inside the
+compact body. The model charges 1,369,369,494 bytes per target interval, or
+36.51651984 Mbps. Require at least 43 Mbps sustained uplink, computed as
+`ceil(wire_mbps / 0.85)`; 15.077861% remains unused at that floor. Deployment
 recommends 100 Mbps. The [full wire budget](v1-network-budget.md) remains
 conditional planning, not measured throughput. Earlier unflagged/native-only
 reports remain historical evidence. Recompute if the revised scan changes
@@ -273,7 +278,7 @@ At the target block rate, proofs and sidecars including the nominal depth-24
 finality tail require 336,179,807,232 rolling bytes at the separate caps.
 The 2,115-byte position codec adds 128,061,388,800 permanent bytes/year at
 full load. The [finite storage model](v1-storage-and-sync.md) also reserves
-32 KiB/block for economic permanent block records, 16 KiB/block for issuance records,
+64 KiB/block for economic permanent block records, 16 KiB/block for issuance records,
 25% of permanent records for indexes/state, 16 GB database working space,
 20 GB system files and 20% device free. These remain proposed allowances
 pending actual database and encoded-record measurements.
@@ -282,18 +287,18 @@ Reproduce the economic-format model with
 `python3 scripts/v1-storage-budget.py --economic-rewards`; the unflagged
 8-KiB-block-record scenario is retained only as earlier planning evidence.
 With the free-space reserve, full-load device needs at years 1/3/5 are
-673.394/1,089.732/1,506.070 GB. A 1-TB device reaches the modeled reserve after
-approximately 2.57 full-load years and does not cover year three. At 10,000
+678.776/1,105.879/1,532.981 GB. A 1-TB device reaches the modeled reserve after
+approximately 2.50 full-load years and does not cover year three. At 10,000
 submitted transactions/day, the minimum-block case needs
-123.032/183.645/244.257 GB. At 50,000/day, adaptive packing needs
-240.864/377.631/514.399 GB; uniform 176-position blocks require
-243.424/381.851/520.278 GB. A 500-GB device is an early-load profile, not a
+128.415/199.791/271.168 GB. At 50,000/day, adaptive packing needs
+246.246/393.778/541.310 GB; uniform 176-position blocks require
+248.806/397.998/547.189 GB. A 500-GB device is an early-load profile, not a
 full-load year-one or workload-independent five-year guarantee. Retain the
 500-GB minimum and 1-TB recommendation as workload-qualified profiles and
-plan expansion from measured growth. The five-note/two-payout reserve reflects
-the current codec limit, not adopted launch wallet count or shares. Other
-counts require versioned rules and a new resource model; production remains
-fail-closed without explicit genesis-bound weights. Never shorten retention or
+plan expansion from measured growth. The five-note/eight-claim reserve is independent of the 32-wallet genesis
+registry. A one-time 64-KiB registry reserve is also included. Production
+remains fail-closed without explicit genesis-bound public keys, exact
+basis-point shares and a team residue index. Never shorten retention or
 prune permanent public data to meet a disk target.
 
 Every validator independently enforces consensus. Miners add production;

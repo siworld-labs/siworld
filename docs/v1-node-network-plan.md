@@ -269,8 +269,8 @@ positions and three copies, transaction and settlement payload is 30.345178
 Mbps. The [complete conditional wire budget](v1-network-budget.md) includes
 inventory/requests, AEAD/multiplexing, IPv6/TCP/link framing, reciprocal ACKs,
 handshakes, keepalive, bounded issuance, retransmission and recovery costs:
-36.51260160 Mbps with all five reward records and two signed fund-payout
-slots. At 43 Mbps the remaining fraction is 15.086973%. Reserve at least 15%
+36.51651984 Mbps with all five reward records and eight signed fund-claim
+slots. At 43 Mbps the remaining fraction is 15.077861%. Reserve at least 15%
 of link capacity after those costs;
 `ceil(wire_mbps / 0.85)` gives a 43-Mbps minimum. Recommend 100 Mbps.
 Measure the deployed listener before acceptance.
@@ -473,8 +473,8 @@ None of these milestones imports or migrates retained seven-node state.
 ## Activation sequence and host handover
 
 Complete the authenticated transport provider and durable wallet path before
-shipping a network-node service package. The existing persistent Ed25519
-identity in the legacy node is not a native dual identity. The native service
+shipping a network-node service package. The retained legacy Ed25519
+transport does not establish a persistent native dual identity. The native service
 must persist an independently generated ML-DSA-65 identity alongside its
 Ed25519 identity, bind both keys to the handshake transcript and authenticate
 ephemeral X25519 plus ML-KEM-768. Identity storage, rotation and recovery must

@@ -89,12 +89,12 @@ fn every_height_matches_integer_curve_and_accepted_state() {
     assert_eq!(replayed.fingerprint(), state.fingerprint());
     assert_eq!(report.fingerprint, state.fingerprint());
     assert_eq!(report.total_subsidy, state.economics.totals().issued);
+    assert_eq!(report.funds, state.economics.funds());
+    assert_eq!(report.fund_wallets.len(), 2);
+    assert_eq!(report.fund_wallets[0].basis_points, 5000);
     assert_eq!(
-        report.funds,
-        [
-            state.economics.fund(FundAccount::First),
-            state.economics.fund(FundAccount::Second)
-        ]
+        report.fund_wallets[0].verifying_key,
+        state.config.fund_verifying_keys[0]
     );
     report.check_supply().unwrap();
     assert_eq!(report.heights.len(), 3);
@@ -182,5 +182,46 @@ fn mixed_mode_replay_accounts_for_pool_claims_and_burn_without_fee_disclosure() 
     assert_eq!(report.heights[0].pool_payout, 0);
     assert_eq!(report.heights[1].burn, 0);
     assert_eq!(report.burned, u128::from(report.heights[0].burn));
-    assert_eq!(report.funds[0].entitlement, report.funds[1].entitlement);
+    assert_eq!(report.funds[1].entitlement, report.funds[0].entitlement + 2);
+}
+
+#[test]
+fn audit_lists_each_of_twenty_four_genesis_wallets_and_independent_balances() {
+    use siworld_core::v1_economics::FundAllocation;
+    let mut shares = vec![400; 24];
+    shares[23] = 800;
+    let keys: Vec<_> = (0..24u8)
+        .map(|index| {
+            *libcrux_ml_dsa::ml_dsa_65::generate_key_pair([130 + index; 32])
+                .verification_key
+                .as_ref()
+        })
+        .collect();
+    let config = Config::development([135; 32], 0)
+        .unwrap()
+        .with_fund_wallets(
+            FundAllocation::new_bps(shares.clone(), 23).unwrap(),
+            keys.clone(),
+        )
+        .unwrap();
+    let mut state = State::new(config.clone()).unwrap();
+    let mut blocks = Vec::new();
+    for height in 1..=25u32 {
+        let block = candidate(&state, height * 100_000);
+        state.apply(&block, &TestVerifier).unwrap();
+        blocks.push(block);
+    }
+    let (_, report) = replay_chain(config, &blocks, &TestVerifier).unwrap();
+    report.check_supply().unwrap();
+    assert_eq!(report.fund_wallets.len(), 24);
+    assert_eq!(report.funds.len(), 24);
+    for (index, (identity, balance)) in report.fund_wallets.iter().zip(&report.funds).enumerate() {
+        assert_eq!(usize::from(identity.account), index);
+        assert_eq!(identity.basis_points, shares[index]);
+        assert_eq!(identity.verifying_key, keys[index]);
+        assert_eq!(identity.team_remainder, index == 23);
+        assert_eq!(balance.spent, 0);
+        assert!(balance.available().unwrap() > 0);
+        assert_eq!(balance.unlocked().unwrap(), balance.available().unwrap());
+    }
 }

@@ -164,7 +164,12 @@ fn actual_continuous_service_exports_stops_and_replays() {
     let timestamp = wall_ms().unwrap() / 1000;
     let rules = crate::state::Config::asert_development([68; 32], timestamp, [0xff; 32], 1)
         .unwrap()
-        .with_fund_allocation(siworld_core::v1_economics::FundAllocation::new(vec![1, 1]).unwrap())
+        .with_fund_wallets(
+            siworld_core::v1_economics::FundAllocation::new_bps(vec![5000, 5000], 1).unwrap(),
+            Config::development([121; 32], 0)
+                .unwrap()
+                .fund_verifying_keys,
+        )
         .unwrap();
     let config = local::initialize_config(&network, rules).unwrap();
     let keys =

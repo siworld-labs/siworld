@@ -64,7 +64,9 @@ impl FundSpend {
         out
     }
     pub fn decode(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.len() != ENCODED_BYTES || bytes[0] > 1 {
+        if bytes.len() != ENCODED_BYTES
+            || usize::from(bytes[0]) >= siworld_core::v1_economics::MAX_FUND_WALLETS
+        {
             return Err("noncanonical fund payout encoding".into());
         }
         let array = |offset: usize| {
@@ -90,7 +92,9 @@ impl FundSpend {
         Ok(result)
     }
     fn note(&self) -> Result<Note, String> {
-        if self.account > 1 || self.amount == 0 {
+        if usize::from(self.account) >= siworld_core::v1_economics::MAX_FUND_WALLETS
+            || self.amount == 0
+        {
             return Err("invalid fund account or amount".into());
         }
         let digest = |value: &DigestBytes| {
@@ -113,12 +117,16 @@ impl FundSpend {
     }
     /// Signature and disclosed opening checks precede the ledger's atomic
     /// unlocked-entitlement and strictly increasing counter checks.
-    pub fn verify(&self, network: Hash, key_hash: &Hash) -> Result<Note, String> {
+    pub fn verify(
+        &self,
+        network: Hash,
+        genesis_key: &[u8; VERIFYING_KEY_BYTES],
+    ) -> Result<Note, String> {
         let note = self.note()?;
         if note.rho != canonical_rho(network, self.account, self.counter) {
             return Err("fund payout nonce differs from authorized wallet counter".into());
         }
-        if *key_hash == [0; 32] || blake3::hash(&self.verifying_key).as_bytes() != key_hash {
+        if self.verifying_key != *genesis_key || genesis_key.iter().all(|byte| *byte == 0) {
             return Err("fund verification key is not configured by genesis".into());
         }
         if encode_digest(&Hasher::new().note_cm(&note)) != self.commitment {
@@ -137,7 +145,7 @@ mod tests {
     use super::*;
     use native::multi_asset::F;
 
-    fn signed() -> (FundSpend, Hash, Hash) {
+    fn signed() -> (FundSpend, Hash, [u8; VERIFYING_KEY_BYTES]) {
         let network = [81; 32];
         let pair = ml_dsa_65::generate_key_pair([83; 32]);
         let value = |x| encode_digest(&[F::from_u32(x); 12]);
@@ -163,8 +171,8 @@ mod tests {
         )
         .unwrap()
         .as_ref();
-        let fingerprint = *blake3::hash(&spend.verifying_key).as_bytes();
-        (spend, network, fingerprint)
+        let key = spend.verifying_key;
+        (spend, network, key)
     }
 
     #[test]
@@ -172,8 +180,8 @@ mod tests {
         let (spend, network, key) = signed();
         assert_eq!(spend.verify(network, &key).unwrap().unlock_height, 0);
         assert!(spend.verify([82; 32], &key).is_err());
-        assert!(spend.verify(network, &[0; 32]).is_err());
-        assert!(spend.verify(network, &[1; 32]).is_err());
+        assert!(spend.verify(network, &[0; VERIFYING_KEY_BYTES]).is_err());
+        assert!(spend.verify(network, &[1; VERIFYING_KEY_BYTES]).is_err());
         for offset in [
             0,
             1,
@@ -203,7 +211,7 @@ mod tests {
         assert_eq!(FundSpend::decode(&spend.encode()).unwrap(), spend);
         assert!(FundSpend::decode(&spend.encode()[..ENCODED_BYTES - 1]).is_err());
         let mut invalid = spend.clone();
-        invalid.account = 2;
+        invalid.account = 32;
         assert!(invalid.verify(network, &key).is_err());
         invalid = spend;
         invalid.owner[..4].copy_from_slice(&F::ORDER_U32.to_le_bytes());

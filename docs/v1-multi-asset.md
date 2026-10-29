@@ -295,7 +295,7 @@ separate 524,288-byte caps and b8/q36/g20 profiles; the fresh scan measures each
 with three four-worker and three one-worker processes.
 
 Keep the maximum at 576 positions. The economic-record complete network model
-charges 36.51260160 Mbps; **43 Mbps** minimum leaves 15.086973% unused, and
+charges 36.51651984 Mbps; **43 Mbps** minimum leaves 15.077861% unused, and
 deployment recommends **100 Mbps**. Relay, validation and storage budgets use
 the unchanged 2,115-byte permanent position record plus bounded block/fund and
 issuance records. Actual transport, complete-block processing and issuance

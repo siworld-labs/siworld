@@ -34,29 +34,32 @@ Let `S` be this block's subsidy, `P` the pool balance before this block, and
 `M` the miner's base allocation. Compute these values in order:
 
 ```text
-F[i] = floor(S * weight[i] / (10 * sum(j) weight[j]))
+T = floor(S / 10)
+F[i] = floor(T * basis_points[i] / 10000)
+F[team] += T - sum(i) F[i]
 C = floor(3 * S / 100)
-M = S - sum(i) F[i] - C
+M = S - T - C
 P1 = P + C
 ```
 
-Development-fund wallets have independent configured subsidy ratios totaling
-10%. The final wallet count and exact ratios are not yet selected; the earlier
-two-wallet 5%/5% split is superseded and must not be silently reused. The
-genesis configuration must explicitly pin immutable recipients and positive
-integer weights at testnet launch. Each wallet credit is floored independently;
-the miner receives every residual atom. Reserve this configuration
-interface now; unconfigured new-network production fails closed. There is no
-default recipient set or split. The arithmetic interface reserves up to 256
-positive wallet weights. The current native state/configuration codec and
-signature authentication implement two key slots only. Selecting a different
-wallet count requires a versioned configuration, ledger and authentication
-update before activation; the current runtime rejects such a configuration.
-The protocol Holder pool receives 3%; the
-miner receives the residual, nominally 87%. Explicitly assigning the integer residual prevents
-atom creation or loss. Fees are private transfers,
-not subsidy: their full sum goes to the producing miner and never enters this
-percentage split.
+The development-fund registry contains 1–32 wallets. Every share is a positive
+integer number of basis points, and shares must sum to exactly 10,000. The
+ordered ML-DSA-65 public keys, shares and explicit development-team wallet
+index are fixed in canonical genesis parameters. Duplicate or zero public
+keys, an invalid team index, a count/key mismatch or invalid share sum are
+rejected. The team wallet receives the distribution residue after all
+per-wallet floors. No V1 mechanism replaces keys, recipients or shares.
+
+The actual launch recipients, wallet count and shares remain unconfigured.
+New-network production fails closed until a complete configuration exists.
+Synthetic test registries do not select a launch allocation. The native
+configuration and ledger have new versioned encodings; old engineering stores
+are rejected without migration. Retained legacy chain parameters and their
+`DevFundKeys` structure remain separate compatibility interfaces.
+
+The Holder pool receives 3%; the miner receives the residual, nominally 87%.
+Fees are private transfers, not subsidy: their full sum goes to the producing
+miner and never enters this percentage split.
 
 Every block publicly names exactly one mode. The producer must require an
 explicit `reward_mode = voyager` or `reward_mode = holder` on initialization;
@@ -118,10 +121,14 @@ unlocked(H, h) = (direct if H >= h + 24 else 0)
 Thus each credit has its own 1,461-day height-based schedule. A protocol day is
 288 blocks. Day zero releases no vested amount; the last day releases every
 remaining atom. This replaces the old five-year native design. Each configured
-wallet has independent entitlement, unlocked/spent counters and expenditure records under
-its adopted ratio. Existing key settings remain unchanged; no aggregate
-unlocked-minus-spent budget is adopted. Final wallet count and allocation
-ratios remain an explicit activation prerequisite.
+wallet has independent entitlement, unlocked/spent counters and expenditure
+records under its immutable share. There is no aggregate unlocked-minus-spent
+budget. Blocks accrue balances without creating an output for every wallet.
+Only an authenticated claim creates a payout note. The native limit is eight
+signed claims per block, independent of the 32-wallet registry limit. Each
+claim advances that wallet's counter and consumes only its own allowance.
+Multiple claims in the same block use the updated candidate balance, so neither
+splitting claims nor alternating wallets can bypass an allowance.
 
 A block first advances its candidate economic state to height `H`, including
 maturity and vesting, then checks expenditures. Each positive payout requires
@@ -183,9 +190,9 @@ about 0.493103% of the gross amount at tail entry; that ratio then decreases as
 gross issuance grows. Burn, pool holdings and mode-dependent lock schedules
 change the distribution, not the gross schedule.
 
-## Executed accounting simulation
+## Accounting simulation evidence
 
-The release-mode deterministic test advanced 2,102,400 consecutive production
+The linked prior reference run, before the basis-point registry revision, advanced 2,102,400 consecutive production
 heights with mixed Voyager and Holder modes. It checked supply conservation at
 every height, cross-checked gross issuance against the epoch projection, and
 checked the remaining reward-lock schedule. The
@@ -203,8 +210,9 @@ records the source identity and exact reproduction command.
 | Unlocked fund entitlements | 209,476,718,268,288 |
 | Spent fund entitlements | 206,615,069,454,994 |
 
-The test uses synthetic equal fund weights to exercise two independently
-tracked accounts. It selects no launch allocation. Scheduled locked subsidy is
+That prior test used synthetic equal fund weights to exercise independently
+tracked accounts. A revised 20-plus-wallet run is required after registry
+changes; no launch allocation is selected. Scheduled locked subsidy is
 a subset of miner credits; unlocked and spent fund amounts are subsets of
 fund entitlements. These subsets must not be added again in the supply sum.
 This is an accounting simulation, not a long-running network or proof-resource
@@ -221,7 +229,7 @@ change. Reject an undeclared timing substitution or cross-network artifact.
 Before external review, complete test-first exact-allocation, pool-order and
 rounding tests; before/at-unlock AIR rejection tests; mode/reward mutation
 checks; per-wallet fund maturity/linear release/overdraft and signature/counter tests;
-configured-ratio allocation and isolation between wallet spending budgets;
+exact basis-point sums, explicit team residue and isolation between wallet spending budgets;
 atomic reorganization tests; tail-threshold tests; and a deterministic
 20-year mixed-mode block simulation with supply conservation at every height.
 Publish actual results and source-bound reports after execution. No result is
@@ -254,5 +262,5 @@ caps preserve the complete conditional 43-Mbps uplink and rolling-storage
 budgets; do not lower them solely from smaller sampled bodies. Independent
 review includes snapshot-height locks, mode-dependent settlement, Holder
 pool/burn, fund vesting/spending, recursion-free composition and hiding.
-Launch fund recipients/weights remain unconfigured; the current native codec
-supports two key slots and must fail closed without explicit allocation.
+Launch recipients and shares remain unconfigured; the native registry supports
+up to 32 wallets and fails closed without a complete genesis allocation.

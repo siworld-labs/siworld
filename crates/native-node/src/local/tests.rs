@@ -113,3 +113,15 @@ fn pre_issuance_local_rules_are_rejected_without_modifying_existing_bytes() {
     assert_eq!(std::fs::read(path.join(CONFIG_FILE)).unwrap(), legacy);
     std::fs::remove_dir_all(path).unwrap();
 }
+
+#[test]
+fn two_fingerprint_fund_configuration_is_rejected_and_preserved() {
+    let path = directory();
+    initialize(&path, 0).unwrap();
+    let mut legacy = b"SWNDv3\0\0".to_vec();
+    legacy.extend_from_slice(&[0; 279]);
+    std::fs::write(path.join(CONFIG_FILE), &legacy).unwrap();
+    assert!(load(&path).unwrap_err().contains("no automatic migration"));
+    assert_eq!(std::fs::read(path.join(CONFIG_FILE)).unwrap(), legacy);
+    std::fs::remove_dir_all(path).unwrap();
+}

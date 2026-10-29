@@ -20,7 +20,8 @@ SIDECAR_BYTES = 78
 RETENTION_BLOCKS = 3 * BLOCKS_PER_DAY + 24
 SYSTEM_BYTES = 20_000_000_000
 BLOCK_RECORD_ALLOWANCE = 8192
-ECONOMIC_BLOCK_RECORD_ALLOWANCE = 32_768
+ECONOMIC_BLOCK_RECORD_ALLOWANCE = 65_536
+ECONOMIC_GENESIS_REGISTRY_ALLOWANCE = 65_536
 ISSUANCE_RECORD_ALLOWANCE = 16_384
 DATABASE_WORKING_ALLOWANCE = 16_000_000_000
 
@@ -41,11 +42,13 @@ def estimate(positions, years, permanent_bytes=2115, extra_permanent_bytes=0,
              database_working_bytes=DATABASE_WORKING_ALLOWANCE,
              transaction_proof_cap=TRANSACTION_PROOF_CAP,
              settlement_proof_cap=SETTLEMENT_PROOF_CAP,
-             issuance_proof_cap=ISSUANCE_PROOF_CAP):
+             issuance_proof_cap=ISSUANCE_PROOF_CAP,
+             genesis_registry_bytes=0):
     if not BLOCKS_PER_DAY * MIN_POSITIONS <= positions <= BLOCKS_PER_DAY * MAX_POSITIONS:
         raise ValueError('position rate outside fixed block capacity')
     if (years <= 0 or permanent_bytes <= 0 or min(extra_permanent_bytes, block_record_bytes,
-                                                   issuance_bytes_per_block, database_working_bytes) < 0):
+                                                   issuance_bytes_per_block, database_working_bytes,
+                                                   genesis_registry_bytes) < 0):
         raise ValueError('positive lifetime and byte budgets required')
     if min(transaction_proof_cap, settlement_proof_cap, issuance_proof_cap) <= 0:
         raise ValueError('positive proof caps required')
@@ -60,9 +63,10 @@ def estimate(positions, years, permanent_bytes=2115, extra_permanent_bytes=0,
     permanent = positions * 365 * years * permanent_bytes
     block_records = BLOCKS_PER_DAY * 365 * years * block_record_bytes
     issuance_records = BLOCKS_PER_DAY * 365 * years * issuance_bytes_per_block
-    indexes_and_state = ceil_fraction(Fraction(permanent + block_records + issuance_records, 4))
+    indexes_and_state = ceil_fraction(Fraction(
+        permanent + block_records + issuance_records + genesis_registry_bytes, 4))
     used = (rolling + permanent + block_records + issuance_records + indexes_and_state +
-            SYSTEM_BYTES + database_working_bytes + extra_permanent_bytes)
+            SYSTEM_BYTES + database_working_bytes + extra_permanent_bytes + genesis_registry_bytes)
     return dict(positions_per_day=positions, years=years,
                 rolling_positions=rolling_positions, rolling_bytes=rolling,
                 transaction_proof_rolling_bytes=transaction_rolling,
@@ -73,6 +77,7 @@ def estimate(positions, years, permanent_bytes=2115, extra_permanent_bytes=0,
                 permanent_public_bytes=permanent,
                 permanent_block_record_allowance_bytes=block_records,
                 permanent_issuance_allowance_bytes=issuance_records,
+                genesis_registry_allowance_bytes=genesis_registry_bytes,
                 database_working_allowance_bytes=database_working_bytes,
                 index_state_allowance_bytes=indexes_and_state,
                 system_bytes=SYSTEM_BYTES,
@@ -85,6 +90,7 @@ def report(permanent_bytes=2115, transaction_proof_cap=TRANSACTION_PROOF_CAP,
            economic_rewards=False):
     block_record_bytes = (ECONOMIC_BLOCK_RECORD_ALLOWANCE if economic_rewards
                           else BLOCK_RECORD_ALLOWANCE)
+    genesis_registry_bytes = ECONOMIC_GENESIS_REGISTRY_ALLOWANCE if economic_rewards else 0
     result = {'status': 'proposed-codec-component-planning-model',
             'permanent_bytes_per_position': permanent_bytes,
             'parameters': {
@@ -97,10 +103,12 @@ def report(permanent_bytes=2115, transaction_proof_cap=TRANSACTION_PROOF_CAP,
                 'device_free_percent': 20,
             },
             'block_record_allowance_bytes_per_block': block_record_bytes,
+            'genesis_registry_allowance_bytes': genesis_registry_bytes,
             'issuance_record_allowance_bytes_per_block': ISSUANCE_RECORD_ALLOWANCE,
             'database_working_allowance_bytes': DATABASE_WORKING_ALLOWANCE, 'retention_blocks_at_target_rate': RETENTION_BLOCKS,
             'cases': {name: [estimate(positions, year, permanent_bytes,
                                      block_record_bytes=block_record_bytes,
+                                     genesis_registry_bytes=genesis_registry_bytes,
                                      transaction_proof_cap=transaction_proof_cap,
                                      settlement_proof_cap=settlement_proof_cap,
                                      issuance_proof_cap=issuance_proof_cap) for year in (1, 3, 5)]
@@ -111,11 +119,14 @@ def report(permanent_bytes=2115, transaction_proof_cap=TRANSACTION_PROOF_CAP,
                           ('transactions_50000_per_day_uniform_176', BLOCKS_PER_DAY * 176))}}
     if economic_rewards:
         result['parameters']['economic_rewards'] = True
+        result['parameters'].update({'maximum_registered_fund_wallets': 32,
+                                     'maximum_signed_fund_payouts_per_block': 8,
+                                     'encoded_genesis_fund_registry_bytes': 62_530})
         result.update({
             'planning_only': True,
             'measured_database_bound': False,
             'block_record_allowance_basis': (
-                'five reward notes and two signed fund payouts with provisional record overhead'),
+                'five reward notes and eight signed fund payouts with provisional record overhead'),
         })
     return result
 
@@ -127,7 +138,7 @@ if __name__ == '__main__':
     parser.add_argument('--settlement-proof-cap-bytes', type=int, default=SETTLEMENT_PROOF_CAP)
     parser.add_argument('--issuance-proof-cap-bytes', type=int, default=ISSUANCE_PROOF_CAP)
     parser.add_argument('--economic-rewards', action='store_true',
-                        help='allow 32 KiB per block for five reward notes and two signed fund payouts')
+                        help='allow 64 KiB per block for five reward notes and eight signed fund payouts')
     parser.add_argument('--legacy-baseline', action='store_true',
                         help='reproduce the prior model with all proof caps set to 524288 bytes')
     args = parser.parse_args()

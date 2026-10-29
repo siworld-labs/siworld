@@ -23,6 +23,7 @@ outstanding.
 - [Collision accounting](bht-security-accounting.md), [dependency patch](d8-dependency-patch.md) and [settlement evaluation](fee-settlement-evaluation.md).
 - [Measurement procedure](benchmarks.md), [Linux resource measurement](linux-proof-measurement.md) and [memory accounting](memory-budgets.md).
 - [Circuit optimization](multi-asset-air-optimization.md): adopted snapshot-range and asset-comparison reductions, current measured shape and separate unreferenced layout research.
+- [Protocol-byte compatibility](v1-protocol-byte-compatibility.md): retained wire identifiers and private input unlock-height binding.
 - [Wallet and custody protection](v1-wallet-protection.md): lock recovery, delayed consolidation, threshold backups and offline signing interfaces.
 
 The [two-output native baseline](../crates/bench-d8/artifacts/v1-native-freeze.json)

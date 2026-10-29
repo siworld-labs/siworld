@@ -214,16 +214,16 @@ add independent phase-memory values from these overlapping lifetimes.
 The fresh run qualifies the selected isolated 576-position settlement proof;
 it does not establish measured active-capacity workloads at 64–512 positions,
 whole-block processing or an independent verifier-memory bound. The current
-native fund codec has two key slots. Launch recipients and independent fund
-weights remain unconfigured; the measurements select no production allocation.
+native fund registry supports 32 immutable keys and eight signed claims per
+block. Launch recipients and independent basis-point shares remain unconfigured; the measurements select no production allocation.
 
 ## Network, retention and remaining gates
 
 With unchanged proof caps and 576 positions, the explicit economic-record
-[wire model](v1-network-budget.md) charges 1,369,222,560 bytes per 300 seconds,
-or **36.51260160 Mbps**, including three relay copies and bounded transport,
+[wire model](v1-network-budget.md) charges 1,369,369,494 bytes per 300 seconds,
+or **36.51651984 Mbps**, including three relay copies and bounded transport,
 control, recovery and issuance allowances. A **43-Mbps minimum uplink** leaves
-15.086973% unused in that model; deployment recommends **100 Mbps**. These are
+15.077861% unused in that model; deployment recommends **100 Mbps**. These are
 conditional planning figures. Actual transport counters, queue growth and
 issuance byte/work/rate limits require separate qualification.
 

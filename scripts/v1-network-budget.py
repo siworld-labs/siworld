@@ -107,8 +107,10 @@ NATIVE_REFERENCE_BYTES = 64
 NATIVE_COMPACT_FIXED_BYTES = 1525
 NATIVE_MAXIMUM_REWARD_NOTES = 5
 NATIVE_REWARD_RECORD_BYTES = 1361
-NATIVE_MAXIMUM_FUND_PAYOUTS = 2
+NATIVE_MAXIMUM_FUND_PAYOUTS = 8
 NATIVE_SIGNED_FUND_PAYOUT_BYTES = 6783
+NATIVE_MAXIMUM_FUND_WALLETS = 32
+NATIVE_GENESIS_FUND_REGISTRY_BYTES = 2 + NATIVE_MAXIMUM_FUND_WALLETS * (2 + 1952)
 NATIVE_ECONOMIC_COMPACT_FIXED_BYTES = (
     NATIVE_COMPACT_FIXED_BYTES + 2
     + (NATIVE_MAXIMUM_REWARD_NOTES - 1) * NATIVE_REWARD_RECORD_BYTES
@@ -135,7 +137,7 @@ def native_protocol_report(positions=576, link_mbps=None,
     its fixed bytes directly. Hybrid record and handshake sizes are assumptions,
     not measurements or bounds established by the unavailable provider.
     Economic rewards opt in to the maximum compact record: five reward notes,
-    two signed fund payouts and two explicit mode/count bytes. The independent
+    eight signed fund payouts and two explicit mode/count bytes. The independent
     8-KiB future-record allowance is retained in addition to that encoded size.
     """
     if integrated_issuances is not None and (not economic_rewards
@@ -213,6 +215,9 @@ def native_protocol_report(positions=576, link_mbps=None,
             'maximum_reward_notes': NATIVE_MAXIMUM_REWARD_NOTES,
             'maximum_signed_fund_payouts': NATIVE_MAXIMUM_FUND_PAYOUTS,
             'signed_fund_payout_bytes': NATIVE_SIGNED_FUND_PAYOUT_BYTES,
+            'maximum_registered_fund_wallets': NATIVE_MAXIMUM_FUND_WALLETS,
+            'genesis_fund_registry_bytes': NATIVE_GENESIS_FUND_REGISTRY_BYTES,
+            'genesis_fund_registry_repeated_per_block': False,
         })
     if integrated_issuances is not None:
         parameters.update({'integrated_issuance_records': integrated_issuances,
@@ -253,7 +258,7 @@ if __name__ == '__main__':
     parser.add_argument('--duplicate-settlement', action='store_true',
                         help='with --native-protocol, also charge a separate settlement copy')
     parser.add_argument('--economic-rewards', action='store_true',
-                        help='with --native-protocol, include five reward notes and two signed fund payouts')
+                        help='with --native-protocol, include five reward notes and eight signed fund payouts')
     parser.add_argument('--integrated-issuances', type=int,
                         help='with native economic mode, budget zero to four issuance records inside compact bodies')
     parser.add_argument('--legacy-baseline', action='store_true',

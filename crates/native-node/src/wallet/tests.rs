@@ -902,7 +902,7 @@ fn permanent_fund_ciphertext_recovers_after_seed_restore_without_private_sidecar
     let network = [50; 32];
     let mut config = Config::development(network, 0).unwrap();
     let pair = ml_dsa_65::generate_key_pair([51; 32]);
-    config.fund_key_hashes[0] = *blake3::hash(pair.verification_key.as_ref()).as_bytes();
+    config.fund_verifying_keys[0] = *pair.verification_key.as_ref();
     let mut state = State::new(config.clone()).unwrap();
     let original = wallet(network, 52);
     let mut blocks = Vec::new();

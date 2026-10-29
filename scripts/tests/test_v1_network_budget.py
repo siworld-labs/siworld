@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -132,13 +133,16 @@ class NetworkBudgetTests(unittest.TestCase):
         historical = budget.native_protocol_report()
         result = budget.native_protocol_report(economic_rewards=True)
         parameters = result['parameters']
-        self.assertEqual(parameters['compact_fixed_bytes'], 20_537)
-        self.assertEqual(parameters['compact_payload_bytes'], 581_689)
+        self.assertEqual(parameters['compact_fixed_bytes'], 61_235)
+        self.assertEqual(parameters['compact_payload_bytes'], 622_387)
         self.assertEqual(parameters['extra_block_record_allowance_bytes'], 8192)
         self.assertEqual(parameters['maximum_reward_notes'], 5)
-        self.assertEqual(parameters['maximum_signed_fund_payouts'], 2)
+        self.assertEqual(parameters['maximum_signed_fund_payouts'], 8)
+        self.assertEqual(parameters['maximum_registered_fund_wallets'], 32)
+        self.assertEqual(parameters['genesis_fund_registry_bytes'], 62_530)
+        self.assertFalse(parameters['genesis_fund_registry_repeated_per_block'])
         self.assertTrue(parameters['economic_rewards'])
-        self.assertEqual(result['wire_bytes_per_interval'], 1_369_222_560)
+        self.assertEqual(result['wire_bytes_per_interval'], 1_369_369_494)
         self.assertEqual(result['minimum_link_mbps'], 43)
         self.assertTrue(result['meets_capacity_headroom'])
         self.assertFalse(budget.native_protocol_report(
@@ -150,6 +154,26 @@ class NetworkBudgetTests(unittest.TestCase):
         self.assertEqual(result['parameters']['transaction_proof_cap_bytes'], 655_360)
         self.assertEqual(result['parameters']['settlement_proof_cap_bytes'], 524_288)
         self.assertEqual(result['parameters']['issuance_proof_cap_bytes'], 524_288)
+
+    def test_eight_claim_records_are_charged_independently_of_genesis_wallet_count(self):
+        result = budget.native_protocol_report(economic_rewards=True)
+        p = result['parameters']
+        self.assertEqual(p['compact_fixed_bytes'], 1525 + 2 + 4 * 1361 + 8 * 6783)
+        self.assertEqual(p['compact_payload_bytes'], p['compact_fixed_bytes'] + 576 * 64 + 524_288)
+        # The immutable public registry is fetched with genesis, not every block.
+        self.assertNotIn('genesis_fund_registry_wire', result['components_bytes_per_interval'])
+        self.assertLess(p['maximum_signed_fund_payouts'], p['maximum_registered_fund_wallets'])
+
+    def test_economic_budget_matches_native_record_limits(self):
+        root = SCRIPT.parents[1]
+        for relative, name, expected in (
+                ('crates/native-node/src/wire.rs', 'MAX_FUND_SPENDS', 8),
+                ('crates/native-node/src/fund_spend.rs', 'ENCODED_BYTES', 6783),
+                ('crates/core/src/v1_economics.rs', 'MAX_FUND_WALLETS', 32)):
+            source = (root / relative).read_text()
+            value = re.search(r'pub const ' + name + r': usize = ([\d_]+);', source)
+            self.assertIsNotNone(value, relative)
+            self.assertEqual(int(value[1].replace('_', '')), expected, relative)
 
     def test_economic_rewards_still_reserve_fifteen_percent_for_each_proof_cap(self):
         for cap in (524_288, 655_360, 768 * 1024):
@@ -199,6 +223,8 @@ class NetworkBudgetTests(unittest.TestCase):
             self.assertGreaterEqual(value['remaining_percent'], 15)
         self.assertGreater(four['wire_bytes_per_interval'], one['wire_bytes_per_interval'])
         self.assertGreater(one['wire_bytes_per_interval'], empty['wire_bytes_per_interval'])
+        self.assertEqual(one['wire_bytes_per_interval'], 1_369_345_486)
+        self.assertEqual(four['wire_bytes_per_interval'], 1_375_116_004)
         self.assertEqual(four['minimum_link_mbps'], 44)
         self.assertFalse(budget.native_protocol_report(economic_rewards=True,
             integrated_issuances=4, link_mbps=43)['meets_capacity_headroom'])

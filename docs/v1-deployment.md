@@ -3,8 +3,9 @@
 The [monetary relations](v1-economics.md) have source-bound
 `native-v1-economics-1` proof profiles and fresh reference-host evidence.
 Public-key reproduction and complete CI remain release checks. The resource
-tables include the current maximum of five reward notes and two native
-fund-payout slots through explicit economic-record planning modes. Wire allowances and database overhead remain conditional;
+tables include the current maximum of five reward notes and eight native
+signed fund claims through explicit economic-record planning modes. The
+32-wallet immutable genesis registry is a separate one-time record. Wire allowances and database overhead remain conditional;
 they do not establish measured revised-network acceptance or SSD lifetime.
 
 Status: qualification design for the independent native V1 engineering network.
@@ -83,10 +84,13 @@ least 15% of the selected minimum link's capacity:
 `minimum_link_mbps = ceil(wire_mbps / 0.85)`. Transaction, settlement and
 issuance proof caps are independent. Reproduce the economic format with
 `python3 scripts/v1-network-budget.py --native-protocol --economic-rewards`.
-It includes a 20,537-byte compact fixed record (five reward notes and two
+It includes a 61,235-byte compact fixed record (five reward notes and eight
 signed fund payouts), the settlement proof once in the compact body and all
-remaining allowances. Its full wire model uses 36.51260160 Mbps;
-43 Mbps leaves 6.487 Mbps (15.086973%) spare, while 100 Mbps leaves 63.487 Mbps.
+remaining allowances. Its full wire model uses 36.51651984 Mbps;
+43 Mbps leaves 6.483 Mbps (15.077861%) spare, while 100 Mbps leaves 63.483 Mbps.
+The integrated four-issuance envelope needs 44 Mbps for the same reserve;
+one issuance remains within 43 Mbps. Pin the actual admission setting and
+repeat the model before activation.
 The unflagged and native-only script modes preserve earlier evidence; their
 single-reward or generic framing totals do not size the revised format.
 Measure packet counters and queue growth
@@ -126,37 +130,42 @@ the explicit planning model with
 The three-output codec has 2,115 permanent bytes/position. At the 640-KiB
 transaction cap, ordinary transaction proofs, settlement proofs and sidecars
 require 335.714 GB at the nominal 888-block window; an additional capped
-issuance proof/block brings the rolling budget to 336.180 GB. Include 32 KiB
+issuance proof/block brings the rolling budget to 336.180 GB. Include 64 KiB
 permanent block records and 16 KiB permanent issuance records/block, 25% of all permanent bytes for indexes/state, 16 GB database
-working space, 20 GB system/recovery files, and 20% device free:
+working space, a one-time 64-KiB fund genesis registry, 20 GB system/recovery
+files, and 20% device free:
 
 | Workload | Device year 1 | Device year 3 | Device year 5 |
 | --- | ---: | ---: | ---: |
-| Maximum 576 positions/block | 673.394 GB | 1,089.732 GB | 1,506.070 GB |
-| 10,000/day, minimum 64-position blocks | 123.032 GB | 183.645 GB | 244.257 GB |
-| 50,000/day, adaptive grouping | 240.864 GB | 377.631 GB | 514.399 GB |
-| 50,000/day, uniform 176 positions | 243.424 GB | 381.851 GB | 520.278 GB |
+| Maximum 576 positions/block | 678.776 GB | 1,105.879 GB | 1,532.981 GB |
+| 10,000/day, minimum 64-position blocks | 128.415 GB | 199.791 GB | 271.168 GB |
+| 50,000/day, adaptive grouping | 246.246 GB | 393.778 GB | 541.310 GB |
+| 50,000/day, uniform 176 positions | 248.806 GB | 397.998 GB | 547.189 GB |
 
 **500 GB usable SSD is the installation minimum; 1 TB is recommended** for
 both miners and validators. That minimum does not qualify continuous maximum
-load: year-one used bytes are 538.715 GB before the 20% free reserve. A 1-TB
-device reaches the modeled free-space threshold after approximately **2.57 full
-load years**; year three needs 1,089.732 GB, rather than fitting 1 TB.
+load: year-one used bytes are 543.021 GB before the 20% free reserve. A 1-TB
+device reaches the modeled free-space threshold after approximately **2.50 full
+load years**; year three needs 1,105.879 GB, rather than fitting 1 TB.
 
 At 10,000/day, 500 GB has modeled headroom beyond five years: the year-five
-device requirement is 244.257 GB. At 50,000/day, adaptive packing needs
-514.399 GB in year five and uniform 176-position blocks need 520.278 GB;
+device requirement is 271.168 GB. At 50,000/day, adaptive packing needs
+541.310 GB in year five and uniform 176-position blocks need 547.189 GB;
 both exceed 500 GB including the free reserve. Do not promise five years on
 500 GB for every early workload. These conditional horizons depend on the
 final measured overheads, packing and workload. Publish actual growth and expand storage before reserves are
 consumed; retain 576 positions and the complete three-day proof window.
 
-The 32-KiB block reserve covers the maximum five-note/two-payout economic
-format plus provisional persistent-record overhead. The two payout slots are
-the current codec limit; launch fund wallet count and shares remain pending.
-Block production fails closed without explicit genesis-bound allocation weights.
-Other wallet counts require a versioned configuration/codec change and a new
-resource model. The unflagged storage script preserves the earlier 8-KiB
+The 64-KiB block reserve covers the maximum five-note/eight-claim economic
+format plus provisional persistent-record overhead. The immutable genesis
+registry supports 1–32 fund wallets with positive basis-point shares totaling
+10,000, public ML-DSA-65 keys and an explicit development-team residue wallet.
+Its section occupies 62,530 bytes and is covered once by the 64-KiB registry
+allowance. Actual shares and keys are required before activation; V1 has no
+key/share replacement mechanism. Per-wallet credits accrue in the ledger
+without emitting an output each block; up to eight signed claims can be
+included in one block. Each claim spends only its own wallet's released
+unspent balance. The unflagged storage script preserves the earlier 8-KiB
 block-record scenario rather than silently replacing historical evidence.
 
 The block/issuance ceilings and database allowance remain proposed engineering

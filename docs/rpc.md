@@ -33,6 +33,22 @@ admissions are volatile and must be reconciled or resubmitted after restart.
 Do not expose this dispatcher on a public endpoint before the authenticated
 resident service and ingress resource controls are qualified.
 
+## Public fund audit
+
+The offline `audit DIRECTORY` command independently replays the canonical
+chain and emits a `funds` array. Each row contains `account`, `basis_points`,
+`team_remainder`, `ml_dsa_65_verifying_key`, `entitlement_atoms`,
+`released_atoms`, `spent_atoms`, `available_atoms`, `balance_atoms`,
+`direct_unlocked_atoms`, `vesting_unlocked_atoms` and `spend_count`.
+`available_atoms` is released minus spent; `balance_atoms` includes the
+unreleased entitlement. These public registry/accounting fields contain no
+spend secret or individual transaction-fee opening. The report also binds
+height, tip and state fingerprint and checks supply conservation.
+
+This CLI report is not an HTTP listener. A future read-only endpoint or panel
+adapter must retain independent replay/freshness semantics and expose the same
+public accounting without wallet mutation capabilities.
+
 ## Required capabilities
 
 Separate read-only health access from wallet, mining and recovery capabilities.

@@ -252,10 +252,12 @@ Initialization alone does not make the network ready to produce:
 
 ASERT initialization leaves the genesis-bound fund allocation unconfigured.
 `run` fails closed until an explicit adopted allocation and authenticated key
-policy exist. The current native codec has two fund key/payout slots; a
-different wallet count requires a versioned configuration/codec extension.
-There is no CLI command that silently supplies launch weights or keys. The
-cheap `init` fixture's synthetic equal weights do not adopt launch policy.
+policy exist. The versioned native registry accepts 1–32 genesis-bound ML-DSA-65 public
+keys with exact basis-point shares and a team residue index. Eight signed
+claims may enter a block; accrual itself creates no payout note. Older
+engineering configuration files are rejected without migration.
+There is no CLI command that silently supplies launch shares or keys. The
+cheap `init` fixture's synthetic equal shares do not adopt launch policy.
 After those independent prerequisites are met, `run DIRECTORY` requires
 `RAYON_NUM_THREADS=4` and `SIWORLD_COMPOSITION_HIDING_WORKERS=2`.
 

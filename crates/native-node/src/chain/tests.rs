@@ -142,3 +142,26 @@ fn state_budget_charges_registered_issuer_keys_and_clone_state() {
         .is_err()
     );
 }
+
+#[test]
+fn state_budget_charges_fund_key_registry_capacity_without_a_consensus_change() {
+    let mut state = State::new(crate::state::Config::development([10; 32], 0).unwrap()).unwrap();
+    let baseline = state_budget(&state).unwrap();
+    let encoded = state.config.encode_rules();
+    state.config.fund_verifying_keys.reserve_exact(128);
+    assert_eq!(state.config.encode_rules(), encoded);
+    assert!(
+        state_budget(&state).unwrap() >= baseline + 128 * crate::fund_spend::VERIFYING_KEY_BYTES
+    );
+    assert!(matches!(
+        check_state_budget(
+            &state,
+            0,
+            CandidatePolicy {
+                max_bytes: baseline,
+                ..CandidatePolicy::default()
+            }
+        ),
+        Err(ChainError::ResourceExhausted("candidate state bytes"))
+    ));
+}

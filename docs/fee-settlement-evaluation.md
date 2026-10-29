@@ -48,8 +48,8 @@ not a miner hardware requirement.
 
 The [complete evaluation](v1-multi-asset-evaluation.md) records setup and process
 wall medians, all three proof relations and the full transaction grid. The
-current native fund codec supports two key slots; launch recipients and fund
-weights remain unconfigured. This measurement supplies no production allocation
+native fund registry supports 32 immutable keys and eight signed claims per
+block; launch recipients and basis-point shares remain unconfigured. This measurement supplies no production allocation
 or proof of complete-block processing. The old two-output tables below remain
 explicitly diagnostic evidence only.
 

@@ -181,8 +181,14 @@ fn audit_summary(report: &audit::AuditReport) -> serde_json::Value {
         "tip": local::hex(&report.tip), "state": local::hex(&report.fingerprint),
         "total_subsidy_atoms": report.total_subsidy.to_string(),
         "miner_subsidy_atoms": report.miner_subsidy.to_string(),
-        "funds": report.funds.iter().map(|fund| serde_json::json!({
+        "funds": report.fund_wallets.iter().zip(&report.funds).map(|(identity, fund)| serde_json::json!({
+            "account": identity.account, "basis_points": identity.basis_points,
+            "team_remainder": identity.team_remainder,
+            "ml_dsa_65_verifying_key": local::hex(&identity.verifying_key),
             "entitlement_atoms":fund.entitlement.to_string(),
+            "released_atoms":fund.unlocked().expect("audited fund release overflow").to_string(),
+            "available_atoms":fund.available().expect("audited fund availability invalid").to_string(),
+            "balance_atoms":fund.available().expect("audited fund availability invalid").to_string(),
             "direct_unlocked_atoms":fund.direct_unlocked.to_string(),
             "vesting_unlocked_atoms":fund.vesting_unlocked.to_string(),
             "spent_atoms":fund.spent.to_string(), "spend_count":fund.spend_count,
@@ -222,7 +228,19 @@ mod tests {
             fingerprint: state.fingerprint(),
             total_subsidy: 0,
             miner_subsidy: 0,
-            funds: [siworld_core::v1_economics::FundBalance::default(); 2],
+            funds: state.economics.funds().to_vec(),
+            fund_wallets: state
+                .config
+                .fund_verifying_keys
+                .iter()
+                .enumerate()
+                .map(|(index, key)| audit::FundWalletIdentity {
+                    account: index as u8,
+                    basis_points: 5000,
+                    team_remainder: index == 1,
+                    verifying_key: *key,
+                })
+                .collect(),
             holder_pool: 0,
             burned: 0,
             locked_subsidy: 0,
@@ -246,6 +264,18 @@ mod tests {
         assert_eq!(summary["wallet_reward_recovery_checked"], false);
         assert_eq!(summary["asset_issuance_supported"], true);
         assert_eq!(summary["fund_spending_supported"], true);
+        assert_eq!(summary["funds"].as_array().unwrap().len(), 2);
+        assert_eq!(summary["funds"][0]["basis_points"], 5000);
+        assert_eq!(summary["funds"][0]["released_atoms"], "0");
+        assert_eq!(summary["funds"][0]["spent_atoms"], "0");
+        assert_eq!(summary["funds"][0]["balance_atoms"], "0");
+        assert_eq!(
+            summary["funds"][0]["ml_dsa_65_verifying_key"]
+                .as_str()
+                .unwrap()
+                .len(),
+            3904
+        );
     }
     #[test]
     fn audit_requires_the_exact_verified_height_tip_and_fingerprint() {

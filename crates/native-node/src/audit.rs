@@ -5,8 +5,34 @@
 //! and voluntarily locked transaction values are outside this public audit.
 use crate::state::{BlockVerifier, Config, RewardMode, State};
 use crate::wire::{Block, Hash};
-use siworld_core::v1_economics::{FundAccount, FundBalance};
+use siworld_core::v1_economics::FundBalance;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FundWalletIdentity {
+    pub account: u8,
+    pub basis_points: u16,
+    pub team_remainder: bool,
+    pub verifying_key: [u8; crate::fund_spend::VERIFYING_KEY_BYTES],
+}
+fn fund_wallets(config: &Config) -> Vec<FundWalletIdentity> {
+    config
+        .fund_allocation
+        .as_ref()
+        .map_or_else(Vec::new, |allocation| {
+            allocation
+                .basis_points()
+                .iter()
+                .zip(&config.fund_verifying_keys)
+                .enumerate()
+                .map(|(index, (share, key))| FundWalletIdentity {
+                    account: index as u8,
+                    basis_points: *share,
+                    team_remainder: index == allocation.team_index(),
+                    verifying_key: *key,
+                })
+                .collect()
+        })
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HeightIssuance {
     pub height: u64,
@@ -22,7 +48,7 @@ pub struct HeightIssuance {
     pub pool_balance: u128,
     pub locked_subsidy: u128,
     pub scheduled_circulating: u128,
-    pub funds: [FundBalance; 2],
+    pub funds: Vec<FundBalance>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuditReport {
@@ -36,7 +62,9 @@ pub struct AuditReport {
     pub burned: u128,
     pub locked_subsidy: u128,
     pub scheduled_circulating: u128,
-    pub funds: [FundBalance; 2],
+    pub funds: Vec<FundBalance>,
+    /// Immutable public genesis identities in the same order as `funds`.
+    pub fund_wallets: Vec<FundWalletIdentity>,
     pub heights: Vec<HeightIssuance>,
     pub asset_issuance_supported: bool,
     /// Public declarations have been checked during the same canonical replay.
@@ -51,13 +79,16 @@ impl AuditReport {
         Ok(())
     }
     pub fn check_supply(&self) -> Result<(), String> {
-        let accounted = self
+        let initial = self
             .miner_subsidy
             .checked_add(self.holder_pool)
-            .and_then(|v| v.checked_add(self.burned))
-            .and_then(|v| v.checked_add(self.funds[0].entitlement))
-            .and_then(|v| v.checked_add(self.funds[1].entitlement))
+            .and_then(|value| value.checked_add(self.burned))
             .ok_or("public supply audit overflow")?;
+        let accounted = self.funds.iter().try_fold(initial, |total, fund| {
+            total
+                .checked_add(fund.entitlement)
+                .ok_or("public supply audit overflow")
+        })?;
         if accounted != self.total_subsidy {
             return Err("public supply conservation failed".into());
         }
@@ -82,7 +113,7 @@ pub fn replay_blocks(
     let mut state = State::new(config)?;
     let mut heights = Vec::new();
     let mut miner_total = 0u128;
-    let mut fund_total = [0u128; 2];
+    let mut fund_total = vec![0u128; state.economics.funds().len()];
     let mut subsidy_total = 0u128;
     let mut burned_total = 0u128;
     for block in blocks {
@@ -105,16 +136,16 @@ pub fn replay_blocks(
                 .ok_or("fund audit overflow")?;
         }
         let totals = state.economics.totals();
-        let funds = [
-            state.economics.fund(FundAccount::First),
-            state.economics.fund(FundAccount::Second),
-        ];
+        let funds = state.economics.funds().to_vec();
         if totals.issued != subsidy_total
             || totals.miner_subsidy_credited != miner_total
             || totals.burned != burned_total
             || totals.holder_pool != allocation.pool_after
-            || funds[0].entitlement != fund_total[0]
-            || funds[1].entitlement != fund_total[1]
+            || funds.len() != fund_total.len()
+            || funds
+                .iter()
+                .zip(&fund_total)
+                .any(|(fund, total)| fund.entitlement != *total)
         {
             return Err("accepted economics differ from the integer audit".into());
         }
@@ -157,10 +188,8 @@ pub fn replay_blocks(
             .economics
             .scheduled_circulating()
             .map_err(|e| e.to_string())?,
-        funds: [
-            state.economics.fund(FundAccount::First),
-            state.economics.fund(FundAccount::Second),
-        ],
+        funds: state.economics.funds().to_vec(),
+        fund_wallets: fund_wallets(&state.config),
         heights,
         asset_issuance_supported: true,
         issued_assets: state

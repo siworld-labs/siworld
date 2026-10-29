@@ -25,6 +25,7 @@ DOCUMENTS = {
     "v1-multi-asset.md", "v1-multi-asset-evaluation.md", "v1-storage-and-sync.md", "v1-network-budget.md",
     "multi-asset-air-optimization.md", "v1-overview.md", "dependency-advisories.md",
     "native-proof-profiles.md", "v1-native-runtime.md", "v1-economics.md", "v1-wallet-protection.md",
+    "v1-protocol-byte-compatibility.md",
 }
 PUBLIC_ARTIFACTS = {
     "crates/core/artifacts/v1-economics-simulation.json",

@@ -423,7 +423,7 @@ fn mode_reward_count_pool_burn_and_trusted_plan_are_bound() {
     v.apply(&voyager, &TestVerifier).unwrap();
     let mut h = initial.clone();
     h.apply(&holder, &TestVerifier).unwrap();
-    assert_eq!(v.economics.totals().holder_pool, 692_483_001);
+    assert_eq!(v.economics.totals().holder_pool, 692_483_000);
     assert_eq!(v.economics.totals().burned, 147_661_816);
     assert_eq!(h.economics.totals().holder_pool, 101_810_479);
     assert_eq!(h.economics.totals().burned, 0);
@@ -483,14 +483,19 @@ fn fund_policy_is_explicit_genesis_bound_and_unconfigured_service_fails_closed()
     assert_eq!(state.fingerprint(), before);
     let configured = service
         .clone()
-        .with_fund_allocation(FundAllocation::new(vec![3, 7]).unwrap())
+        .with_fund_wallets(
+            FundAllocation::new_bps(vec![3000, 7000], 1).unwrap(),
+            Config::development([121; 32], 0)
+                .unwrap()
+                .fund_verifying_keys,
+        )
         .unwrap();
     assert_ne!(service.genesis_id(), configured.genesis_id());
     assert_eq!(
         Config::decode_rules(&configured.encode_rules()).unwrap(),
         configured
     );
-    assert_eq!(configured.fund_key_hashes, service.fund_key_hashes);
+    assert_eq!(configured.fund_verifying_keys.len(), 2);
     assert!(
         State::new(configured)
             .unwrap()
@@ -499,8 +504,138 @@ fn fund_policy_is_explicit_genesis_bound_and_unconfigured_service_fails_closed()
     );
     assert!(
         service
-            .with_fund_allocation(FundAllocation::new(vec![1, 2, 3]).unwrap())
+            .with_fund_wallets(
+                FundAllocation::new_bps(vec![2000, 3000, 5000], 2).unwrap(),
+                Vec::new()
+            )
             .is_err()
+    );
+}
+
+#[test]
+fn immutable_fund_genesis_binds_thirty_two_full_keys_shares_and_team_index() {
+    use siworld_core::v1_economics::FundAllocation;
+    let base = Config::asert_development([124; 32], 1, [0xff; 32], 1).unwrap();
+    let keys: Vec<_> = (0..32u8)
+        .map(|index| {
+            *libcrux_ml_dsa::ml_dsa_65::generate_key_pair([120 + index; 32])
+                .verification_key
+                .as_ref()
+        })
+        .collect();
+    let mut shares = vec![300; 32];
+    shares[31] = 700;
+    let configured = base
+        .clone()
+        .with_fund_wallets(
+            FundAllocation::new_bps(shares.clone(), 31).unwrap(),
+            keys.clone(),
+        )
+        .unwrap();
+    assert_eq!(
+        Config::decode_rules(&configured.encode_rules()).unwrap(),
+        configured
+    );
+    assert_eq!(configured.fund_verifying_keys.len(), 32);
+    assert_eq!(configured.fund_verifying_keys[31], keys[31]);
+    let changed_team = base
+        .clone()
+        .with_fund_wallets(
+            FundAllocation::new_bps(shares.clone(), 0).unwrap(),
+            keys.clone(),
+        )
+        .unwrap();
+    assert_ne!(configured.genesis_id(), changed_team.genesis_id());
+    let mut alternate_keys = keys.clone();
+    alternate_keys.swap(0, 1);
+    let changed_key = base
+        .clone()
+        .with_fund_wallets(
+            FundAllocation::new_bps(shares.clone(), 31).unwrap(),
+            alternate_keys,
+        )
+        .unwrap();
+    assert_ne!(configured.genesis_id(), changed_key.genesis_id());
+    let mut duplicate = keys.clone();
+    duplicate[31] = duplicate[0];
+    assert!(
+        base.clone()
+            .with_fund_wallets(
+                FundAllocation::new_bps(shares.clone(), 31).unwrap(),
+                duplicate,
+            )
+            .is_err()
+    );
+    let mut zero = keys.clone();
+    zero[0] = [0; crate::fund_spend::VERIFYING_KEY_BYTES];
+    assert!(
+        base.clone()
+            .with_fund_wallets(FundAllocation::new_bps(shares.clone(), 31).unwrap(), zero,)
+            .is_err()
+    );
+    assert!(
+        base.with_fund_wallets(
+            FundAllocation::new_bps(shares, 31).unwrap(),
+            keys[..31].to_vec(),
+        )
+        .is_err()
+    );
+    let mut noncanonical = configured.encode_rules();
+    noncanonical[146] = 33;
+    assert!(Config::decode_rules(&noncanonical).is_err());
+    assert!(Config::decode_rules(&[0; 279]).is_err());
+}
+
+#[test]
+fn eight_distinct_fund_wallets_claim_together_and_ninth_claim_is_rejected_atomically() {
+    use siworld_core::v1_economics::{FundAccount, FundAllocation};
+    let network = [125; 32];
+    let keys = (0..32u8)
+        .map(|account| signed_fund_spend(network, account, 1, 0, 20_000_000).verifying_key)
+        .collect();
+    let mut shares = vec![300; 32];
+    shares[31] = 700;
+    let config = Config::development(network, 0)
+        .unwrap()
+        .with_fund_wallets(FundAllocation::new_bps(shares, 31).unwrap(), keys)
+        .unwrap();
+    let mut state = State::new(config).unwrap();
+    for height in 1..=24u32 {
+        let block = candidate(&state, height * 100_000);
+        state.apply(&block, &TestVerifier).unwrap();
+    }
+    let mut claim = candidate(&state, 3_000_000);
+    claim.fund_spends = [0, 1, 2, 3, 4, 5, 6, 31]
+        .into_iter()
+        .map(|account| {
+            signed_fund_spend(network, account, 1, 0, 21_000_000 + u32::from(account) * 10)
+        })
+        .collect();
+    let mut ninth = claim.clone();
+    ninth
+        .fund_spends
+        .insert(7, signed_fund_spend(network, 7, 1, 0, 22_000_000));
+    let before = state.fingerprint();
+    assert!(state.apply(&ninth, &TestVerifier).is_err());
+    assert_eq!(state.fingerprint(), before);
+    state.apply(&claim, &TestVerifier).unwrap();
+    for index in [0, 1, 2, 3, 4, 5, 6, 31] {
+        assert_eq!(
+            state
+                .economics
+                .fund(FundAccount::new(index).unwrap())
+                .unwrap()
+                .spent,
+            1
+        );
+    }
+    assert_eq!(
+        state
+            .economics
+            .fund(FundAccount::new(7).unwrap())
+            .unwrap()
+            .spent,
+        0
     );
 }
 
@@ -553,11 +688,16 @@ fn signed_fund_payouts_mature_independently_are_atomic_and_replay_without_orphan
     let network = [25; 32];
     let mut config = Config::development(network, 0)
         .unwrap()
-        .with_fund_allocation(FundAllocation::new(vec![3, 7]).unwrap())
+        .with_fund_wallets(
+            FundAllocation::new_bps(vec![3000, 7000], 1).unwrap(),
+            Config::development([121; 32], 0)
+                .unwrap()
+                .fund_verifying_keys,
+        )
         .unwrap();
     for account in 0..2 {
         let spend = signed_fund_spend(network, account as u8, 1, 0, 8_000_000);
-        config.fund_key_hashes[account] = *blake3::hash(&spend.verifying_key).as_bytes();
+        config.fund_verifying_keys[account] = spend.verifying_key;
     }
     let mut state = State::new(config).unwrap();
     for height in 1..=23 {
@@ -613,10 +753,10 @@ fn signed_fund_payouts_mature_independently_are_atomic_and_replay_without_orphan
     }
     state.apply(&payout, &TestVerifier).unwrap();
     assert_eq!(
-        state.economics.fund(FundAccount::First).spent,
+        state.economics.fund(FundAccount::FIRST).unwrap().spent,
         u128::from(first_available)
     );
-    assert_eq!(state.economics.fund(FundAccount::Second).spent, 0);
+    assert_eq!(state.economics.fund(FundAccount::SECOND).unwrap().spent, 0);
     assert!(
         state
             .commitments
@@ -625,9 +765,20 @@ fn signed_fund_payouts_mature_independently_are_atomic_and_replay_without_orphan
     let mut replacement = parent.clone();
     let without_payout = candidate(&replacement, 2_600_000);
     replacement.apply(&without_payout, &TestVerifier).unwrap();
-    assert_eq!(replacement.economics.fund(FundAccount::First).spent, 0);
     assert_eq!(
-        replacement.economics.fund(FundAccount::First).spend_count,
+        replacement
+            .economics
+            .fund(FundAccount::FIRST)
+            .unwrap()
+            .spent,
+        0
+    );
+    assert_eq!(
+        replacement
+            .economics
+            .fund(FundAccount::FIRST)
+            .unwrap()
+            .spend_count,
         0
     );
     assert!(

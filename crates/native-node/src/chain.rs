@@ -182,6 +182,17 @@ fn state_budget(state: &State) -> Option<usize> {
                 .checked_mul(std::mem::size_of::<crate::state::CanonicalSnapshot>())?,
         )?
         .checked_add(state.timestamps.capacity().checked_mul(8)?)?
+        .checked_add(
+            state
+                .config
+                .fund_verifying_keys
+                .capacity()
+                .checked_mul(crate::fund_spend::VERIFYING_KEY_BYTES)?,
+        )?
+        .checked_add(match &state.config.fund_allocation {
+            Some(allocation) => allocation.owned_bytes()?,
+            None => 0,
+        })?
         .checked_add(state.economics.logical_memory_bytes()?)?
         .checked_add(state.assets.logical_memory_bytes()?)?
         .checked_add(8192)
