@@ -48,7 +48,7 @@ jobs:
           persist-credentials: false
       - name: Install the pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Test economic rules before running the full simulation
         run: |
           cargo test --release --locked -p siworld-core v1_economics::tests::
@@ -78,7 +78,7 @@ jobs:
           persist-credentials: false
       - name: Install the pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: crates/native-node
       - name: Check formatting and all native targets
@@ -107,7 +107,7 @@ jobs:
             --output .local/economics-candidate/public/preflight
       - name: Install the pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: crates/bench-multi-asset -> ../../.local/economics-proof-target
           cache-on-failure: true
