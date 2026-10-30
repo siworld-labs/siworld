@@ -11,9 +11,9 @@ required evidence; this document does not report their completion. No production
 service command is supplied. The runtime does not activate a public network,
 replace an existing database or change the retained seven-node legacy network.
 Independent security review remains pending. The current native settlement
-decoder and wire cap are 655,360 bytes; the previously observed 524,619-byte
-wallet witness therefore fits, pending the fresh full-load measurement and
-genuine wallet rerun required for release evidence.
+decoder and wire cap are 655,360 bytes. The full-load evidence below satisfies
+the settlement body-size margin on its measured source revision; genuine
+wallet completion and current-revision CI remain separate release checks.
 
 ## Scope
 
@@ -98,6 +98,54 @@ configured, backed-up recipient wallet; receipts do not replace its seed
 backup. The separate wallet API does not establish protected durable wallet
 recovery merely by accepting a recipient address.
 
+## Fixed-profile measurement evidence
+
+The following measurements use source revision
+`f39e1ce55493d1079e5ed2416baa5d8e9c8699b5`, Ubuntu 24.04, four Rayon
+workers and two composition-hiding workers. Each proof trial ran in a fresh
+5-GiB memory scope with swap disabled. All trials exited successfully, retained
+no descendants and reported zero memory-event deltas. Generation timing excludes
+setup; `memory.peak` covers the complete setup/prove/verify process tree and
+recorder. It is not an independent verifier-memory measurement or a miner
+hardware requirement.
+
+The [fixed transaction diagnostic](https://github.com/siworld-labs/siworld/actions/runs/40999077368)
+used an actual AMD EPYC 7763 exposing four vCPUs and two physical cores. It
+reproduced the frozen keys and used only 7/41/20:
+
+| Trial | Proof body (bytes) | Generation (seconds) | Verification (milliseconds) | Memory peak (bytes) |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 583,072 | 1.303 | 17.008 | 525,484,032 |
+| 2 | 574,432 | 1.304 | 16.656 | 525,488,128 |
+| 3 | 583,648 | 1.370 | 16.898 | 525,455,360 |
+
+These samples meet the 655,360-byte and two-second numerical limits on that
+runner. The run was explicitly dispatched in diagnostic mode and preserves
+`baseline_qualified: false` and `engineering_target_pass: false`; it does not
+replace a successful strict baseline workflow. The reproduced p3-security
+single-proof report gives a quantum-halved Johnson/challenge union estimate
+of 81.6922 bits and a BHT commitment-collision estimate of 123.3333 bits.
+The separately modeled BLAKE3-256 application binding has a nominal BHT
+collision estimate of 85.3333 bits and is outside the p3 report. These are
+engineering model estimates pending independent review.
+
+The [full-load settlement run](https://github.com/siworld-labs/siworld/actions/runs/40998924075)
+used an actual AMD EPYC 9V74, fixed 8/36/20, 576 priority-fee slots and five
+Holder reward notes:
+
+| Trial | Proof body (bytes) | Generation (seconds) | Verification (milliseconds) | Memory peak (bytes) |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 504,891 | 4.688 | 16.260 | 3,159,597,056 |
+| 2 | 511,131 | 4.724 | 16.466 | 3,159,846,912 |
+| 3 | 511,323 | 4.841 | 16.445 | 3,159,867,392 |
+
+The maximum body is below 589,824 bytes and leaves 21.9783% of the active
+655,360-byte cap unused. This is three observed witnesses, not a mathematical
+maximum over all proof randomness. Eight signed ML-DSA-65 fund claims are
+checked outside the settlement AIR in a separate maximum-envelope test. That
+codec test uses opaque proof fills; it is not full-block proof acceptance.
+The settlement samples are not an EPYC 7763 baseline.
+
 ## Admission, synchronization and fork handling
 
 `runtime::Node` composes a persistent store, verified mempool, padding pool
@@ -112,6 +160,21 @@ assembly checks every opening and adds the private fee sum to reward note
 zero with checked integer arithmetic. Fees are not split, burned or deposited
 into the Holder pool. Each template captures an explicit Voyager/Holder setting;
 changed settings affect subsequent templates only.
+
+`Node::prepare_block` returns a move-only `PreparedBlock` bound to the node
+instance, production generation and accepted-state fingerprint. Branch adoption
+or a successful local commit invalidates earlier candidates, including a
+candidate whose parent height could later recur. `Node::commit_produced`
+authenticates its reward receipt, writes it through the store's opened parent
+directory, syncs the file and directory, and then invokes `Store::append`.
+Receipt writes reject changed database/directory identities, nonprivate Unix
+ownership or permissions, hard-linked databases, symlinks and existing receipt
+names. Receipt failure leaves the accepted head unchanged; a rejected append
+preserves the receipt as evidence. This API is a prerequisite for resident
+networking. The standalone CLI and continuous service still use their existing
+path-based receipt helper and are not yet routed through this API. Non-Unix
+store-owned receipt commits fail closed; macOS extended ACL qualification
+remains unresolved.
 
 The verified pool permits 512 MiB and 2,048 entries, with 16 MiB/64 entries
 per opaque peer and at most 4,096 peer identities. These are logical owned-byte
