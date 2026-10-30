@@ -154,6 +154,37 @@ fn reward_block(
 }
 
 #[test]
+fn first_voyager_reward_uses_the_reward_receipt_namespace() {
+    let network = [18; 32];
+    let config = Config::development(network, 0).unwrap();
+    let state = State::new(config.clone()).unwrap();
+    let original = wallet(network, 19);
+    let block = reward_block(
+        &state,
+        &original,
+        crate::state::RewardMode::Voyager,
+        120_000,
+    );
+    let expected = block.rewards[0].commitment;
+    let mut restored = wallet(network, 19);
+    restored.reconcile(config, &[block], &TestVerifier).unwrap();
+    assert_eq!(restored.receipts().len(), 1);
+    assert!(
+        restored
+            .receipts()
+            .iter()
+            .all(|receipt| receipt.output_index != 0)
+    );
+    let reward = restored
+        .receipts()
+        .iter()
+        .find(|receipt| receipt.height == 1 && receipt.output_index == 3)
+        .expect("the first miner reward uses the first reward receipt position");
+    assert_eq!(reward.commitment, expected);
+    assert_eq!(reward.note().unlock_height, 25);
+}
+
+#[test]
 fn reward_scanning_recovers_five_holder_batches_and_unique_nullifiers_from_seed() {
     let network = [8; 32];
     let config = Config::development(network, 0).unwrap();

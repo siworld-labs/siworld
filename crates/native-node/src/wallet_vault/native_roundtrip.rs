@@ -188,8 +188,8 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
             let reward = sender
                 .receipts()
                 .iter()
-                .find(|receipt| receipt.height == 1 && receipt.output_index == 0)
-                .unwrap();
+                .find(|receipt| receipt.height == 1 && receipt.output_index == 3)
+                .expect("the first miner reward must be recovered in the reward receipt namespace");
             assert_eq!(reward.note().unlock_height, 25);
             first_reward = Some(reward.commitment);
             // Even a future local scheduler clock cannot bypass consensus

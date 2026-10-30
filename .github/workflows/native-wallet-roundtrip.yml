@@ -9,6 +9,8 @@ on:
       - 'crates/bench-multi-asset/**'
       - 'crates/bench-d8/**'
       - '.github/workflows/native-wallet-roundtrip.yml'
+      - 'scripts/native-wallet-gate-report.py'
+      - 'scripts/tests/test_native_wallet_gate_report.py'
 
 permissions:
   contents: read
@@ -79,55 +81,36 @@ jobs:
           Path('.local/native-wallet/private/test-executable').write_text(str(binaries[0]))
           PY_EXECUTABLE
       - name: Run genuine native proofs with an external four-hour deadline
+        id: roundtrip
         env:
           SIWORLD_RUN_NATIVE_WALLET_ROUNDTRIP: '1'
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           umask 077
           export SIWORLD_NATIVE_WALLET_RUN_ROOT="$GITHUB_WORKSPACE/.local/native-wallet/private/runs"
+          python3 scripts/native-wallet-gate-report.py prepare \
+            --private-root .local/native-wallet/private --source-commit "$SOURCE_COMMIT"
           test_binary="$(cat .local/native-wallet/private/test-executable)"
           timeout --signal=TERM --kill-after=30s 4h "$test_binary" \
             wallet_vault::native_roundtrip::genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs \
             --ignored --exact --test-threads=1 > .local/native-wallet/private/roundtrip.log 2>&1
-          python3 - <<'PY_GATE'
-          import json
-          from pathlib import Path
-          runs = list(Path('.local/native-wallet/private/runs').glob('native-wallet-roundtrip-*'))
-          assert len(runs) == 1, 'Expected exactly one fresh owned run'
-          progress = json.loads((runs[0] / 'roundtrip-progress.json').read_text())
-          assert progress['stage'] == 'complete' and progress['accepted_height'] == 26
-          assert progress['required_height'] == 26 and progress['slots_per_block'] == 64
-          assert 0 < progress['elapsed_ms'] < 14_400_000
-          Path('.local/native-wallet/public/gate.json').write_text(json.dumps({
-              'genuine_native_wallet_gate_passed': True, 'accepted_height': 26,
-              'slots_per_block': 64, 'transaction_proofs': 1664, 'settlement_proofs': 26,
-              'consensus_maturity_blocks': 24, 'elapsed_ms': progress['elapsed_ms'],
-              'wall_clock_soak': False, 'network_activation': False,
-              'maximum_load_qualification': False, 'cryptographic_approval': False}, indent=2) + '\n')
-          PY_GATE
       - name: Preserve only an allowlisted outcome
         if: ${{ always() }}
         env:
-          JOB_STATUS: ${{ job.status }}
+          ROUNDTRIP_OUTCOME: ${{ steps.roundtrip.outcome || 'skipped' }}
           SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          python3 - <<'PY_STATUS'
-          import json
-          import os
-          from pathlib import Path
-          root = Path('.local/native-wallet/public')
-          root.mkdir(parents=True, exist_ok=True)
-          (root / 'workflow-status.json').write_text(json.dumps({
-              'source_commit': os.environ['SOURCE_COMMIT'],
-              'job_status_before_upload': os.environ['JOB_STATUS'],
-              'gate_report_present': (root / 'gate.json').is_file(),
-              'network_activation': False, 'cryptographic_approval': False}, indent=2) + '\n')
-          PY_STATUS
+          python3 scripts/native-wallet-gate-report.py report \
+            --private-root .local/native-wallet/private --source-commit "$SOURCE_COMMIT" \
+            --outcome "$ROUNDTRIP_OUTCOME" --output .local/native-wallet/public/gate.json
       - name: Upload sanitized gate outcome without wallets or chain data
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: native-wallet-roundtrip-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .local/native-wallet/public/*.json
+          path: |
+            .local/native-wallet/public/hardware.json
+            .local/native-wallet/public/gate.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
