@@ -41,6 +41,8 @@ jobs:
           python3 - <<'PY_TLS'
           import importlib.util
           from pathlib import Path
+          log_dir = Path('.local/tls-candidate')
+          log_dir.mkdir(parents=True, exist_ok=True)
           spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
           build = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(build)
@@ -48,7 +50,7 @@ jobs:
               'crates/native-node/Cargo.toml', '--features', 'hybrid-tls-candidate', '--lib']
           for selected, minimum, name in [('p2p::hybrid_tls::', 22, 'transport'),
               ('identity::tls_', 4, 'identity')]:
-              build.run_logged([*command, selected], Path('.local/tls-candidate') / (name + '.log'),
+              build.run_logged([*command, selected], log_dir / (name + '.log'),
                   nonempty_tests=True, minimum_tests=minimum)
           PY_TLS
   native-economic-accounting:
