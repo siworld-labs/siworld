@@ -216,6 +216,13 @@ class NativeFullLoadTests(unittest.TestCase):
             cpuinfo = base / 'cpuinfo'
             cpuinfo.write_text('model name\t: AMD EPYC 7763 64-Core Processor\n')
             commands = []
+            recorder_results = set()
+            original_write = FULL.write
+
+            def parent_write(path, value):
+                if Path(path) in recorder_results:
+                    raise PermissionError('The recorder result is owned by root')
+                original_write(path, value)
 
             def mapped(path):
                 return cpuinfo if str(path) == '/proc/cpuinfo' else Path(path)
@@ -223,18 +230,22 @@ class NativeFullLoadTests(unittest.TestCase):
             def run(command, **kwargs):
                 commands.append(command)
                 config = json.loads(Path(command[-1]).read_text())
-                FULL.write(config['result'], dict(complete=True, proof_report_valid=True,
+                original_write(config['result'], dict(complete=True, proof_report_valid=True,
                     measurement=FULL.metrics(self.report()), memory_peak_bytes=1000))
+                recorder_results.add(Path(config['result']))
                 return mock.Mock(returncode=0, stdout='/private/host/excluded log')
 
             with mock.patch.object(FULL, 'BASE', base), \
                  mock.patch.object(FULL, 'Path', side_effect=mapped), \
                  mock.patch.dict(FULL.os.environ, {'CARGO_TARGET_DIR': str(base / 'target')}), \
                  mock.patch.object(FULL, 'cpu_capacity', return_value=dict(four_vcpu_capacity_visible=True)), \
+                 mock.patch.object(FULL, 'write', side_effect=parent_write), \
                  mock.patch.object(FULL.subprocess, 'check_output', return_value='a' * 40), \
                  mock.patch.object(FULL.subprocess, 'run', side_effect=run):
                 self.assertEqual(FULL.collect(), 0)
             self.assertEqual(len(commands), 3)
+            self.assertTrue(all(path.parent == base / 'private' for path in recorder_results))
+            self.assertEqual(len(list((base / 'public').glob('trial-*.json'))), 3)
             self.assertEqual(len({command[command.index('--quiet') + 1] for command in commands}), 3)
             summary = json.loads((base / 'public/summary.json').read_text())
             self.assertTrue(summary['epyc7763_baseline_complete'])

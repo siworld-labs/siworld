@@ -223,7 +223,7 @@ def collect():
         config = dict(uid=os.getuid(), gid=os.getgid(), unit=unit, trial=trial,
                       binary=str(binary.resolve()), binary_sha256=binary_hash, source_commit=source,
                       raw=str(BASE / f'private/raw-{trial}.json'), log=str(BASE / f'private/worker-{trial}.log'),
-                      result=str(BASE / f'public/trial-{trial}.json'))
+                      result=str(BASE / f'private/scope-result-{trial}.json'))
         path = BASE / f'private/config-{trial}.json'
         write(path, config)
         try:
@@ -252,7 +252,9 @@ def collect():
             row.update(complete=False, failure='scope-or-recorder-failed',
                        error_class=type(error).__name__, scope_cleanup_failed=cleanup_failed,
                        acceptance=False)
-        write(config['result'], row)
+        # Preserve the root-owned recorder evidence unchanged. The runner owns
+        # a separate allowlisted export containing the scope's exit status.
+        write(BASE / f'public/trial-{trial}.json', row)
         rows.append(row)
     complete = all(row.get('complete') is True for row in rows)
     measured = [row['measurement'] for row in rows if row.get('proof_report_valid') is True]
