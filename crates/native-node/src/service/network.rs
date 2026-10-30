@@ -1225,6 +1225,6 @@ pub(super) fn continuous(
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod genuine;
+#[cfg(test)]
+mod tests;
