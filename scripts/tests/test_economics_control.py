@@ -69,42 +69,20 @@ class EconomicsControlTests(unittest.TestCase):
     def workflow(self):
         return (ROOT / '.github/workflows/v1-economics.yml').read_text()
 
-    def test_workflow_requires_explicit_dispatch_for_grid_and_selected_key_exports(self):
+    def test_workflow_requires_baseline_on_pr_and_gates_selected_key_exports(self):
         workflow = self.workflow()
-        self.assertIn('measure_wallet_grid:\n'
-            '        description: Run the three-trial EPYC 7763 economic proof grid\n'
-            '        type: boolean\n        default: false', workflow)
         self.assertIn("HARDWARE_PROFILE: ${{ github.event_name == 'workflow_dispatch' "
             "&& inputs.hardware_profile || 'epyc7763-baseline' }}", workflow)
         self.assertIn('default: epyc7763-baseline\n        options:\n'
             '          - epyc7763-baseline\n          - epyc9v45-control', workflow)
-        for title in ('Qualify the requested CPU profile before building proof tools',
-                'Measure all requested coordinates three times on the target CPU'):
-            step = workflow.split('      - name: ' + title + '\n')[1].split('      - name:', 1)[0]
-            self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' "
-                "&& inputs.measure_wallet_grid }}", step)
-            self.assertNotIn("github.event_name == 'pull_request'", step)
         selected = workflow.split('      - name: Reproduce the actually selected transaction key as pending evidence\n')[1]
         selected = selected.split('      - name:', 1)[0]
-        self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' "
-            "&& inputs.measure_wallet_grid && env.HARDWARE_PROFILE == 'epyc7763-baseline' }}", selected)
-        self.assertNotIn("github.event_name == 'pull_request'", selected)
+        self.assertIn("if: ${{ env.HARDWARE_PROFILE == 'epyc7763-baseline' && ", selected)
         self.assertIn('freeze.economic_summary(summary, require_admission_margin=False)', selected)
         self.assertLess(workflow.index('--qualify-only'), workflow.index('name: Build and test revised AIRs'))
         upload = workflow.split('      - uses: actions/upload-artifact@')[-1]
         self.assertIn('if: ${{ always() }}', upload)
         self.assertIn('path: .local/economics-candidate/public/**/*.json', upload)
-
-    def test_regular_pr_screening_and_tests_remain_unconditional(self):
-        workflow = self.workflow()
-        self.assertIn("on:\n  pull_request:\n    paths:", workflow)
-        for title in ('Test economic-candidate measurement rejection and resource reporting',
-                'Build and test revised AIRs without replacing prior freeze evidence',
-                'Screen actual transaction, five-reward settlement and issuance AIRs'):
-            step = workflow.split('      - name: ' + title + '\n')[1].split('      - name:', 1)[0]
-            self.assertNotIn('        if:', step)
-        self.assertIn("run: python3 -m unittest discover -s scripts/tests -p 'test_economics*.py'", workflow)
-        self.assertIn('v1-transaction-scan screen .local/economics-candidate/public/screen.json', workflow)
 
     def test_workflow_failure_evidence_never_marks_control_or_failed_baseline_as_eligible(self):
         match = re.search(r"python3 - <<'PY_STATUS'\n(.*?)\n\s+PY_STATUS", self.workflow(), re.S)

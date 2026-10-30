@@ -108,6 +108,14 @@ performed serially to avoid unnecessary concurrent memory pressure.
 
 ## Generate and verify synthetic proofs
 
+The original `.github/workflows/v1-economics.yml` is an immutable input to the
+historical source-bound measurement and is disabled in this repository.
+`.github/workflows/v1-economic-regressions.yml` retains the economic tests,
+actual-AIR screening and public-key reproduction. Its full parameter grid is
+disabled by default and requires explicit manual dispatch with
+`measure_wallet_grid` enabled. Routine PR validation must not start a new grid
+or rewrite the frozen profile.
+
 The isolated `native-scan` executable generates a fresh synthetic proof, verifies
 it locally, and writes a technical result file. It does not export a reusable
 proof package or provide a wallet/peer verification API. To exercise each fixed
