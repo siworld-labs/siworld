@@ -1017,8 +1017,7 @@ fn run_controlled(
     )?;
     result
 }
-pub fn request_stop(directory: &Path) -> Result<(), String> {
-    let status = exported_status(directory)?;
+fn active_run(status: &Value) -> Result<&str, String> {
     let run = status
         .get("run_id")
         .and_then(Value::as_str)
@@ -1038,7 +1037,60 @@ pub fn request_stop(directory: &Path) -> Result<(), String> {
     ) {
         return Err("no active service run is exported".into());
     }
+    Ok(run)
+}
+pub fn request_stop(directory: &Path) -> Result<(), String> {
+    let status = exported_status(directory)?;
+    let run = active_run(&status)?;
     write_stop_request(directory, run)
+}
+
+/// Stop only the explicitly identified run. A concurrently replaced status
+/// cannot redirect this request to a newer service invocation.
+pub fn request_stop_expected(directory: &Path, expected_run_id: &str) -> Result<(), String> {
+    stop_path(directory, expected_run_id)?;
+    let status = exported_status(directory)?;
+    if active_run(&status)? != expected_run_id {
+        return Err("exported service run differs from the expected run identity".into());
+    }
+    // Use the caller's immutable selection even if the export now changes.
+    write_stop_request(directory, expected_run_id)
+}
+
+/// Independently replay the idle canonical store and authenticate its local
+/// reward evidence. Exported service status is never accepted as proof.
+pub fn check_offline(directory: &Path) -> Result<Value, String> {
+    let _lease = Lease::acquire(directory)?;
+    let verifier = NativeVerifier::new()?;
+    let store = Store::open_existing(
+        directory.join("chain.redb"),
+        local::load(directory)?,
+        &verifier,
+    )?;
+    let (checked, scope) = if store.has_local_reward_index()? {
+        (store.verify_local_rewards()?, "indexed-local-rewards")
+    } else {
+        // An unindexed legacy history must authenticate every block receipt.
+        // Missing ownership metadata never implies remote production.
+        let mut checked = 0u64;
+        for height in 1..=store.state().height {
+            let block = store.block(height)?;
+            let id = block.id()?;
+            let secret = local::read_reward(directory, &id)?;
+            producer::validate_reward_secret(&block, &secret)?;
+            checked += 1;
+        }
+        (checked, "strict-legacy-rewards")
+    };
+    Ok(json!({
+        "schema": 1,
+        "height": store.state().height,
+        "tip": local::hex(&store.state().tip),
+        "state_fingerprint": local::hex(&store.state().fingerprint()),
+        "proof_replay_checked": true,
+        "local_reward_receipts_checked": checked,
+        "validation_scope": scope,
+    }))
 }
 
 #[cfg(test)]

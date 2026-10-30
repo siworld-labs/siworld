@@ -10,7 +10,7 @@ use siworld_native_node::{
 use std::path::Path;
 fn help() {
     println!(
-        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\ngenesis-id DIRECTORY       Read the validated public full-rules genesis identifier\nidentity-init DIRECTORY    Explicitly create persistent dual peer identities\nidentity-public DIRECTORY  Export the verified public dual-signed descriptor\nconfigure-miner DIRECTORY MODE ADDRESS_FILE  Select voyager/holder and a backed-up wallet address\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, issuance RPC listener, or public-network activation is provided. Peer listening requires the explicit native-p2p engineering feature."
+        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\ngenesis-id DIRECTORY       Read the validated public full-rules genesis identifier\nidentity-init DIRECTORY    Explicitly create persistent dual peer identities\nidentity-public DIRECTORY  Export the verified public dual-signed descriptor\nconfigure-miner DIRECTORY MODE ADDRESS_FILE  Select voyager/holder and a backed-up wallet address\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY [EXPECTED_RUN_ID]  Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY [--json]   Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, issuance RPC listener, or public-network activation is provided. Peer listening requires the explicit native-p2p engineering feature."
     );
     #[cfg(feature = "native-p2p")]
     println!(
@@ -37,6 +37,22 @@ fn exact(args: &[String]) -> Result<(), String> {
         Err("unexpected argument".into())
     } else {
         Ok(())
+    }
+}
+fn stop_command(args: &[String]) -> Result<(), String> {
+    match args {
+        [command, directory] if command == "stop" => service::request_stop(Path::new(directory)),
+        [command, directory, expected_run_id] if command == "stop" => {
+            service::request_stop_expected(Path::new(directory), expected_run_id)
+        }
+        _ => Err("expected stop DIRECTORY [EXPECTED_RUN_ID]".into()),
+    }
+}
+fn check_json(args: &[String]) -> Result<bool, String> {
+    match args {
+        [command, _] if command == "check" => Ok(false),
+        [command, _, flag] if command == "check" && flag == "--json" => Ok(true),
+        _ => Err("expected check DIRECTORY [--json]".into()),
     }
 }
 #[cfg(feature = "native-p2p")]
@@ -153,8 +169,7 @@ fn run() -> Result<(), String> {
             service::run(path)?;
         }
         "stop" => {
-            exact(&args)?;
-            service::request_stop(path)?;
+            stop_command(&args)?;
             println!("graceful stop requested for the exported service run");
         }
         "service-status" => {
@@ -182,6 +197,25 @@ fn run() -> Result<(), String> {
             );
         }
         "status" | "check" | "audit" => {
+            if args[0] == "check" {
+                let as_json = check_json(&args)?;
+                let checked = service::check_offline(path)?;
+                if as_json {
+                    println!("{checked}");
+                } else {
+                    println!(
+                        "verified engineering state: height={}, tip={}, state={}",
+                        checked["height"]
+                            .as_u64()
+                            .ok_or("checked height unavailable")?,
+                        checked["tip"].as_str().ok_or("checked tip unavailable")?,
+                        checked["state_fingerprint"]
+                            .as_str()
+                            .ok_or("checked fingerprint unavailable")?,
+                    );
+                }
+                return Ok(());
+            }
             exact(&args)?;
             if args[0] == "status" && path.join(service::STATUS_FILE).exists() {
                 println!("{}", service::exported_status(path)?);
@@ -214,20 +248,6 @@ fn run() -> Result<(), String> {
                 }
                 println!("{}", audit_summary(&report));
                 return Ok(());
-            }
-            if args[0] == "check" {
-                if store.has_local_reward_index()? {
-                    store.verify_local_rewards()?;
-                } else {
-                    // Legacy isolated histories require every block receipt;
-                    // absent ownership metadata never implies imported work.
-                    for height in 1..=store.state().height {
-                        let block = store.block(height)?;
-                        let id = block.id()?;
-                        let secret = local::read_reward(path, &id)?;
-                        producer::validate_reward_secret(&block, &secret)?;
-                    }
-                }
             }
             println!(
                 "verified engineering state: height={}, tip={}, state={}",
@@ -395,6 +415,95 @@ mod tests {
                 "offline issuance audit head differs from verified store"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod control_command_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    struct Directory(PathBuf);
+    impl Directory {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "siworld-control-command-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir(&path).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+            Self(path)
+        }
+    }
+    impl Drop for Directory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    fn arguments(command: &str, directory: &Path, extra: &[&str]) -> Vec<String> {
+        std::iter::once(command.to_owned())
+            .chain(std::iter::once(directory.to_str().unwrap().to_owned()))
+            .chain(extra.iter().map(|value| (*value).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn stop_cli_rejects_malformed_mismatched_and_extra_arguments_before_mutation() {
+        let directory = Directory::new();
+        let run_id = "b".repeat(64);
+        let stale = "a".repeat(64);
+        let uppercase = "B".repeat(64);
+        let status = directory.0.join(service::STATUS_FILE);
+        std::fs::write(
+            &status,
+            serde_json::to_vec(&serde_json::json!({
+                "run_id": run_id, "phase": "networking"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&status, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        for extra in [
+            vec![""],
+            vec!["invalid"],
+            vec![uppercase.as_str()],
+            vec![stale.as_str()],
+            vec![run_id.as_str(), "extra"],
+        ] {
+            assert!(stop_command(&arguments("stop", &directory.0, &extra)).is_err());
+            assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+            assert!(!service::stop_requested(&directory.0, &run_id).unwrap());
+        }
+        assert!(stop_command(&["stop".into()]).is_err());
+        stop_command(&arguments("stop", &directory.0, &[&run_id])).unwrap();
+        assert!(service::stop_requested(&directory.0, &run_id).unwrap());
+    }
+
+    #[test]
+    fn check_cli_accepts_only_an_optional_exact_json_flag() {
+        let directory = Path::new("unused");
+        assert!(!check_json(&arguments("check", directory, &[])).unwrap());
+        assert!(check_json(&arguments("check", directory, &["--json"])).unwrap());
+        for extra in [
+            vec!["json"],
+            vec!["--JSON"],
+            vec!["--json", "extra"],
+            vec!["--json", "--json"],
+        ] {
+            assert!(check_json(&arguments("check", directory, &extra)).is_err());
+        }
+        assert!(check_json(&["check".into()]).is_err());
     }
 }
 

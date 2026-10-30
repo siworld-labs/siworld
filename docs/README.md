@@ -15,7 +15,7 @@ outstanding.
 3. [Architecture](architecture.md), [protocol](protocol.md), [cryptography](cryptography.md) and [security model](security-model.md).
 4. [Monetary rules](v1-economics.md), [transaction specification](route-a-v1.md), [multi-asset relation](v1-multi-asset.md) and [confidential fee settlement](fee-settlement.md).
 5. [Proof-profile reproduction](native-proof-profiles.md), [transaction profile](../crates/bench-multi-asset/artifacts/v1-transaction-profile.json) and [actual-instance measurements](v1-multi-asset-evaluation.md).
-6. [Node/network milestones](v1-node-network-plan.md), [single-node engineering runtime](v1-native-runtime.md) and [testnet acceptance](prover-acceptance.md).
+6. [Node/network milestones](v1-node-network-plan.md), [single-node engineering runtime](v1-native-runtime.md), [pinned Linux engineering node](linux-native-engineering-node.md) and [testnet acceptance](prover-acceptance.md).
 
 ## Proof implementation and measurement
 

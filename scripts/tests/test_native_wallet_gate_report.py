@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest import mock
@@ -34,8 +35,12 @@ class NativeWalletGateTests(unittest.TestCase):
 
     def record(self, **changes):
         value = dict(schema=1, stage='complete', accepted_height=26,
-                     required_height=26, slots_per_block=64, elapsed_ms=1000)
+                     required_height=26, slots_per_block=64, elapsed_ms=1000,
+                     commit_path='native-node-owned-durable-receipt',
+                     validated_reward_receipts=26)
         value.update(changes)
+        if 'validated_reward_receipts' not in changes:
+            value['validated_reward_receipts'] = value['accepted_height']
         (self.run / 'roundtrip-progress.json').write_text(json.dumps(value))
         return value
 
@@ -65,6 +70,57 @@ class NativeWalletGateTests(unittest.TestCase):
         self.assertEqual(value['required_height'], 26)
         self.assertEqual(value['slots_per_block'], 64)
         self.assertNotIn('private-token', json.dumps(value))
+        self.assertNotIn('commit_path', value)
+        self.assertNotIn('validated_reward_receipts', value)
+
+    def test_owned_commit_path_is_exact_typed_and_never_exposes_unapproved_content(self):
+        for path in ('', 'native-node-owned-durable-receipt-private-secret',
+                     'native-wallet-direct-append', True, 1, None, [], {}):
+            with self.subTest(path=path):
+                self.record(commit_path=path)
+                value = self.report('success')
+                self.assert_invalid(value)
+                self.assertNotIn('private-secret', json.dumps(value))
+
+    def test_validated_reward_count_is_exact_integer_equal_to_accepted_height(self):
+        for count in (True, 26.0, '26', None, [], {}, -1, 0, 25, 27):
+            with self.subTest(count=count):
+                self.record(validated_reward_receipts=count)
+                self.assert_invalid(self.report('success'))
+        self.record(stage='native-funding', accepted_height=12)
+        value = self.report('failure')
+        self.assertEqual(value['stage'], 'native-funding')
+        self.assertEqual(value['accepted_height'], 12)
+        self.assertEqual(value['failure_category'], 'test-process-failed')
+        self.record(stage='native-funding', accepted_height=12, validated_reward_receipts=11)
+        self.assert_invalid(self.report('success'))
+
+    def test_missing_owned_commit_fields_and_old_progress_shape_are_rejected(self):
+        for fields in (('commit_path',), ('validated_reward_receipts',),
+                       ('commit_path', 'validated_reward_receipts')):
+            with self.subTest(fields=fields):
+                value = self.record()
+                for field in fields:
+                    del value[field]
+                (self.run / 'roundtrip-progress.json').write_text(json.dumps(value))
+                self.assert_invalid(self.report('success'))
+
+    def test_rust_progress_contract_matches_the_collector_fixture(self):
+        source = (ROOT / GATE.SOURCE).read_text()
+        function = re.search(r'fn progress\([^{}]*\)\s*\{(.*?)\n\}', source, re.DOTALL)
+        self.assertIsNotNone(function)
+        encoded = re.search(r'&serde_json::json!\(\{(.*?)\}\)', function[1], re.DOTALL)
+        self.assertIsNotNone(encoded)
+        keys = re.findall(r'"([a-z_]+)"\s*:', encoded[1])
+        self.assertEqual(set(keys), set(self.record()))
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertRegex(encoded[1], r'"commit_path"\s*:\s*"native-node-owned-durable-receipt"')
+        for field in ('accepted_height', 'validated_reward_receipts'):
+            self.assertRegex(encoded[1], rf'"{field}"\s*:\s*store\.state\(\)\.height')
+        self.assertRegex(encoded[1], r'"schema"\s*:\s*1\b')
+        self.assertRegex(encoded[1], r'"required_height"\s*:\s*26\b')
+        self.assertRegex(encoded[1], r'"slots_per_block"\s*:\s*SLOTS\b')
+        self.assertRegex(source, r'const SLOTS:\s*usize\s*=\s*64;')
 
     def test_failed_process_is_not_passed_even_if_progress_says_complete(self):
         self.record()

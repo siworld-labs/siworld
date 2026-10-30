@@ -56,7 +56,7 @@ jobs:
   native-resident-network:
     name: Native V1 resident peer runtime (engineering)
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       AWS_LC_SYS_USE_SYSTEM: "0"
       CARGO_BUILD_JOBS: 4
@@ -65,6 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
@@ -110,6 +111,64 @@ jobs:
               Path('.local/native-resident/composition.log'),
               nonempty_tests=True, minimum_tests=1)
           PY_COMPOSITION
+      - name: Build and inspect the guarded pinned-peer Linux package
+        run: |
+          python3 scripts/build-native-runtime.py --native-p2p --output .local/native-peer-release
+          .local/native-peer-release/bin/siworld-native-node --check-cpu
+          python3 - <<'PY_PACKAGE'
+          import hashlib
+          import json
+          from pathlib import Path
+          import re
+          import shutil
+          import subprocess
+          import tarfile
+          root = Path('.local/native-peer-release')
+          (root / 'scripts').mkdir()
+          for name in ('native-network-status.py', 'native-network-stop.py'):
+              shutil.copy2(Path('scripts') / name, root / 'scripts' / name)
+          shutil.copytree('docs', root / 'docs')
+          for name in ('LICENSE', 'NOTICE'):
+              shutil.copy2(name, root / name)
+          (root / 'metadata').mkdir()
+          for source, name in (
+              ('crates/native-node/Cargo.lock', 'native-runtime-Cargo.lock'),
+              ('crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json', 'native-proof-profiles.json'),
+              ('rust-toolchain.toml', 'rust-toolchain.toml')):
+              shutil.copy2(source, root / 'metadata' / name)
+          worker = root / 'libexec/siworld-native-node'
+          dynamic = subprocess.check_output(['readelf', '--dynamic', str(worker)], text=True)
+          versions = subprocess.check_output(['readelf', '--version-info', str(worker)], text=True)
+          commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert re.fullmatch('[0-9a-f]{40}', commit)
+          files = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                   for path in sorted(root.rglob('*')) if path.is_file()}
+          manifest = {
+              'schema_version': 1, 'status': 'engineering-candidate', 'source_commit': commit,
+              'corresponding_source': 'https://github.com/siworld-labs/siworld/tree/' + commit,
+              'cargo_default_features': True, 'cargo_features': ['native-p2p'],
+              'independent_host_acceptance': 'pending', 'systemd_qualification': 'pending',
+              'compiler': subprocess.check_output(['rustc', '-vV'], text=True),
+              'build_glibc': subprocess.check_output(['getconf', 'GNU_LIBC_VERSION'], text=True).strip(),
+              'needed_libraries': sorted(set(re.findall(r'Shared library: \[([^\]]+)\]', dynamic))),
+              'glibc_versions': sorted(set(re.findall(r'\bGLIBC_[0-9.]+', versions))),
+              'files_sha256': files,
+          }
+          (root / 'release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          files['release-manifest.json'] = hashlib.sha256((root / 'release-manifest.json').read_bytes()).hexdigest()
+          (root / 'SHA256SUMS').write_text(''.join(digest + '  ' + name + '\n' for name, digest in sorted(files.items())))
+          subprocess.run(['sha256sum', '--check', 'SHA256SUMS'], cwd=root, check=True)
+          with tarfile.open('.local/native-engineering-linux-x86_64.tar.gz', 'w:gz') as archive:
+              archive.add(root, arcname='native-engineering-linux-x86_64')
+          PY_PACKAGE
+      - name: Preserve the engineering candidate without runtime data
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-engineering-linux-x86_64-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .local/native-engineering-linux-x86_64.tar.gz
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
   native-economic-accounting:
     name: Native economic order and per-wallet conservation
     runs-on: ubuntu-24.04
