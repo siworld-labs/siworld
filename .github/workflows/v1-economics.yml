@@ -17,7 +17,7 @@ on:
       measure_wallet_grid:
         description: Run the three-trial EPYC 7763 economic proof grid
         type: boolean
-        default: true
+        default: false
       hardware_profile:
         description: Require the baseline CPU or collect explicitly separate control diagnostics
         type: choice
@@ -100,7 +100,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Qualify the requested CPU profile before building proof tools
-        if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid }}
         run: |
           python3 scripts/measure-multi-asset.py --qualify-only \
             --hardware-profile "$HARDWARE_PROFILE" \
@@ -166,7 +166,7 @@ jobs:
           .local/economics-candidate/package/bin/v1-transaction-scan screen .local/economics-candidate/public/screen.json
           python3 scripts/v1-economics-candidate.py keys "$CARGO_TARGET_DIR/release/native-proof-artifacts" .local/economics-candidate/public/screen.json .local/economics-candidate/public/keys
       - name: Measure all requested coordinates three times on the target CPU
-        if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid }}
         run: |
           python3 scripts/measure-multi-asset.py \
             --executable .local/economics-candidate/package/bin/v1-transaction-scan \
@@ -175,7 +175,7 @@ jobs:
             --output .local/economics-candidate/public/measurements \
             --grid-mode full --scan-mode economics-candidate --hardware-profile "$HARDWARE_PROFILE"
       - name: Reproduce the actually selected transaction key as pending evidence
-        if: ${{ env.HARDWARE_PROFILE == 'epyc7763-baseline' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid)) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.measure_wallet_grid && env.HARDWARE_PROFILE == 'epyc7763-baseline' }}
         run: |
           python3 - <<'PY_SELECTED_KEY'
           import hashlib
