@@ -102,7 +102,8 @@ pub fn initialize_asert(
     getrandom::fill(&mut network).map_err(|_| "OS entropy unavailable")?;
     initialize_config(
         path,
-        Config::asert_development(network, genesis_timestamp, target, pow_iterations)?,
+        Config::asert_development(network, genesis_timestamp, target, pow_iterations)?
+            .with_test_fund_registry()?,
     )
 }
 pub fn initialize_config(path: &Path, config: Config) -> Result<Config, String> {

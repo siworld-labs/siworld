@@ -10,7 +10,10 @@ checks; complete CI for the current revision remains a release check. A real
 required evidence; this document does not report their completion. No production hybrid-handshake provider or network
 service command is supplied. The runtime does not activate a public network,
 replace an existing database or change the retained seven-node legacy network.
-Independent security review remains pending.
+Independent security review remains pending. The current native settlement
+decoder and wire cap are 655,360 bytes; the previously observed 524,619-byte
+wallet witness therefore fits, pending the fresh full-load measurement and
+genuine wallet rerun required for release evidence.
 
 ## Scope
 
@@ -65,12 +68,14 @@ domains are used throughout.
 
 A new independent engineering directory contains its explicit network configuration,
 `chain.redb` and private reward recovery receipts. Initialization refuses an
-existing directory. The ASERT service uses engineering configuration format v4,
+existing directory. The ASERT service uses engineering configuration revision 5,
 which binds a fresh network identity, genesis timestamp, immutable calibrated
 target, 300-second target interval and sequential BLAKE3 work iterations.
-The 62,728-byte canonical rules reserve 32 full public-key/share slots and
-bind the team residue index. A launch-time genesis manifest/import CLI remains
-an activation prerequisite; the complete registry is currently supplied through
+The 62,736-byte canonical rules reserve 32 full public-key/share slots and
+bind the team residue index, numeric configuration revision and economic-rule
+version 3 (Holder claim before current-block injection). Existing local format
+markers remain unchanged; old-length or old-revision records are rejected.
+A main-network genesis manifest/import CLI remains an activation prerequisite; the complete registry is currently supplied through
 the validated library configuration API. This engineering format version is unrelated to the deferred recursive V2
 roadmap. Earlier engineering directories are preserved and are not migrated
 automatically. There is no reset or migration operation. Replay reconstructs
@@ -253,14 +258,16 @@ Initialization alone does not make the network ready to produce:
 .local/native-runtime-release/bin/siworld-native-node configure-miner .local/native-engineering/asert-a holder .local/native-engineering/recipient-address.bin
 ```
 
-ASERT initialization leaves the genesis-bound fund allocation unconfigured.
-`run` fails closed until an explicit adopted allocation and authenticated key
-policy exist. The versioned native registry accepts 1–32 genesis-bound ML-DSA-65 public
-keys with exact basis-point shares and a team residue index. Eight signed
-claims may enter a block; accrual itself creates no payout note. Older
-engineering configuration files are rejected without migration.
-There is no CLI command that silently supplies launch shares or keys. The
-cheap `init` fixture's synthetic equal shares do not adopt launch policy.
+ASERT engineering initialization supplies a deterministic 24-wallet synthetic
+registry: 23 shares of 400 basis points and one development-team share of 800.
+The keys are publicly reproducible test material with no custody security.
+This permits isolated engineering production without waiting for real recipients.
+These shares and keys are not a main-network allocation. Real public keys,
+shares and their authenticated configuration import remain prerequisites for
+main-network activation. Eight signed claims may enter each engineering block;
+accrual itself creates no payout note. Older engineering configurations are
+rejected without migration. The cheap `init` fixture retains its two-wallet
+synthetic allocation for bounded unit tests.
 After those independent prerequisites are met, `run DIRECTORY` requires
 `RAYON_NUM_THREADS=4` and `SIWORLD_COMPOSITION_HIDING_WORKERS=2`.
 

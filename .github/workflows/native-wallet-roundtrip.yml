@@ -1,0 +1,133 @@
+name: Native V1 genuine wallet roundtrip
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'crates/native-node/**'
+      - 'crates/core/src/v1_economics*'
+      - 'crates/bench-multi-asset/**'
+      - 'crates/bench-d8/**'
+      - '.github/workflows/native-wallet-roundtrip.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-wallet-roundtrip-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-wallet-roundtrip:
+    name: Genuine genesis rewards, payment and mnemonic recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.local/native-wallet-target
+      RAYON_NUM_THREADS: 4
+      SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record actual CPU and validate frozen relations
+        run: |
+          umask 077
+          mkdir -p .local/native-wallet/private/runs .local/native-wallet/public
+          python3 scripts/check-native-proof-profiles.py --check crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json
+          python3 scripts/check-native-envelope-policy.py
+          python3 - <<'PY_CPU'
+          import json
+          import re
+          import subprocess
+          from pathlib import Path
+          rows = json.loads(subprocess.check_output(['lscpu', '--json'], text=True))['lscpu']
+          values = {row['field'].rstrip(':'): row['data'] for row in rows}
+          model = values.get('Model name', 'unavailable')
+          Path('.local/native-wallet/public/hardware.json').write_text(json.dumps({
+              'cpu_model': model, 'architecture': values.get('Architecture', 'unavailable'),
+              'logical_cpus': values.get('CPU(s)', 'unavailable'),
+              'epyc7763_model_match': bool(re.fullmatch(r'AMD EPYC 7763(?: 64-Core Processor)?', model)),
+              'rayon_workers': 4, 'hiding_workers': 2,
+              'performance_qualification': False}, indent=2) + '\n')
+          PY_CPU
+      - name: Install pinned toolchain and check CPU
+        run: |
+          rustup toolchain install
+          rustc scripts/prover-launcher.rs --edition=2021 -O -D warnings -C target-cpu=x86-64 -o /tmp/native-wallet-cpu-check
+          /tmp/native-wallet-cpu-check --check-cpu
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/native-node -> ../../.local/native-wallet-target
+          cache-on-failure: true
+      - name: Build the native library test executable
+        run: |
+          cargo test --release --locked --manifest-path crates/native-node/Cargo.toml --lib --no-run --message-format=json > .local/native-wallet/private/build.json
+          python3 - <<'PY_EXECUTABLE'
+          import json
+          import os
+          from pathlib import Path
+          binaries = []
+          for line in Path('.local/native-wallet/private/build.json').read_text().splitlines():
+              record = json.loads(line)
+              if (record.get('reason') == 'compiler-artifact' and record.get('profile', {}).get('test')
+                      and 'lib' in record.get('target', {}).get('kind', []) and record.get('executable')):
+                  binaries.append(Path(record['executable']).resolve())
+          assert len(binaries) == 1, 'Expected exactly one native library test executable'
+          assert binaries[0].is_relative_to(Path(os.environ['CARGO_TARGET_DIR']).resolve())
+          Path('.local/native-wallet/private/test-executable').write_text(str(binaries[0]))
+          PY_EXECUTABLE
+      - name: Run genuine native proofs with an external four-hour deadline
+        env:
+          SIWORLD_RUN_NATIVE_WALLET_ROUNDTRIP: '1'
+        run: |
+          umask 077
+          export SIWORLD_NATIVE_WALLET_RUN_ROOT="$GITHUB_WORKSPACE/.local/native-wallet/private/runs"
+          test_binary="$(cat .local/native-wallet/private/test-executable)"
+          timeout --signal=TERM --kill-after=30s 4h "$test_binary" \
+            wallet_vault::native_roundtrip::genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs \
+            --ignored --exact --test-threads=1 > .local/native-wallet/private/roundtrip.log 2>&1
+          python3 - <<'PY_GATE'
+          import json
+          from pathlib import Path
+          runs = list(Path('.local/native-wallet/private/runs').glob('native-wallet-roundtrip-*'))
+          assert len(runs) == 1, 'Expected exactly one fresh owned run'
+          progress = json.loads((runs[0] / 'roundtrip-progress.json').read_text())
+          assert progress['stage'] == 'complete' and progress['accepted_height'] == 26
+          assert progress['required_height'] == 26 and progress['slots_per_block'] == 64
+          assert 0 < progress['elapsed_ms'] < 14_400_000
+          Path('.local/native-wallet/public/gate.json').write_text(json.dumps({
+              'genuine_native_wallet_gate_passed': True, 'accepted_height': 26,
+              'slots_per_block': 64, 'transaction_proofs': 1664, 'settlement_proofs': 26,
+              'consensus_maturity_blocks': 24, 'elapsed_ms': progress['elapsed_ms'],
+              'wall_clock_soak': False, 'network_activation': False,
+              'maximum_load_qualification': False, 'cryptographic_approval': False}, indent=2) + '\n')
+          PY_GATE
+      - name: Preserve only an allowlisted outcome
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY_STATUS'
+          import json
+          import os
+          from pathlib import Path
+          root = Path('.local/native-wallet/public')
+          root.mkdir(parents=True, exist_ok=True)
+          (root / 'workflow-status.json').write_text(json.dumps({
+              'source_commit': os.environ['SOURCE_COMMIT'],
+              'job_status_before_upload': os.environ['JOB_STATUS'],
+              'gate_report_present': (root / 'gate.json').is_file(),
+              'network_activation': False, 'cryptographic_approval': False}, indent=2) + '\n')
+          PY_STATUS
+      - name: Upload sanitized gate outcome without wallets or chain data
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-wallet-roundtrip-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/native-wallet/public/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

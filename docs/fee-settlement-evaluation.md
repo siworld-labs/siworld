@@ -18,7 +18,9 @@ measured source `7eecc60b9a1b0e7d6b348952daae06cd145abf3a` on Ubuntu 24.04,
 AMD EPYC 7763, two exposed physical cores and four vCPUs. The release baseline
 is `x86-64-v3`. Settlement uses blowup 8, 36 queries, 20-bit query/opening-batch
 grinding, zero commitment grinding, binary folding and final-polynomial log
-length zero. Its body cap remains 524,288 bytes.
+length zero. The native node admission cap is now 655,360 bytes; this
+document's earlier synthetic samples remain historical evidence until the
+full-load measurement below is complete.
 
 | Extracted AIR dimension | Value |
 | --- | ---: |
@@ -197,7 +199,7 @@ diagnostic evidence and neither run is a qualified-host result.
 
 The individual samples were retained in the private measurement bundle. The
 576-position proof was 448,059--459,627 bytes across the three trials and
-is below the separate 524,288-byte settlement-proof maximum. Settlement
+is below the earlier 524,288-byte settlement-proof maximum. Settlement
 proofs have their own capacity budget; their size does not select or replace
 the transaction proof limit. The benchmark now resolves the process's cgroup v2
 membership from `/proc/self/cgroup` before reading `memory.max`,
