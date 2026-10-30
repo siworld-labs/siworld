@@ -21,7 +21,7 @@ use std::{env, fs, path::PathBuf, time::Instant};
 const CAPACITY: usize = 576;
 const MAX_FUND_CLAIMS: usize = 8;
 /// 655,360 B wire cap with the required ten-percent measurement margin.
-const SETTLEMENT_ADMISSION_LIMIT: usize = 589_824;
+const SETTLEMENT_ADMISSION_LIMIT: u64 = 589_824;
 
 fn cpu_model() -> Option<String> {
     fs::read_to_string("/proc/cpuinfo")
@@ -177,7 +177,7 @@ fn main() {
             "proof_body_bytes": body.len(),
             "generation_ns": generation_ns,
             "verification_ns": verification_ns,
-            "within_ten_percent_admission_limit": body.len() <= SETTLEMENT_ADMISSION_LIMIT,
+            "within_ten_percent_admission_limit": u64::try_from(body.len()).expect("proof body length") <= SETTLEMENT_ADMISSION_LIMIT,
             "memory_peak_bytes": memory_peak(cgroup.as_ref()),
             "memory_events": memory_events(cgroup.as_ref()),
         }));
