@@ -272,6 +272,16 @@ struct Worker {
     sync: SyncAttempt,
     _reservation: Reservation,
 }
+struct PendingAuthentication {
+    id: u64,
+    reply: Answer<()>,
+    deadline: u64,
+    _reservation: Reservation,
+}
+enum Admission {
+    Established,
+    Waiting,
+}
 struct Driver {
     listener: TcpListener,
     identity: Arc<NativeIdentity>,
@@ -282,6 +292,7 @@ struct Driver {
     started: Instant,
     next_id: u64,
     workers: BTreeMap<u64, Worker>,
+    pending_authentication: BTreeMap<Hash, PendingAuthentication>,
     tx: SyncSender<ChargedCommand>,
     rx: Receiver<ChargedCommand>,
     role: Role,
@@ -325,6 +336,7 @@ impl Driver {
             started: Instant::now(),
             next_id: 0,
             workers: BTreeMap::new(),
+            pending_authentication: BTreeMap::new(),
             tx,
             rx,
             role: if config.mining {
@@ -449,6 +461,7 @@ impl Driver {
         {
             self.cancel_attempt(token);
         }
+        self.poll_authentication();
         // Bound accepts per owner turn, including sockets rejected at capacity.
         for _ in 0..4 {
             match self.listener.accept() {
@@ -492,46 +505,113 @@ impl Driver {
         }
         Ok(())
     }
+    fn admit_authenticated(&mut self, id: u64, peer: Hash) -> Result<Admission, runtime::Error> {
+        let worker = self.workers.get(&id).ok_or_else(unavailable)?;
+        if worker.cancel.is_cancelled()
+            || worker.join.is_finished()
+            || !self.peers.contains_key(&peer)
+        {
+            return Err(unavailable());
+        }
+        let token = if let Some(token) = worker.token {
+            if worker.peer != Some(peer) {
+                return Err(invalid());
+            }
+            token
+        } else {
+            // Only fully authenticated inbound sessions can affect scheduling
+            // for a configured identity. A retiring worker still owns its
+            // established slot until poll joins it and applies normal backoff.
+            let start = match self.scheduler.begin(peer, Direction::Inbound, self.now()) {
+                Ok(start) => start,
+                Err(peer_scheduler::Error::Duplicate | peer_scheduler::Error::Backoff)
+                    if self.local > peer =>
+                {
+                    return Ok(Admission::Waiting);
+                }
+                Err(_) => return Err(unavailable()),
+            };
+            if let Some(old) = start.cancel {
+                self.cancel_attempt(old);
+            }
+            let worker = self.workers.get_mut(&id).expect("checked worker");
+            worker.peer = Some(peer);
+            worker.token = Some(start.token);
+            start.token
+        };
+        self.scheduler
+            .authenticated(token, self.now())
+            .map_err(|_| unavailable())?;
+        self.connections = self.connections.saturating_add(1);
+        Ok(Admission::Established)
+    }
+    fn poll_authentication(&mut self) {
+        // At most one charged waiter per peer and worker is retained. Retrying
+        // after actual retirement preserves scheduler capacity and backoff;
+        // the original deadline is never extended by owner polling.
+        for (peer, pending) in std::mem::take(&mut self.pending_authentication) {
+            let result = if self.now() >= pending.deadline {
+                Err(unavailable())
+            } else {
+                self.admit_authenticated(pending.id, peer)
+            };
+            match result {
+                Ok(Admission::Waiting) => {
+                    self.pending_authentication.insert(peer, pending);
+                }
+                Ok(Admission::Established) => {
+                    let _ = pending.reply.send(Ok(()));
+                }
+                Err(error) => {
+                    let _ = pending.reply.send(Err(error));
+                }
+            }
+        }
+    }
     fn handle<V: BlockVerifier>(
         &mut self,
         node: &mut Node<V>,
         charged: ChargedCommand,
     ) -> Result<(), String> {
-        let _charge = charged._reservation;
+        let charge = charged._reservation;
         match charged.command {
             Command::Authenticated { id, peer, reply } => {
-                let result = (|| {
-                    let worker = self.workers.get(&id).ok_or_else(unavailable)?;
-                    if worker.cancel.is_cancelled() || !self.peers.contains_key(&peer) {
-                        return Err(unavailable());
+                if self.pending_authentication.contains_key(&peer)
+                    || self
+                        .pending_authentication
+                        .values()
+                        .any(|pending| pending.id == id)
+                {
+                    let _ = reply.send(Err(unavailable()));
+                    return Ok(());
+                }
+                match self.admit_authenticated(id, peer) {
+                    Ok(Admission::Waiting) if self.pending_authentication.len() < MAX_WORKERS => {
+                        let deadline = self.now().checked_add(peer_scheduler::ADMISSION_MS);
+                        if let Some(deadline) = deadline {
+                            self.pending_authentication.insert(
+                                peer,
+                                PendingAuthentication {
+                                    id,
+                                    reply,
+                                    deadline,
+                                    _reservation: charge,
+                                },
+                            );
+                        } else {
+                            let _ = reply.send(Err(unavailable()));
+                        }
                     }
-                    let token = if let Some(token) = worker.token {
-                        if worker.peer != Some(peer) {
-                            return Err(invalid());
-                        }
-                        token
-                    } else {
-                        // Only fully authenticated inbound sessions can affect
-                        // scheduling for a configured identity.
-                        let start = self
-                            .scheduler
-                            .begin(peer, Direction::Inbound, self.now())
-                            .map_err(|_| unavailable())?;
-                        if let Some(old) = start.cancel {
-                            self.cancel_attempt(old);
-                        }
-                        let worker = self.workers.get_mut(&id).expect("checked worker");
-                        worker.peer = Some(peer);
-                        worker.token = Some(start.token);
-                        start.token
-                    };
-                    self.scheduler
-                        .authenticated(token, self.now())
-                        .map_err(|_| unavailable())?;
-                    self.connections = self.connections.saturating_add(1);
-                    Ok(())
-                })();
-                let _ = reply.send(result);
+                    Ok(Admission::Waiting) => {
+                        let _ = reply.send(Err(unavailable()));
+                    }
+                    Ok(Admission::Established) => {
+                        let _ = reply.send(Ok(()));
+                    }
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                    }
+                }
             }
             Command::Pull { id, reply } => {
                 let result = self.active(id).and_then(|w| {
@@ -616,6 +696,7 @@ impl Driver {
         // Cancelled callers can leave already queued packets behind. No worker
         // remains able to enqueue or consume a reply after the joins above.
         // Release those packet/command guards before the final offline replay.
+        self.pending_authentication.clear();
         while self.rx.try_recv().is_ok() {}
         Ok(())
     }

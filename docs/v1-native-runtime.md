@@ -555,6 +555,15 @@ limits would prevent a complete paired sync cycle. These are reconnect limits,
 not an application key-update implementation. Cleanup cancels workers and
 retains charges until they exit.
 
+After transport and native Hello authentication, the owner may retain one
+preferred inbound replacement per peer while the previous worker exits and
+normal scheduler backoff expires. The first deferral starts one five-second
+monotonic owner-admission deadline; polling never renews it. The waiter retains
+its command and worker charges within the existing limits and remains
+cancellable. Duplicate waiters, cancelled or finished workers, and an already
+established worker's repeated admission are rejected. Successful retirement
+and admission continue the same authenticated TLS session without another dial.
+
 Exactly one owned background prover job constructs the prover, prepares
 padding or assembles a block. Its state snapshot, production permit, explicit
 mining settings and result remain bound to the originating state, and stale

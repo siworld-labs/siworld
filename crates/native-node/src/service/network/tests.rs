@@ -196,6 +196,280 @@ fn resident_disconnect_reconnects_with_fresh_authentication_and_continues_sync()
     assert_eq!(target.driver.scheduler.status().established, 1);
 }
 
+fn waiting_worker(
+    endpoint: &mut Endpoint,
+    peer: Option<Hash>,
+    token: Option<Attempt>,
+) -> (u64, SyncSender<()>) {
+    let id = endpoint.driver.next_id + 1;
+    endpoint.driver.next_id = id;
+    let cancel = Cancellation::default();
+    let signal = cancel.clone();
+    let (release, receive) = mpsc::sync_channel(1);
+    let join = std::thread::spawn(move || {
+        loop {
+            if signal.is_cancelled() {
+                return Failure::Unavailable;
+            }
+            match receive.recv_timeout(POLL) {
+                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return Failure::Unavailable,
+                Err(mpsc::RecvTimeoutError::Timeout) => (),
+            }
+        }
+    });
+    endpoint.driver.workers.insert(
+        id,
+        Worker {
+            peer,
+            token,
+            cancel,
+            join,
+            sync: SyncAttempt::default(),
+            _reservation: endpoint.driver.budget.reserve(WORKER_STACK).unwrap(),
+        },
+    );
+    (id, release)
+}
+
+fn retiring_inbound_pair() -> (Endpoint, Endpoint, u64, SyncSender<()>) {
+    let mut receiver = Endpoint::new();
+    let mut sender = Endpoint::new();
+    if receiver.driver.local < sender.driver.local {
+        std::mem::swap(&mut receiver, &mut sender);
+    }
+    receiver.follow(&sender);
+    sender.follow(&receiver);
+    let token = receiver
+        .driver
+        .scheduler
+        .begin(
+            sender.driver.local,
+            Direction::Inbound,
+            receiver.driver.now(),
+        )
+        .unwrap()
+        .token;
+    receiver
+        .driver
+        .scheduler
+        .authenticated(token, receiver.driver.now())
+        .unwrap();
+    receiver.driver.connections = 1;
+    let (id, release) = waiting_worker(&mut receiver, Some(sender.driver.local), Some(token));
+    (receiver, sender, id, release)
+}
+
+fn submit_authenticated(
+    endpoint: &mut Endpoint,
+    id: u64,
+    peer: Hash,
+) -> Receiver<Result<(), runtime::Error>> {
+    let (reply, receive) = mpsc::sync_channel(1);
+    let charged = ChargedCommand {
+        command: Command::Authenticated { id, peer, reply },
+        _reservation: endpoint.driver.budget.reserve(COMMAND_BYTES).unwrap(),
+    };
+    endpoint
+        .driver
+        .handle(endpoint.node.as_mut().unwrap(), charged)
+        .unwrap();
+    receive
+}
+
+fn await_retirement(endpoint: &mut Endpoint, id: u64) {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while endpoint.driver.workers.contains_key(&id) {
+        assert!(
+            Instant::now() < deadline,
+            "owned test worker did not retire"
+        );
+        endpoint.tick();
+        std::thread::yield_now();
+    }
+}
+
+#[test]
+fn authenticated_replacement_waits_for_prior_worker_retirement_and_existing_backoff() {
+    let (mut receiver, sender, old, release) = retiring_inbound_pair();
+    let (new, _waiting) = waiting_worker(&mut receiver, None, None);
+    let before = receiver.driver.budget.available().unwrap();
+    let answer = submit_authenticated(&mut receiver, new, sender.driver.local);
+    // Models the owner turn after Apply replies but before the old I/O thread
+    // returns and poll can join it. Authentication has already succeeded.
+    assert!(
+        matches!(answer.try_recv(), Err(mpsc::TryRecvError::Empty)),
+        "a retiring established slot must defer the authenticated replacement"
+    );
+    assert_eq!(
+        receiver.driver.budget.available().unwrap(),
+        before - COMMAND_BYTES
+    );
+    assert_eq!(receiver.driver.connections, 1);
+    release.send(()).unwrap();
+    await_retirement(&mut receiver, old);
+    assert!(
+        matches!(answer.try_recv(), Err(mpsc::TryRecvError::Empty)),
+        "the existing scheduler backoff must still apply"
+    );
+    receiver.driver.started -= Duration::from_secs(2);
+    receiver.tick();
+    assert!(answer.try_recv().unwrap().is_ok());
+    assert_eq!(receiver.driver.connections, 2);
+    assert_eq!(receiver.driver.scheduler.status().established, 1);
+    assert_eq!(
+        receiver.driver.workers[&new].peer,
+        Some(sender.driver.local)
+    );
+}
+
+#[test]
+fn deferred_authentication_has_one_original_five_second_deadline() {
+    let (mut receiver, sender, _old, _release) = retiring_inbound_pair();
+    let (new, _waiting) = waiting_worker(&mut receiver, None, None);
+    let before = receiver.driver.budget.available().unwrap();
+    let answer = submit_authenticated(&mut receiver, new, sender.driver.local);
+    assert!(matches!(answer.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    receiver.driver.started -= Duration::from_secs(4);
+    receiver.tick();
+    assert!(matches!(answer.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    receiver.driver.started -= Duration::from_millis(1_100);
+    receiver.tick();
+    assert!(
+        answer.try_recv().unwrap().is_err(),
+        "polling must not renew the pending deadline"
+    );
+    assert_eq!(receiver.driver.budget.available().unwrap(), before);
+    assert_eq!(receiver.driver.connections, 1);
+}
+
+#[test]
+fn duplicate_deferred_authentication_cannot_replace_the_first_waiter() {
+    let (mut receiver, sender, _old, _release) = retiring_inbound_pair();
+    let (first, _first_wait) = waiting_worker(&mut receiver, None, None);
+    let (second, _second_wait) = waiting_worker(&mut receiver, None, None);
+    let before = receiver.driver.budget.available().unwrap();
+    let first_answer = submit_authenticated(&mut receiver, first, sender.driver.local);
+    assert!(matches!(
+        first_answer.try_recv(),
+        Err(mpsc::TryRecvError::Empty)
+    ));
+    let second_answer = submit_authenticated(&mut receiver, second, sender.driver.local);
+    assert!(second_answer.try_recv().unwrap().is_err());
+    assert!(matches!(
+        first_answer.try_recv(),
+        Err(mpsc::TryRecvError::Empty)
+    ));
+    assert_eq!(
+        receiver.driver.budget.available().unwrap(),
+        before - COMMAND_BYTES
+    );
+    let repeated = submit_authenticated(&mut receiver, first, sender.driver.local);
+    assert!(repeated.try_recv().unwrap().is_err());
+    assert!(matches!(
+        first_answer.try_recv(),
+        Err(mpsc::TryRecvError::Empty)
+    ));
+}
+
+#[test]
+fn cancelled_deferred_authentication_releases_its_charge_without_admission() {
+    let (mut receiver, sender, _old, _release) = retiring_inbound_pair();
+    let (new, _waiting) = waiting_worker(&mut receiver, None, None);
+    let answer = submit_authenticated(&mut receiver, new, sender.driver.local);
+    assert!(matches!(answer.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    receiver.driver.workers[&new].cancel.cancel();
+    receiver.tick();
+    assert!(answer.try_recv().unwrap().is_err());
+    assert_eq!(receiver.driver.connections, 1);
+    assert_eq!(receiver.driver.scheduler.status().established, 1);
+}
+
+#[test]
+fn deferred_authentication_never_reauthenticates_an_owned_established_worker() {
+    let (mut receiver, sender, old, _release) = retiring_inbound_pair();
+    let answer = submit_authenticated(&mut receiver, old, sender.driver.local);
+    assert!(answer.try_recv().unwrap().is_err());
+    assert_eq!(receiver.driver.connections, 1);
+    assert_eq!(receiver.driver.scheduler.status().established, 1);
+}
+
+#[test]
+fn finished_authenticated_worker_is_not_admitted_before_owner_retirement() {
+    let (mut receiver, sender, _old, _release) = retiring_inbound_pair();
+    let (new, release) = waiting_worker(&mut receiver, None, None);
+    let before = receiver.driver.budget.available().unwrap();
+    release.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !receiver.driver.workers[&new].join.is_finished() {
+        assert!(Instant::now() < deadline, "test worker did not finish");
+        std::thread::yield_now();
+    }
+    let answer = submit_authenticated(&mut receiver, new, sender.driver.local);
+    assert!(answer.try_recv().unwrap().is_err());
+    assert_eq!(receiver.driver.budget.available().unwrap(), before);
+    assert_eq!(receiver.driver.connections, 1);
+    assert_eq!(receiver.driver.scheduler.status().established, 1);
+}
+
+#[test]
+fn deferred_authentication_shutdown_releases_pending_commands_and_worker_ownership() {
+    let (mut receiver, sender, _old, _release) = retiring_inbound_pair();
+    let (new, _waiting) = waiting_worker(&mut receiver, None, None);
+    let answer = submit_authenticated(&mut receiver, new, sender.driver.local);
+    assert!(matches!(answer.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    receiver.driver.shutdown().unwrap();
+    assert!(answer.try_recv().is_err());
+    assert!(receiver.driver.workers.is_empty());
+    assert_eq!(receiver.driver.scheduler.status().established, 0);
+    assert_eq!(receiver.driver.scheduler.status().pending, 0);
+}
+
+#[test]
+fn actual_tls_replacement_survives_a_prior_authenticated_worker_still_returning_from_apply() {
+    let (mut receiver, mut sender, old, release) = retiring_inbound_pair();
+    sender.append(330_000);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let charged = loop {
+        assert!(
+            Instant::now() < deadline,
+            "fresh authenticated ingress did not arrive"
+        );
+        sender.tick();
+        receiver.driver.poll().unwrap();
+        match receiver.driver.rx.recv_timeout(POLL) {
+            Ok(command) if matches!(&command.command, Command::Authenticated { .. }) => {
+                break command;
+            }
+            Ok(command) => receiver
+                .driver
+                .handle(receiver.node.as_mut().unwrap(), command)
+                .unwrap(),
+            Err(mpsc::RecvTimeoutError::Timeout) => (),
+            Err(error) => panic!("owner command channel closed: {error}"),
+        }
+    };
+    receiver
+        .driver
+        .handle(receiver.node.as_mut().unwrap(), charged)
+        .unwrap();
+    assert_eq!(receiver.driver.connections, 1);
+    release.send(()).unwrap();
+    until(&mut sender, &mut receiver, |a, b| {
+        b.state().height == 1 && a.state().fingerprint() == b.state().fingerprint()
+    });
+    assert!(!receiver.driver.workers.contains_key(&old));
+    assert_eq!(
+        sender.driver.connections, 1,
+        "the same fresh TLS session must be admitted"
+    );
+    assert_eq!(receiver.driver.connections, 2);
+    assert_eq!(
+        sender.driver.failures, 0,
+        "receiver retirement must not trigger another dial"
+    );
+    assert_eq!(receiver.driver.failures, 1);
+}
+
 #[test]
 fn proof_owner_delay_beyond_ten_seconds_preserves_the_paired_request_turn() {
     let mut initiator = Endpoint::new();
