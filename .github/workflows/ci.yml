@@ -16,6 +16,41 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  native-hybrid-tls:
+    name: Native V1 hybrid TLS candidate (inactive)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      AWS_LC_SYS_USE_SYSTEM: "0"
+      CARGO_BUILD_JOBS: 4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/native-node
+      - name: Format and lint the inactive candidate
+        run: |
+          cargo fmt --manifest-path crates/native-node/Cargo.toml --check
+          cargo clippy --locked --manifest-path crates/native-node/Cargo.toml --features hybrid-tls-candidate --all-targets -- -D warnings
+      - name: Genuine hybrid negotiation and bounded dual authentication
+        run: |
+          python3 - <<'PY_TLS'
+          import importlib.util
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
+          build = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(build)
+          command = ['cargo', 'test', '--release', '--locked', '--manifest-path',
+              'crates/native-node/Cargo.toml', '--features', 'hybrid-tls-candidate', '--lib']
+          for selected, minimum, name in [('p2p::hybrid_tls::', 22, 'transport'),
+              ('identity::tls_', 4, 'identity')]:
+              build.run_logged([*command, selected], Path('.local/tls-candidate') / (name + '.log'),
+                  nonempty_tests=True, minimum_tests=minimum)
+          PY_TLS
   native-economic-accounting:
     name: Native economic order and per-wallet conservation
     runs-on: ubuntu-24.04

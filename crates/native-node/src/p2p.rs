@@ -9,6 +9,12 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+// Qualification only: this module has no production session constructor or
+// listener entry point. The complete composition still requires review.
+#[cfg(feature = "hybrid-tls-candidate")]
+#[allow(dead_code)]
+pub(crate) mod hybrid_tls;
+
 pub const VERSION: u16 = 1;
 pub const MAX_CONTROL_BYTES: usize = 1024 * 1024;
 /// Compact skeletons include bounded native issuance records and their

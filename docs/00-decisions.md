@@ -214,7 +214,8 @@ proof/bandwidth limits.
 Use confidential fee commitments with native fixed-capacity settlement.
 Nodes validate fee-opening sidecars against the transaction and commitment
 before admission; no additional sidecar signature or encryption layer is
-selected. Planned hybrid X25519 + ML-KEM transport handles connection secrecy.
+selected. The selected TLS 1.3 X25519MLKEM768 transport provides connection
+secrecy once its reviewed provider and activation gates are complete.
 Transaction, settlement and native issuance proofs and private sidecars remain online until
 three elapsed days after final confirmation, then are deleted. Public data is
 permanent on every node; no V1 archive-node role retains proof bodies beyond
@@ -337,15 +338,25 @@ These are test targets, not completed measurements.
 
 ## Transport identity and checkpoint trust
 
-The [V1 network design](v1-network-design.md) selects ephemeral X25519 plus
-ML-KEM-768, with Ed25519 and ML-DSA-65 identity signatures both required over
-the bound identity/transcript. Use a reviewed hybrid combiner, key confirmation
-and fixed protocol profile, with no classical fallback. These choices still
-require implementation and independent security review. A classical PeerId
-alone does not bind the post-quantum identity.
+The [V1 network design](v1-network-design.md) selects TLS 1.3 with exactly
+X25519MLKEM768 and `TLS_CHACHA20_POLY1305_SHA256` for native connections.
+Use the standard TLS key schedule and authenticated records; no additional
+application combiner, Noise upgrade, classical-only group or weaker retry is
+permitted. Disable resumption and 0-RTT. Require mutual pinned Ed25519 TLS
+certificates, bidirectional Finished verification and fresh Ed25519 plus
+ML-DSA-65 signatures bound to the completed handshake's TLS exporter and
+ordered authentication transcript. A classical PeerId or descriptor possession
+signature alone cannot authenticate a native connection.
+
+The [hybrid TLS profile](v1-hybrid-handshake.md) defines the exclusive upgrade
+and ALPN, exporter context, candidate authentication encoding and resource
+requirements. Transport selection does not qualify or enable a provider.
+The concrete implementation, certificate policy, canonical vectors and exact
+native-workspace dependencies require independent review and acceptance tests
+before activation. Preserve the existing identity and descriptor encodings.
 
 Dandelion++ is the selected source-relay path. Its routing/timer parameters
-and library/combiner profile must be frozen after adversarial evaluation.
+and implementation dependencies must be frozen after adversarial evaluation.
 Hybrid transport protects content, not network endpoints; Dandelion++ does
 not guarantee anonymity against global observation or malicious first hops.
 Fee-sidecar recipients learn openings and can identify a zero fee; the
@@ -482,10 +493,12 @@ supply isolated workers, ingress queues or a process-memory guarantee.
 The authenticated-stream interface binds network, genesis and frozen verifier
 manifest, with bounded framing and declared peer roles, full-proof batches and exact-proof
 compact recovery. Sync attempts pin peer/base/ancestor/continuation and retain
-budget reservations until adoption or discard. There is no production hybrid
-authenticator or enabled listening service. A reviewed X25519 + ML-KEM,
-Ed25519 + ML-DSA provider, authenticated record protection, actual-listener
-failure tests and Dandelion++ remain required before network activation.
+budget reservations until adoption or discard. No production hybrid
+authenticator or listening service is enabled. Any candidate TLS 1.3
+X25519MLKEM768 provider must complete exporter-bound Ed25519 and ML-DSA-65
+authentication, dependency review, authenticated-record and actual-listener
+failure tests before activation. Dandelion++ remains a separate requirement
+before the public testnet.
 
 Block encoding v4 and compact encoding v3 include bounded signed issuance
 records and the fixed three-note native proof. The trusted transport identity

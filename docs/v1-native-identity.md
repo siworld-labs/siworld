@@ -93,11 +93,15 @@ different key pair or context. Updating or rotating a pin has no implicit API;
 it requires a future reviewed, authenticated rotation policy.
 
 Descriptor verification and pin matching must not construct an authenticated
-application channel. A future provider must additionally bind the dual identity
-to a fresh, ordered handshake transcript and selected algorithms, complete the
-reviewed X25519 plus ML-KEM-768 exchange and both directions of key confirmation,
-and enforce authenticated records, sequence numbers, nonce limits, cleanup and
-rekeying. There is no classical or plaintext fallback.
+application channel. The selected [hybrid TLS profile](v1-hybrid-handshake.md)
+requires TLS 1.3 with exactly X25519MLKEM768, pinned Ed25519 TLS certificates
+and bidirectional Finished verification. A provider must additionally verify
+fresh Ed25519 and ML-DSA-65 signatures over the ordered authentication
+transcript bound to the completed handshake's TLS exporter and trusted
+network/genesis/verifier context. It must enforce authenticated records,
+sequence numbers, nonce limits, cleanup and rekeying. There is no Noise,
+classical-only or plaintext fallback. This transport choice does not change
+identity records, descriptor bytes, signature domains or pin fingerprints.
 
 ## Verification and remaining integration
 
@@ -108,8 +112,9 @@ canonical length/version checks, randomized-signature pin stability, immutable
 pin persistence, private permissions, symbolic links, hard links and nonregular
 records. Synthetic test keys are used only inside tests.
 
-The next integration stages are a separately reviewed handshake profile and
-test vectors; real initiator/responder and deadline/resource tests; resident
+The next integration stages are a reviewed provider, certificate policy and
+canonical vectors for the selected TLS profile; real initiator/responder,
+exporter-binding and deadline/resource tests; resident
 libp2p listener/outbound orchestration; bounded peer admission and reconnect;
 then independent-host synchronization, compact relay, partition and reorg
 tests. Identity storage alone does not satisfy network deployment acceptance.

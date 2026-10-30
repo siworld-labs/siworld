@@ -7,11 +7,15 @@ The retained seven-node network, its identities, keys and history are unchanged.
 
 ## Authenticated hybrid transport
 
-V1 wallet-to-relay and node-to-node connections use one versioned libp2p
-upgrade with ephemeral X25519 and ML-KEM-768. Both contributions are required.
-Legacy Noise is not an alternative after negotiation failure; unsupported V1
-peers disconnect with a bounded error. Public bootstrap discovery does not
-authorize sending transactions or fee sidecars over an unauthenticated channel.
+V1 wallet-to-relay and node-to-node connections use the selected
+[hybrid TLS profile](v1-hybrid-handshake.md): one versioned libp2p upgrade with
+TLS 1.3, exactly X25519MLKEM768 and `TLS_CHACHA20_POLY1305_SHA256`.
+Both ephemeral X25519 and ML-KEM-768 contributions are required. Offer no Noise
+upgrade, plaintext alternative, classical-only group or downgraded retry.
+Unsupported V1 peers disconnect with a bounded error. Public bootstrap discovery
+does not authorize sending transactions or fee sidecars over an unauthenticated
+channel. Provider implementation, dependency qualification and independent
+review remain activation gates.
 
 Use Ed25519 and ML-DSA-65 identity keys. Each participant signs the canonical
 identity descriptor and handshake transcript with both keys; both signatures
@@ -27,12 +31,16 @@ descriptor for known peers; authenticate descriptor updates and fail closed on
 unexpected key changes. A new self-certified peer is not thereby trustworthy.
 Identity rotation and revocation require reviewed, versioned signed records.
 
-Select a published, reviewed hybrid combiner and maintained implementation after
-dependency review. Freeze its exact construction, KDF/hash, domain separation,
-transcript encoding, library revisions and test vectors before implementation
-acceptance. Do not replace that review with an ad hoc concatenation or XOR rule.
-The selected combiner must retain confidentiality under its documented hybrid
-assumptions if one key-establishment contribution is compromised.
+Use the standard TLS key schedule with the X25519MLKEM768 group. Do not add
+an application combiner, concatenate traffic keys, XOR component secrets or
+derive traffic keys directly from either component. Require both directions
+of TLS Finished and bind fresh dual identity signatures to the completed
+handshake's exporter, trusted network/genesis/verifier context and ordered
+authentication transcript. A peer-supplied binding or early exporter is not
+acceptable. Disable resumption and 0-RTT. Freeze the exact native-workspace
+library revisions, provider features, certificate policy and canonical positive
+and negative vectors after dependency and composition review. The standard
+exchange does not itself approve this dual-authentication composition.
 
 Require bidirectional key confirmation before application streams open.
 Authentication and confirmation cover the final transcript and negotiated
@@ -44,12 +52,15 @@ close behavior with the selected implementation. Decapsulation/confirmation
 errors expose one generic wire failure; detailed local classes contain no keys,
 network addresses, individual fees or transaction/time associations.
 
-ML-KEM-768 uses 1,184-byte encapsulation keys and 1,088-byte ciphertexts.
+ML-KEM-768 uses 1,184-byte encapsulation keys and 1,088-byte ciphertexts;
+the selected TLS group adds 32-byte X25519 contributions to each key share.
 ML-DSA-65 uses 1,952-byte public keys and 3,309-byte signatures; Ed25519 adds
-32-byte public keys and 64-byte signatures. Two identity descriptors with both
-signatures plus one KEM exchange and two X25519 public keys already require
-approximately 13 KiB before framing and negotiation metadata. Certificate chains
-are outside the initial format. Do not reuse classical Noise size assumptions.
+32-byte public keys and 64-byte signatures. The candidate six-frame dual
+authentication encoding requires 17,940 plaintext bytes before TLS records.
+TLS certificates, handshake messages, record headers and tags consume the
+remaining pre-admission budget. Require one bounded, pinned Ed25519 leaf
+certificate per endpoint, without downloaded chains. Measure the complete
+provider rather than reuse classical Noise size assumptions.
 
 Initial engineering limits are 16 KiB per frame, 32 KiB aggregate handshake
 wire bytes, a five-second wall deadline and 16 concurrent unfinished handshakes.
@@ -169,7 +180,7 @@ synchronization mode and trust basis on the dashboard.
 | Area | Required cases |
 | --- | --- |
 | Identity | Either signature invalid/missing; PQ-key substitution; PeerId match with wrong hybrid descriptor; rotation and revocation |
-| Handshake | Actual TCP listeners; wrong network/role/version; algorithm stripping; transcript mutation; KEM failure; confirmation failure; replay |
+| Handshake | Actual TLS 1.3 listeners; exclusive group/cipher/ALPN; no classical fallback or downgraded retry; wrong network/role/version; exporter and transcript mutation; KEM or Finished failure; either dual signature or ready message missing; replay |
 | Cleanup | Half-open sockets; fragmented/oversized frames; slow readers; timeout/reconnect; concurrency/rate exhaustion; secret and reservation cleanup |
 | Relay | Stem/fluff success; route rotation; loops; malicious withholding; first-hop loss; partition/reconnect; duplicate storms; bounded timers/bytes |
 | Privacy | Endpoint visibility; colluding peers; timing correlation; fee-sidecar recipients; no address/fee/nullifier-time logs |
@@ -187,6 +198,7 @@ and possible hybrid-library changes. Do not count that increment twice.
 N6 remains 5–8 days for the initial Dandelion++ path; adversarial evaluation can
 extend it. N4 remains 4–7 days if checkpoint authorities and infrastructure
 for permanent public-data backups are supplied. Authority deployment, secure
-custody and operator procedures are additional infrastructure work. Review the combiner and identity design before
-freezing the transport profile. No testnet starts until the privacy, checkpoint
+custody and operator procedures are additional infrastructure work. Review the
+selected TLS composition, provider dependencies and identity binding before
+freezing the implementation profile. No testnet starts until the privacy, checkpoint
 and full-network acceptance gates pass.
