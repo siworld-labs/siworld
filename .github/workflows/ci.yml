@@ -53,6 +53,63 @@ jobs:
               build.run_logged([*command, selected], log_dir / (name + '.log'),
                   nonempty_tests=True, minimum_tests=minimum)
           PY_TLS
+  native-resident-network:
+    name: Native V1 resident peer runtime (engineering)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      AWS_LC_SYS_USE_SYSTEM: "0"
+      CARGO_BUILD_JOBS: 4
+      RAYON_NUM_THREADS: 4
+      SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/native-node
+      - name: Check engineering transport and owner integration
+        run: |
+          cargo fmt --manifest-path crates/native-node/Cargo.toml --check
+          cargo clippy --locked --manifest-path crates/native-node/Cargo.toml --features native-p2p --all-targets -- -D warnings
+      - name: Native listener, reconnect, synchronization and reward regressions
+        run: |
+          python3 - <<'PY_RESIDENT'
+          import importlib.util
+          from pathlib import Path
+          directory = Path('.local/native-resident')
+          directory.mkdir(parents=True, exist_ok=True)
+          spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
+          build = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(build)
+          build.run_logged(['cargo', 'test', '--release', '--locked', '--manifest-path',
+              'crates/native-node/Cargo.toml', '--features', 'native-p2p', '--lib'],
+              directory / 'regressions.log', nonempty_tests=True, minimum_tests=300)
+          build.run_logged(['cargo', 'test', '--release', '--locked', '--manifest-path',
+              'crates/native-node/Cargo.toml', '--features', 'native-p2p', '--bin', 'siworld-native-node'],
+              directory / 'cli.log', nonempty_tests=True, minimum_tests=2)
+          PY_RESIDENT
+      - name: Genuine resident production, peer sync and reward recovery
+        timeout-minutes: 10
+        env:
+          SIWORLD_RUN_RESIDENT_GENUINE: "1"
+        run: |
+          python3 - <<'PY_COMPOSITION'
+          import importlib.util
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
+          build = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(build)
+          build.run_logged(['cargo', 'test', '--release', '--locked', '--manifest-path',
+              'crates/native-node/Cargo.toml', '--features', 'native-p2p', '--lib',
+              'service::network::genuine::genuine_resident_miner_syncs_and_persists_rewards',
+              '--', '--ignored', '--exact', '--nocapture'],
+              Path('.local/native-resident/composition.log'),
+              nonempty_tests=True, minimum_tests=1)
+          PY_COMPOSITION
   native-economic-accounting:
     name: Native economic order and per-wallet conservation
     runs-on: ubuntu-24.04

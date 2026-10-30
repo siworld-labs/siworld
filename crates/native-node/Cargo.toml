@@ -18,6 +18,9 @@ parallel = ["native/parallel"]
 # provide a conversion to the production authenticated-session capability.
 hybrid-tls-candidate = ["dep:rustls", "dep:aws-lc-rs", "dep:aws-lc-sys", "dep:futures-rustls", "dep:futures", "dep:futures-timer", "dep:libp2p-core", "dep:rcgen", "dep:x509-parser"]
 
+# Explicit pinned-peer engineering listener; disabled in default builds.
+native-p2p = ["hybrid-tls-candidate"]
+
 [dependencies]
 native = { package = "siworld-multi-asset-experiment", path = "../bench-multi-asset", default-features = false }
 siworld-core = { path = "../core" }

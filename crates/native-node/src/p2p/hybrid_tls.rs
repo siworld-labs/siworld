@@ -1,8 +1,8 @@
-//! Inactive TLS transport qualification, including exporter-bound dual identity.
+//! TLS qualification and exporter-bound dual identity.
 //!
-//! The output is deliberately opaque and cannot construct `Authenticated` or
-//! enter a native protocol session. No listener or runtime selects this module.
-//! Provider qualification does not establish review of the full composition.
+//! The candidate-only output is opaque. The separate native-p2p engineering
+//! feature adds a bounded TCP bridge to the native session codec. Provider
+//! qualification does not establish review of the full composition.
 use super::{AdmissionContext, Budget, ConnectionRole, HandshakeReservation};
 use crate::identity::NativeIdentity;
 use crate::wire::Hash;
@@ -21,6 +21,8 @@ use zeroize::Zeroizing;
 
 mod auth;
 mod certificate;
+#[cfg(feature = "native-p2p")]
+pub(super) mod native;
 #[cfg(test)]
 mod tests;
 
@@ -104,6 +106,15 @@ impl Config {
     ) -> Result<Self, Error> {
         admission.check().map_err(|_| Error::Unavailable)?;
         let permit = budget.handshake().map_err(|_| Error::Budget)?;
+        Self::with_permit(identity, admission, permit)
+    }
+
+    fn with_permit(
+        identity: Arc<NativeIdentity>,
+        admission: AdmissionContext,
+        permit: HandshakeReservation,
+    ) -> Result<Self, Error> {
+        admission.check().map_err(|_| Error::Unavailable)?;
         let local = identity.descriptor().map_err(|_| Error::Authentication)?;
         if local.binding() != admission.binding()
             || local.fingerprint() == admission.expected_peer().fingerprint()
@@ -317,8 +328,8 @@ where
     }
 }
 
-/// No I/O implementation, raw stream accessor, exporter accessor, PeerId-only
-/// authentication result or conversion into a production session is exposed.
+/// The candidate-only API exposes no I/O or exporter accessor. The separate
+/// engineering bridge consumes this output after the same pinned dual auth.
 pub(crate) struct CandidateConnection<C> {
     local: Hash,
     peer: Hash,
@@ -329,13 +340,64 @@ pub(crate) struct CandidateConnection<C> {
     _permit: HandshakeReservation,
 }
 
+// Close and repeat full authentication below both long-lived record limits.
+// These caps include handshake traffic and are independent for each direction.
+const CONNECTION_WIRE_BYTES: usize = 512 * 1024 * 1024;
+const CONNECTION_RECORDS: usize = (1 << 20) - 1;
+
+#[derive(Default)]
+struct RecordBudget {
+    header: [u8; 5],
+    header_bytes: usize,
+    remaining: usize,
+    records: usize,
+    bytes: usize,
+}
+impl RecordBudget {
+    fn allowance(&self) -> io::Result<usize> {
+        if self.bytes >= CONNECTION_WIRE_BYTES
+            || (self.header_bytes == 0 && self.records >= CONNECTION_RECORDS)
+        {
+            return Err(io::Error::other(
+                "hybrid connection reauthentication required",
+            ));
+        }
+        let boundary = if self.header_bytes < 5 {
+            5 - self.header_bytes
+        } else {
+            self.remaining
+        };
+        Ok(boundary.min(CONNECTION_WIRE_BYTES - self.bytes))
+    }
+    fn consume(&mut self, bytes: &[u8]) {
+        self.bytes += bytes.len();
+        if self.header_bytes < 5 {
+            let start = self.header_bytes;
+            self.header[start..start + bytes.len()].copy_from_slice(bytes);
+            self.header_bytes += bytes.len();
+            if self.header_bytes == 5 {
+                self.records += 1;
+                self.remaining = u16::from_be_bytes([self.header[3], self.header[4]]) as usize;
+                if self.remaining == 0 {
+                    self.header_bytes = 0;
+                }
+            }
+        } else {
+            self.remaining -= bytes.len();
+            if self.remaining == 0 {
+                self.header_bytes = 0;
+            }
+        }
+    }
+}
+
 struct BoundedIo<C> {
     inner: C,
     bytes: usize,
     limit: usize,
-    record_header: [u8; 5],
-    header_bytes: usize,
-    record_remaining: usize,
+    application: bool,
+    incoming: RecordBudget,
+    outgoing: RecordBudget,
     yield_read: bool,
 }
 impl<C> BoundedIo<C> {
@@ -344,13 +406,16 @@ impl<C> BoundedIo<C> {
             inner,
             bytes: 0,
             limit: TLS_HANDSHAKE_BYTES,
-            record_header: [0; 5],
-            header_bytes: 0,
-            record_remaining: 0,
+            application: false,
+            incoming: RecordBudget::default(),
+            outgoing: RecordBudget::default(),
             yield_read: false,
         }
     }
     fn remaining(&self) -> io::Result<usize> {
+        if self.application {
+            return Ok(usize::MAX);
+        }
         let remaining = self.limit.saturating_sub(self.bytes);
         if remaining == 0 {
             return Err(io::Error::other("hybrid wire budget exhausted"));
@@ -367,42 +432,21 @@ impl<C: AsyncRead + Unpin> AsyncRead for BoundedIo<C> {
         if out.is_empty() {
             return Poll::Ready(Ok(0));
         }
-        // Let the TLS driver observe each complete record and a Pending read
-        // before fetching the next record. Otherwise its handshake read loop
-        // can prefetch application authentication into the smaller TLS-only
-        // wire budget even after Finished has completed. This only bounds raw
-        // reads; rustls retains ownership of all TLS parsing and cryptography.
+        // Let rustls observe complete records before fetching the next one;
+        // TLS Finished must finish before the auth wire cap is selected.
         if self.yield_read {
             self.yield_read = false;
             cx.waker().wake_by_ref();
             return Poll::Pending;
         }
-        let boundary = if self.header_bytes < 5 {
-            5 - self.header_bytes
-        } else {
-            self.record_remaining
-        };
-        let n = out.len().min(self.remaining()?).min(boundary);
+        let n = out
+            .len()
+            .min(self.remaining()?)
+            .min(self.incoming.allowance()?);
         let result = Pin::new(&mut self.inner).poll_read(cx, &mut out[..n]);
         if let Poll::Ready(Ok(n)) = &result {
-            self.bytes += n;
-            if self.header_bytes < 5 {
-                let start = self.header_bytes;
-                self.record_header[start..start + n].copy_from_slice(&out[..*n]);
-                self.header_bytes += n;
-                if self.header_bytes == 5 {
-                    self.record_remaining =
-                        u16::from_be_bytes([self.record_header[3], self.record_header[4]]) as usize;
-                    if self.record_remaining == 0 {
-                        self.header_bytes = 0;
-                    }
-                }
-            } else {
-                self.record_remaining -= n;
-                if self.record_remaining == 0 {
-                    self.header_bytes = 0;
-                }
-            }
+            self.bytes = self.bytes.saturating_add(*n);
+            self.incoming.consume(&out[..*n]);
             self.yield_read = true;
         }
         result
@@ -417,10 +461,14 @@ impl<C: AsyncWrite + Unpin> AsyncWrite for BoundedIo<C> {
         if bytes.is_empty() {
             return Poll::Ready(Ok(0));
         }
-        let n = bytes.len().min(self.remaining()?);
+        let n = bytes
+            .len()
+            .min(self.remaining()?)
+            .min(self.outgoing.allowance()?);
         let result = Pin::new(&mut self.inner).poll_write(cx, &bytes[..n]);
         if let Poll::Ready(Ok(n)) = &result {
-            self.bytes += n;
+            self.bytes = self.bytes.saturating_add(*n);
+            self.outgoing.consume(&bytes[..*n]);
         }
         result
     }

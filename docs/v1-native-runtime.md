@@ -1,14 +1,14 @@
 # Native V1 Engineering Runtime
 
-Status: the continuous single-node service and native node-integration library
-are implemented engineering components. The library adds bounded admission,
-authenticated-stream protocol interfaces, full-proof synchronization,
-verified-work fork selection, wallet primitives and a public subsidy audit.
-The integration has dedicated compilation, rejection and native-proof CI
-checks; complete CI for the current revision remains a release check. A real
-24-hour observation and final offline replay of the current revision remain
-required evidence; this document does not report their completion. No production hybrid-handshake provider or network
-service command is supplied. The runtime does not activate a public network,
+Status: the continuous single-node service, native integration library and
+opt-in pinned-peer TCP service are implemented engineering components.
+`native-p2p` enables the selected hybrid TLS connection upgrade, resident
+listening, reconnect and periodic full-proof synchronization. It does not
+supply libp2p Swarm, discovery or a public-network activation path. The
+integration has dedicated compilation, rejection and native-proof checks;
+current-revision CI and executed integration results remain release evidence.
+A genuine 24-hour observation and final offline replay of the current revision
+remain required; this document does not report their completion. The runtime does not activate a public network,
 replace an existing database or change the retained seven-node legacy network.
 Independent security review remains pending. The current native settlement
 decoder and wire cap are 655,360 bytes. The full-load evidence below satisfies
@@ -95,8 +95,9 @@ proving. Reward recovery material is saved privately and synced before the
 accepted block is committed. A receipt records private output/opening material for all one/five reward
 notes and must never be published. Rewards are encrypted to the explicitly
 configured, backed-up recipient wallet; receipts do not replace its seed
-backup. The separate wallet API does not establish protected durable wallet
-recovery merely by accepting a recipient address.
+backup. The seed-backed encrypted wallet vault and recovery procedure are specified in
+[wallet storage](v1-wallet-storage.md). A recipient address alone does not
+establish a valid backup or qualify the complete payment lifecycle.
 
 ## Fixed-profile measurement evidence
 
@@ -161,19 +162,33 @@ zero with checked integer arithmetic. Fees are not split, burned or deposited
 into the Holder pool. Each template captures an explicit Voyager/Holder setting;
 changed settings affect subsequent templates only.
 
-`Node::prepare_block` returns a move-only `PreparedBlock` bound to the node
-instance, production generation and accepted-state fingerprint. Branch adoption
-or a successful local commit invalidates earlier candidates, including a
-candidate whose parent height could later recur. `Node::commit_produced`
-authenticates its reward receipt, writes it through the store's opened parent
-directory, syncs the file and directory, and then invokes `Store::append`.
-Receipt writes reject changed database/directory identities, nonprivate Unix
-ownership or permissions, hard-linked databases, symlinks and existing receipt
-names. Receipt failure leaves the accepted head unchanged; a rejected append
-preserves the receipt as evidence. This API is a prerequisite for resident
-networking. The standalone CLI and continuous service still use their existing
-path-based receipt helper and are not yet routed through this API. Non-Unix
-store-owned receipt commits fail closed; macOS extended ACL qualification
+The standalone CLI, continuous single-node service and opt-in network producer
+all commit through `Node::commit_produced`. `begin_production` captures a
+move-only owner/generation/state permit before external work;
+`bind_produced` rejects stale or foreign results. `prepare_block` returns the
+same bound `PreparedBlock`. Adoption, another local commit or owner restart
+invalidates earlier work, including a recurring parent height.
+
+The commit path authenticates the reward receipt, saves it through the store's
+opened parent-directory descriptor and synchronizes its file and directory.
+Only then does `Store::append_produced` execute the common verified transition
+and atomically commit the canonical block/head with a private ownership row.
+The row binds block identity, height and receipt digest. A counted metadata
+marker distinguishes an empty initialized index from missing rows or a missing
+table. Imports never create local ownership; detached local rows survive reorgs
+and remain checked against retained blocks. Reopen verifies every indexed
+receipt. Missing or altered indexed evidence fails closed; absence of a receipt
+for an imported block is normal.
+
+Receipt operations reject changed database/directory identities, nonprivate
+Unix ownership or permissions, hard-linked databases/receipts and symlinks.
+An exact complete existing receipt can be synchronized and reused after an
+interrupted pre-append write; partial or conflicting evidence is preserved and
+rejected without overwriting. Receipt failure leaves the head unchanged; failed
+consensus append preserves its receipt but creates no ownership row. Legacy
+unindexed stores retain strict all-block receipt checks. They cannot enter the
+resident network without explicit qualification; there is no automatic index
+migration. Non-Unix commits fail closed, and macOS extended ACL qualification
 remains unresolved.
 
 The verified pool permits 512 MiB and 2,048 entries, with 16 MiB/64 entries
@@ -183,15 +198,16 @@ invalidity from local resource unavailability. Isolated verifier workers,
 unverified ingress queues and the planned abuse caches are not implemented
 by this in-process pool.
 
-The streaming protocol binds network, genesis and frozen verifier manifest
-before role-specific requests. A session requires an `Authenticated` channel
-from an in-crate hybrid provider; no production provider is implemented and
-no plaintext or classical fallback constructor is public. The provider must
-supply reviewed X25519 + ML-KEM key exchange, dual Ed25519/ML-DSA identity
-binding, transcript/key confirmation, authenticated records, nonce/sequence
-limits, rekeying, deadlines and secret cleanup. Current TCP helpers cannot
-establish production sessions until that provider exists. Session failure
-requires fresh authentication on reconnect.
+The streaming protocol binds network, genesis and the frozen verifier manifest
+before role-specific requests. With `native-p2p`, the in-crate provider obtains
+an `Authenticated` capability only after actual TLS 1.3 X25519MLKEM768,
+pinned mutual Ed25519 certificates, exporter-bound Ed25519/ML-DSA-65
+authentication and native Hello. No public plaintext or classical fallback
+constructor is supplied. Dedicated bounded socket workers bridge nonblocking
+TCP and the asynchronous TLS upgrade to native session framing. Failed or
+expired sessions close; reconnect performs fresh full authentication. This
+opt-in engineering composition still requires independent review, dependency
+qualification, adversarial resource measurements and independent-host tests.
 
 The library serves bounded block batches, transaction envelopes with private
 sidecars and compact references. Synchronization pins peer identity, ancestor,
@@ -222,19 +238,24 @@ availability failures, not cryptographic invalidity verdicts.
 Compact encoding version 3 preserves the bounded issuance records and proofs
 from native block encoding version 4. Compact frames have a separate byte cap
 for those records; the 1-MiB ordinary-control limit is unchanged. These are
-authenticated-stream library operations. A production handshake provider,
-permanent connection scheduler and deployed relay qualification are still
-required before network activation.
+authenticated-stream library operations. The current resident service runs
+periodic full-proof synchronization only; it does not dispatch compact relay,
+transaction gossip, wallet ingress or issuance RPC over resident connections.
+Those handlers require separate resident integration and relay qualification.
 
 Canonical locator and synchronization-base lookups reserve one maximum block
 plus bookkeeping before decoding stored proofs. Exhaustion is retryable and
 does not invalidate the peer or alter pending transactions.
 
-One shared 640-MiB logical transport budget covers retained receive buffers,
-with at most 16 handshakes and a 4-MiB aggregate handshake allowance. Candidate
-validation additionally defaults to 32 blocks, 640 MiB of logical state/body
-accounting and 1 GiB of retained detached evidence. Reconstructing a non-tip
-ancestor is limited to height 4,096 because it currently replays from genesis;
+One shared 640-MiB logical transport budget covers retained peer buffers and
+owned messages, with at most 16 handshakes and a 4-MiB aggregate handshake
+allowance. Library candidate validation defaults to 32 blocks, 640 MiB of
+logical state/body accounting and 1 GiB of retained detached evidence. The
+resident full-proof import path uses a separate 1-GiB candidate-accounting
+ceiling because a legal 576-slot block retains decoded proofs while preparing
+its encoded durable record. This does not enlarge the 640-MiB peer ledger or
+the 480-MiB resident reply cap. Reconstructing a non-tip ancestor is limited
+to height 4,096 because it currently replays from genesis;
 this guard is local resource policy, not a checkpoint or consensus horizon.
 Beyond it, reorganization returns resource unavailability until a qualified
 checkpoint/replay mechanism is provided. Extending the current tip does not
@@ -363,7 +384,8 @@ graceful stop:
 
 A stop request is checked at safe boundaries and during work batches; an
 in-progress proof may finish before shutdown. Graceful shutdown closes the
-writer, replays all accepted blocks and verifies every local reward receipt.
+writer, replays all accepted blocks and verifies indexed local reward receipts,
+or every block receipt in an unindexed legacy isolated store.
 It preserves the database, run receipts and event history. Error paths preserve
 their evidence and do not automatically retry or restore earlier state.
 `check` always acquires the engineering lease and fully replays the database
@@ -371,6 +393,163 @@ and reward receipts; use it after the service exits. `status` returns the
 private export when one exists, including a stopped run's final export;
 otherwise it acquires the lease and replays an idle store. An exported status
 is not an independent replay. Use `service-status` for explicit live inspection.
+
+### Pinned resident engineering service
+
+Build explicitly on an isolated supported host; the default binary has no
+network service command:
+
+```sh
+AWS_LC_SYS_USE_SYSTEM=0 cargo build --release --locked \
+  --manifest-path crates/native-node/Cargo.toml --features native-p2p
+```
+
+Create the initial private engineering directory once, then initialize each
+peer at the same genesis using an independently verified full-rules genesis
+identifier:
+
+```sh
+siworld-native-node init-service genesis-node
+siworld-native-node init-peer validator-node genesis-node VERIFIED_GENESIS_ID
+```
+
+`init-peer` requires an absent destination and an exact 64-character lowercase
+`EXPECTED_GENESIS_ID`. Obtain and verify this identifier independently of the
+transferred file. It is `Config::genesis_id()`, which binds the full encoded
+consensus configuration, ASERT rules, suite and verifier profile, rather than
+only the public network ID. Changing a rule such as `pow_iterations` is rejected
+even when the network ID is unchanged. The command reads only the source's
+validated public `engineering-network.bin` configuration and creates a fresh
+indexed store at genesis. It copies no chain history, private identity, wallet
+seed, reward receipt or runtime evidence, and starts no service. On a different
+host, transfer only that verified public configuration into a private staging directory and pass the staging directory
+as `GENESIS_DIRECTORY`; never transfer the live database or private keys.
+All peers must have identical network, genesis and verifier bindings. Running
+`init-service` independently on each host creates different networks. This
+engineering provisioning command is not a main-network genesis-manifest
+importer, checkpoint restore or legacy-store migration. Legacy unindexed
+stores are rejected by `run-network` rather than migrated.
+
+For each provisioned directory, initialize its own identity once and export
+only its public descriptor:
+
+```sh
+siworld-native-node identity-init network-directory
+siworld-native-node identity-public network-directory > local-identity.json
+```
+
+Obtain each peer's identity JSON and verify its fingerprint through an
+independent trusted channel. Import that exact public JSON with the separately
+verified 64-character lowercase fingerprint:
+
+```sh
+siworld-native-node peer-pin network-directory peer-identity.json VERIFIED_FINGERPRINT
+```
+
+`peer-pin` checks the three-field public export (`version`, `fingerprint`,
+`descriptor`), both signatures and local context, then installs an immutable
+pin. A configuration entry or socket routing hint never establishes trust.
+The descriptor is the complete 5,459-byte encoding represented as 10,918
+lowercase hexadecimal characters. Use a private mode-0600 peer configuration;
+unknown fields, missing pins, duplicate identities/endpoints, local identity
+entries and cross-network descriptors are rejected. Its exact schema is:
+
+```json
+{
+  "version": 1,
+  "engineering": true,
+  "listen": "127.0.0.1:40101",
+  "mining": false,
+  "peers": [
+    {
+      "endpoint": "127.0.0.1:40102",
+      "fingerprint": "REPLACE_WITH_INDEPENDENTLY_VERIFIED_LOWERCASE_HEX",
+      "descriptor": "REPLACE_WITH_COMPLETE_SIGNED_DESCRIPTOR_LOWERCASE_HEX"
+    }
+  ]
+}
+```
+
+These loopback endpoints and replacement strings describe a local example,
+not deployable credentials. Endpoint values are numeric IP/port pairs; DNS
+names and multiaddresses are unsupported. There is no default P2P port. Each
+peer must listen on its explicitly configured nonconflicting port. The
+`peers` array contains at most 64 entries and may be empty for a listening-only
+process. Configuration is bounded to 1 MiB and its exact-byte SHA-256 is bound
+into private per-run evidence. Changes require a controlled service restart;
+there is no remote administration or hot peer-replacement command.
+
+Start a validator with the explicit configuration:
+
+```sh
+siworld-native-node run-network network-directory peer-config.json
+siworld-native-node service-status network-directory
+siworld-native-node stop network-directory
+siworld-native-node check network-directory
+```
+
+For a miner, first create/back up its wallet and configure an explicit Voyager
+or Holder recipient as in [wallet storage](v1-wallet-storage.md), set
+`mining` to `true`, and start with `RAYON_NUM_THREADS=4` and
+`SIWORLD_COMPOSITION_HIDING_WORKERS=2`. Wallet secrets remain outside peer
+configuration. The same engineering lease prevents duplicate writers or a
+second producer. No command deploys a host or changes a retained network.
+
+The service binds a raw TCP listener and applies the dedicated libp2p TLS
+connection-upgrade traits directly. It does not instantiate Swarm, negotiate
+Yamux, discover peers or implement public routing. A 36-byte plaintext `SWPR`
+plus initiator-fingerprint hint selects an existing pin before TLS; it grants
+no authentication and reveals that stable service fingerprint to the path.
+Fresh hybrid TLS, both signatures and Hello are still required. Source-IP
+routing, unauthenticated descriptors and the hint cannot create a trusted pin.
+
+At most 16 socket workers and 32 charged owner commands are retained. Each
+worker reserves a 1-MiB stack allowance, and each command reserves 8 KiB in the
+shared logical budget in addition to retained proof/body reservations. Workers
+perform bounded I/O and hand owned requests to the single Node/store owner;
+no database lock is held across peer I/O. Completed full-proof batches are
+independently verified and adopted by that owner. Both peers alternate pull
+and serve turns, with one-second pacing between cycles. A completed pull
+cycle is not a claim that the node has found the globally strongest chain.
+
+For each configured pair, only the endpoint with the smaller pinned identity
+fingerprint initiates connections, including every reconnect. Both endpoints
+must load each other's independently verified pin and reachable listening
+endpoint. The accepted connection synchronizes both directions. There is no
+reverse-dial, NAT traversal or discovery fallback; an unreachable designated
+listener prevents that pair from connecting. The scheduler resolves duplicate
+attempts and retries temporary failures with bounded backoff. Every reconnect
+repeats authentication; cached TLS sessions and weaker fallback are unavailable.
+The original five-second admission budget starts before dialing or at accept and includes the routing hint, TLS,
+dual authentication and native Hello. Established I/O uses interruptible polling
+slices and native exchange deadlines. Connections close before their hard
+50-minute age, per-direction 512-MiB encrypted-byte or 1,048,575-record
+limits would prevent a complete paired sync cycle. These are reconnect limits,
+not an application key-update implementation. Cleanup cancels workers and
+retains charges until they exit.
+
+Exactly one owned background prover job constructs the prover, prepares
+padding or assembles a block. Its state snapshot, production permit, explicit
+mining settings and result remain bound to the originating state, and stale
+results are discarded. The owner keeps polling sockets and control requests
+during proving; it does not wait for a live proof. A separate worker performs
+PoW. Their separate 512-MiB local-production ledger permits at most two
+256-MiB snapshot/result reservations, one per job, with state/work guards
+before cloning. These charges do not consume the 640-MiB peer ledger, allowing
+peer admission while proof and PoW work coexist. Snapshot/result reservations
+remain charged until their worker exits. The owner still verifies imported
+full-proof batches and returned work serially, so synchronous validation can
+delay commands. Candidate and ledger limits neither bound all prover
+temporaries or allocator retention nor establish process RSS or response
+latency; simultaneous process-level qualification remains required.
+
+Status exports expose aggregate configured/pending/connected/closing/disabled
+and worker counts, authentication/closure counters and mining enablement.
+Endpoints, peer fingerprints, transaction classification and individual fees
+are excluded. Logical budgets and test definitions do not establish measured
+RSS, verification responsiveness, independent-host acceptance or sustained
+full-capacity throughput. Exact-source executed listener/reconnect and
+genuine-wallet results remain release evidence.
 
 ### Real 24-hour observation
 
@@ -431,6 +610,12 @@ maximum-load, independent-host, retention or recovery acceptance.
 cargo fmt --manifest-path crates/native-node/Cargo.toml --check
 cargo test --locked --manifest-path crates/native-node/Cargo.toml --lib
 cargo clippy --locked --manifest-path crates/native-node/Cargo.toml --all-targets -- -D warnings
+AWS_LC_SYS_USE_SYSTEM=0 cargo test --release --locked \
+  --manifest-path crates/native-node/Cargo.toml --features native-p2p \
+  --lib p2p::hybrid_tls::native::
+AWS_LC_SYS_USE_SYSTEM=0 cargo test --release --locked \
+  --manifest-path crates/native-node/Cargo.toml --features native-p2p \
+  --lib service::network::
 ```
 
 The new integration suite includes invalid-envelope and sidecar rejection,
@@ -439,10 +624,40 @@ verified-work branch choice, depth-24/depth-25 reorganization boundaries,
 atomic failure, detached-record reopen, wallet rescan and public-audit checks.
 Some tests use deterministic synthetic verifiers to isolate state and transport
 behavior. Separately selected native-proof tests exercise frozen proving and
-verification; the wallet proof test uses synthetic funding history. The new
-suite is covered by the dedicated native runtime CI job. None of these
-correctness checks substitutes for actual hybrid-provider tests,
-target-hardware performance or sustained-load acceptance.
+verification. The separate ignored 26-block wallet gate uses genuine native
+proofs from genesis, the common Node commit path, persisted local ownership,
+node/vault restart and sender/receiver mnemonic restoration. Synthetic-funded
+wallet tests remain narrower checks. Test definitions and an earlier passing
+revision are not evidence that the current revision completed this gate.
+
+A second ignored gate,
+`service::network::genuine::genuine_resident_miner_syncs_and_persists_rewards`,
+starts an actual resident miner and validator over pinned hybrid loopback
+connections. It checks native-proof production and synchronization, graceful
+stop, mining-disabled restart and authenticated reconnection before final-head
+comparison, independent database replay, the miner-only local reward index and
+mnemonic restoration of received reward notes. Run it explicitly on an isolated
+host, with an existing owner-only evidence directory outside the source checkout:
+
+```sh
+AWS_LC_SYS_USE_SYSTEM=0 RAYON_NUM_THREADS=4 \
+SIWORLD_COMPOSITION_HIDING_WORKERS=2 SIWORLD_RUN_RESIDENT_GENUINE=1 \
+SIWORLD_RESIDENT_GENUINE_RUN_ROOT="$SIWORLD_TEST_ROOT" \
+cargo test --release --locked --manifest-path crates/native-node/Cargo.toml \
+  --features native-p2p --lib \
+  service::network::genuine::genuine_resident_miner_syncs_and_persists_rewards \
+  -- --ignored --exact --test-threads=1
+```
+
+The resident gate uses genuine frozen native proofs, production economic
+heights, synthetic public fund identities and an easy engineering PoW target.
+It preserves its private stores and receipts on success or failure. Its source
+definition is not an executed result; current-source execution remains required.
+Loopback composition does not qualify independent hosts, production timing,
+maximum load, retention or public deployment. The new suite has dedicated
+native runtime and transport checks. None of these correctness checks
+substitutes for independent hybrid-provider review, target-hardware performance
+or sustained-load acceptance.
 
 Native issuance admission verifies the ML-DSA-65 declaration, frozen three-note
 proof and a 50-SIP payment output to an explicitly configured dedicated fund
@@ -455,10 +670,10 @@ The bounded local `submitissuance` dispatcher queues a declaration only after
 its fee is canonical or admitted; it does not start an RPC listener. Pending
 admissions are volatile. Production destination and limits remain unconfigured,
 so issuance fails closed there; the mainnet fee remains undecided.
-Production hybrid identity/record protection, a listening network service,
-verifier-worker isolation, pruning/checkpoint bootstrap, real three-day
-retention, Dandelion++, operational fund-key/allocation configuration,
-mnemonic/protected wallet persistence and panel controls remain incomplete.
+Independent review of the opt-in hybrid provider, verifier-worker isolation,
+resident transaction/compact relay, pruning/checkpoint bootstrap, real three-day
+retention, Dandelion++, operational fund-key/allocation configuration, the
+complete two-fee-tier/asset wallet flow and panel controls remain incomplete.
 The native block transition and audit already validate bounded signed fund
 payouts; this does not configure production fund custody. The library interfaces and
 candidate limits above must not be treated as deployment qualification.

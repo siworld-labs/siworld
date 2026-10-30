@@ -12,10 +12,12 @@ Status: implementation inventory and remaining activation plan for the
 independent native-proof engineering network. The native library contains
 bounded admission, authenticated-stream protocol interfaces, full-proof sync,
 verified-work fork choice, atomic reorganization, seed-derived wallet
-primitives and a public subsidy audit. A production hybrid provider and
-listening network service are not implemented. Remote CI covers compilation,
-protocol rejection and separately selected native-proof integration tests; no
-network acceptance is implied. The `native-v1-economics-1` profiles have
+primitives and a public subsidy audit. The explicit `native-p2p` feature adds
+the selected hybrid TLS upgrade, pinned raw TCP listener, bounded socket-worker
+queue, reconnect and periodic full-proof sync. Default builds expose no network
+service command. There is no Swarm/discovery or resident compact/transaction
+relay. Current-source CI, executed integration results and independent review
+remain required evidence; no network acceptance is implied. The `native-v1-economics-1` profiles have
 fresh actual-AIR and 39-trial reference-host evidence; public-key reproduction
 and complete CI remain release checks. The retained seven-node
 legacy network remains unchanged.
@@ -357,11 +359,13 @@ replays complete supplied canonical history, authenticates ciphertexts and
 note commitments, reconciles orphan receipts/spends, and prepares two-input/
 three-output SIP or asset payments with SIP-only standard/priority fees. It
 returns a matching private sidecar and payment opening after native proving.
-Mnemonic creation/backup, protected key/opening storage, valid-chain seed-wallet
-funding, network relay and pruned-public-history rescan are not yet integrated.
-The issuance API and seed-wallet scan recover initial issued notes through the
-shared transition; the native-proof test uses synthetic funding and does not
-complete M2.
+Mnemonic creation/backup, encrypted seed/opening storage and the payment
+journal are implemented. The genuine 26-block test uses native genesis funding,
+the common Node receipt/ownership commit, node restart, sender mnemonic
+restoration, standard-fee payment and receiver mnemonic restoration. It requires
+an observed result for the exact release source; synthetic-funded tests do not
+substitute. Full two-fee-tier and issued-asset wallet acceptance, resident wallet
+relay and pruned-public-history rescan remain incomplete.
 
 The offline `audit` command and library bind replay to the exact accepted
 head. The economic audit recomputes modes, all reward notes, pool/burn,
@@ -383,25 +387,27 @@ Its proposed TLS/provider profile and routing parameters require review and
 freezing before deployment. Pruned bootstrap uses explicit opt-in two-of-three
 checkpoint trust with genesis-pinned authority identities; the release
 checkpoint-plus-PoW path is the V1 default. Full proof replay remains a future
-independently verifying alternative. Neither production hybrid authentication
-nor checkpoint bootstrap is implemented or independently approved by selecting
-this design.
+independently verifying alternative. The opt-in engineering TLS adapter does
+not imply independent approval; checkpoint bootstrap remains unimplemented.
 
 The retained networking path uses libp2p 0.57.1 with TCP, DNS, Noise, Yamux
 and request-response; its live service constructs `noise::Config::new` and
 floods announcements. It has no implemented hybrid handshake or Dandelion++
 path and is not a native V1 transport.
 
-The native protocol library instead exposes bounded streaming sessions over an
-`Authenticated` channel capability. It binds network, genesis, trusted verifier
-manifest and peer role, requires fresh authentication after framing/I/O failure,
-and supplies TCP accept/connect adapters with aggregate handshake reservations.
-No production `HybridAuthenticator` is supplied, its capability constructor is
-crate-private, and no public listening CLI is enabled. A provider must supply
-reviewed identity binding and authenticated record protection, deadlines,
-sequence/nonce limits, key confirmation, cleanup and rekeying. Synthetic
-providers and loopback protocol tests do not qualify the cryptographic channel.
-The output encryption's ML-KEM dependency does not upgrade a connection.
+The native protocol library exposes bounded sessions over an `Authenticated`
+capability. The optional native provider binds network, genesis, verifier,
+actual hybrid negotiation, both identities, exporter context and native Hello.
+Its explicit resident service listens only under configured engineering pins
+and reconnects with fresh authentication. Only the smaller pinned fingerprint
+initiates for each symmetrically configured pair; reachable listeners are
+required and there is no reverse-dial or NAT fallback. It calls libp2p TLS
+upgrade traits on raw TCP rather than using a Swarm or discovery stack. Socket workers hand
+bounded owned messages to the sole Node/database owner. Periodic full-proof
+sync is currently the only resident application flow; compact and transaction
+handlers remain library interfaces. See [the runtime procedure](v1-native-runtime.md#pinned-resident-engineering-service)
+for configuration, pin provisioning, lifecycle limits and remaining tests.
+The output encryption's ML-KEM dependency alone does not upgrade a connection.
 
 The [proposed hybrid profile](v1-hybrid-handshake.md) uses a maintained TLS 1.3
 implementation with exactly X25519MLKEM768, its standard TLS key schedule and
@@ -434,10 +440,12 @@ Current source status is distinct from the exit conditions below. N1's native
 codec/transition and continuous single-node service are implemented. N2 has the
 verified-pool and padding APIs, without worker isolation or ingress services.
 N3 has authenticated-stream protocol interfaces, sync and exact-proof compact
-recovery, without a production provider/listening service or qualified wire
-measurements. Verified-work forks and atomic depth-24 reorganization are
-implemented with local replay limits. N8 has seed-derived scanning/transfer
-primitives without protected durability or full valid-chain M2 acceptance.
+recovery and an opt-in pinned TLS listening/reconnect/full-proof-sync service;
+resident compact relay and qualified wire measurements remain outstanding.
+Verified-work forks and atomic depth-24 reorganization are implemented with
+local replay limits. N8 has protected seed/opening persistence and mnemonic
+recovery, plus a genuine standard-fee 26-block owner-path gate whose exact-source
+execution must be recorded. The full two-fee-tier/asset M2 cycle remains pending.
 The offline audit covers SIP subsidy, pool/burn, scheduled locks,
 independent fund credit/vesting/spending and canonical asset issuance. The dedicated native
 runtime CI job covers compilation, rejection tests and separately selected
@@ -505,8 +513,11 @@ Do not substitute a shared fund allowance or restore the superseded fixed
 protocol domain strings and serialized field names retain their byte values.
 
 A deployment handover requires the following artifacts from one qualified
-commit. Until the network service exists, there is no deployable native P2P
-port or listener command to supply.
+commit. The opt-in listener command is `run-network DIRECTORY PEER_CONFIG`;
+its port is explicit in that file and has no default. Implemented startup
+commands do not authorize deployment or establish Tokyo1 qualification.
+Retain observed current-source CI, actual listener/reconnect, owner-path reward
+recovery and independent-host evidence before issuing the deployment package.
 
 | Handover item | Required evidence |
 | --- | --- |

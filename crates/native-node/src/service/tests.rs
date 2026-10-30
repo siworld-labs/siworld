@@ -236,6 +236,10 @@ fn actual_continuous_service_exports_stops_and_replays() {
     );
     let _lease = Lease::acquire(&network).unwrap();
     let replayed = Store::open_existing(network.join("chain.redb"), config, &verifier).unwrap();
+    assert_eq!(
+        replayed.verify_local_rewards().unwrap(),
+        replayed.state().height
+    );
     assert_eq!(final_status["tip"], local::hex(&replayed.state().tip));
     assert_eq!(
         final_status["state_fingerprint"],

@@ -80,6 +80,24 @@ binding when the transaction cap grows to 640 KiB: count limits do not permit
 extra allocations. The new decoder requires its own trusted shape and cap;
 the old 4-MiB declared-vector budget is not a total RSS bound.
 
+The opt-in resident service retains the 640-MiB shared peer ledger and limits
+one full-proof reply to 480 MiB. Its import staging uses a 1-GiB logical
+candidate-accounting ceiling, rather than the library default of 640 MiB: a
+maximum 576-slot block can own decoded proofs and an encoded durable record
+at the same time. This local accounting policy does not change wire caps,
+consensus limits or peer-ledger capacity. The maximum-envelope import/replay
+regression uses a deliberately synthetic verifier; it checks framing,
+resource admission and durable state, not genuine-proof acceptance,
+cryptographic soundness or proving performance.
+
+Local production has an independent 512-MiB ownership ledger for at most one
+background prover job and one PoW job, each retaining a 256-MiB snapshot/result
+reservation with state/work guards. This keeps local-job charges from consuming
+the peer ledger during concurrent work. These accounting ceilings are neither
+RSS measurements nor a whole-process memory cap. They do not cover every
+prover temporary, allocator retention, database mapping or thread allocation,
+and must not be summed into a claimed node-memory requirement.
+
 Qualify [candidate hosts](v1-deployment.md) using simultaneous node, generation,
 verification and maintenance limits, startup and steady peaks, state/cache
 growth and OS/VM reserves. Give memory equal prominence to time. Require the

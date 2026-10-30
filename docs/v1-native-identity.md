@@ -1,8 +1,9 @@
 # Native V1 Peer Identity Storage
 
 Status: implemented identity prerequisite for the independent V1 runtime. This
-module does not implement the hybrid handshake, authenticated record layer,
-resident listener, identity rotation, or peer discovery. Its cryptographic
+module supplies credentials rather than transport by itself. The optional
+`native-p2p` runtime composes them with hybrid TLS, a pinned listener and
+reconnect; identity rotation and peer discovery remain unavailable. Its cryptographic
 construction and dependencies remain in the external review scope. The retained
 network and its identities are unchanged.
 
@@ -112,9 +113,17 @@ canonical length/version checks, randomized-signature pin stability, immutable
 pin persistence, private permissions, symbolic links, hard links and nonregular
 records. Synthetic test keys are used only inside tests.
 
-The next integration stages are a reviewed provider, certificate policy and
-canonical vectors for the selected TLS profile; real initiator/responder,
-exporter-binding and deadline/resource tests; resident
-libp2p listener/outbound orchestration; bounded peer admission and reconnect;
-then independent-host synchronization, compact relay, partition and reorg
-tests. Identity storage alone does not satisfy network deployment acceptance.
+The opt-in runtime uses the selected TLS provider and dual identity for actual
+pinned TCP admission and fresh reconnect. `identity-public` exports the version,
+fingerprint and complete signed descriptor; `peer-pin` requires that public
+export plus an independently verified fingerprint before installing a pin.
+The peer configuration must then include the matching complete descriptor.
+See the [resident configuration procedure](v1-native-runtime.md#pinned-resident-engineering-service).
+There is no automatic trust-on-first-use, descriptor discovery or identity
+replacement on restart.
+
+Canonical-vector review, exact dependency qualification, adversarial resource
+measurements and observed current-source listener/reconnect tests remain
+required. Independent-host sync, resident compact relay, partition/reorg and
+full wallet-cycle acceptance remain separate gates. Identity storage or a
+successful loopback test alone does not satisfy deployment acceptance.

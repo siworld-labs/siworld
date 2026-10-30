@@ -1,10 +1,10 @@
 //! Opt-in complete native-proof chain test, with no synthetic funding prefix.
 //! Block timestamps advance at target spacing; this is not a wall-clock soak.
 use super::*;
-use crate::admission::{Mempool, PeerId};
 use crate::pool::Padding;
 use crate::producer::{MiningSettings, assemble, prepare_padding, validate_reward_secret};
 use crate::proofs::{NativeProver, NativeVerifier};
+use crate::runtime::Node;
 use crate::state::{RewardMode, State};
 use crate::store::Store;
 use crate::wallet::FeeTier;
@@ -79,27 +79,28 @@ fn fill_positions(
 }
 
 fn mine_and_accept(
-    store: &mut Store,
+    node: &mut Node<NativeVerifier>,
+    receipt_directory: &Path,
     prover: &NativeProver,
-    verifier: &NativeVerifier,
     positions: Vec<Padding>,
     settings: &MiningSettings,
     identities: &mut BTreeSet<Hash>,
     start: Instant,
 ) {
     check_deadline(start);
-    let timestamp = store
+    let permit = node.begin_production().unwrap();
+    let timestamp = node
         .state()
         .timestamp()
         .checked_add(crate::state::TARGET_INTERVAL)
         .unwrap();
-    let mut produced = assemble(store.state(), prover, positions, timestamp, settings).unwrap();
+    let mut produced = assemble(node.state(), prover, positions, timestamp, settings).unwrap();
     let seed = produced.block.pow_seed().unwrap();
     while !siworld_core::pow::meets_target(
         &siworld_core::pow::pow_hash(
             &seed,
             produced.block.nonce,
-            store.state().config.pow_iterations,
+            node.state().config.pow_iterations,
         ),
         &produced.block.target,
     ) {
@@ -111,9 +112,14 @@ fn mine_and_accept(
     for tx in &produced.block.transactions {
         assert!(identities.insert(tx.record.statement_id(&produced.block.network)));
     }
-    // Store uses the same complete transition and independent frozen verifier
-    // for every transaction and settlement proof, including funding blocks.
-    store.append(&produced.block, verifier).unwrap();
+    let id = produced.block.id().unwrap();
+    // The deployment owner binds the worker result, preserves its authenticated
+    // receipt, then executes the same durable verified transition for all blocks.
+    let prepared = node.bind_produced(permit, produced).unwrap();
+    assert_eq!(node.commit_produced(prepared).unwrap(), id);
+    let stored = node.store().block(node.state().height).unwrap();
+    let receipt = crate::local::read_reward(receipt_directory, &id).unwrap();
+    validate_reward_secret(&stored, &receipt).unwrap();
     check_deadline(start);
 }
 
@@ -124,6 +130,8 @@ fn progress(directory: &Path, store: &Store, stage: &str, start: Instant) {
             "schema":1, "stage":stage, "accepted_height":store.state().height,
             "required_height":26, "slots_per_block":SLOTS,
             "elapsed_ms":u64::try_from(start.elapsed().as_millis()).unwrap(),
+            "commit_path":"native-node-owned-durable-receipt",
+            "validated_reward_receipts":store.state().height,
         }),
     )
     .unwrap();
@@ -150,7 +158,7 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
     assert_eq!(config.target_interval, 300);
     assert_eq!(config.fund_verifying_keys.len(), 24);
     let network = config.network;
-    let (mut sender_vault, _sender_words) = backed_up_wallet(&directory.join("sender"), network);
+    let (sender_vault, sender_words) = backed_up_wallet(&directory.join("sender"), network);
     let (receiver_vault, receiver_words) = backed_up_wallet(&directory.join("receiver"), network);
     let recipient = receiver_vault.keys().unwrap().address();
     let settings = MiningSettings {
@@ -162,28 +170,31 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
     let prover = NativeProver::new().unwrap();
     let verifier = NativeVerifier::new().unwrap();
     let database = directory.join("chain").join("chain.redb");
-    let mut store = Store::open(&database, config.clone(), &verifier).unwrap();
-    assert_eq!(store.state().height, 0);
-    assert_eq!(store.state().tree.count, 0);
+    let mut node = Node::new(
+        Store::open(&database, config.clone(), &verifier).unwrap(),
+        NativeVerifier::new().unwrap(),
+    );
+    assert_eq!(node.state().height, 0);
+    assert_eq!(node.state().tree.count, 0);
     let mut identities = BTreeSet::new();
     let mut sender = sender_vault.wallet().unwrap();
     let mut first_reward = None;
     for height in 1..=LAST_FUNDING_HEIGHT {
-        let positions = fill_positions(store.state(), &prover, Vec::new(), start);
+        let positions = fill_positions(node.state(), &prover, Vec::new(), start);
         mine_and_accept(
-            &mut store,
+            &mut node,
+            &directory.join("chain"),
             &prover,
-            &verifier,
             positions,
             &settings,
             &mut identities,
             start,
         );
-        assert_eq!(store.state().height, height);
-        progress(&directory, &store, "native-funding", start);
+        assert_eq!(node.state().height, height);
+        progress(&directory, node.store(), "native-funding", start);
         if height == 24 {
             sender
-                .reconcile(config.clone(), &canonical_blocks(&store), &verifier)
+                .reconcile(config.clone(), &canonical_blocks(node.store()), &verifier)
                 .unwrap();
             let reward = sender
                 .receipts()
@@ -197,7 +208,7 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
             assert!(
                 sender
                     .prepare_transfer(
-                        store.state(),
+                        node.state(),
                         [first_reward, None],
                         &recipient,
                         SIP_ASSET_ID,
@@ -209,8 +220,36 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
             );
         }
     }
+    let funding_fingerprint = node.state().fingerprint();
+    let funding_tip = node.state().tip;
+    drop(node);
+    let mut node = Node::new(
+        Store::open_existing(&database, config.clone(), &verifier).unwrap(),
+        NativeVerifier::new().unwrap(),
+    );
+    assert_eq!(node.state().fingerprint(), funding_fingerprint);
+    assert_eq!(node.state().tip, funding_tip);
+    for height in 1..=LAST_FUNDING_HEIGHT {
+        let block = node.store().block(height).unwrap();
+        let receipt =
+            crate::local::read_reward(&directory.join("chain"), &block.id().unwrap()).unwrap();
+        validate_reward_secret(&block, &receipt).unwrap();
+    }
+    drop(sender);
+    drop(sender_vault);
+    let sender_path = directory.join("sender-restored");
+    let mut sender_vault = WalletVault::restore(
+        &sender_path,
+        network,
+        0,
+        Zeroizing::new(sender_words.expose().to_owned()),
+        PASSWORD,
+    )
+    .unwrap();
+    assert_eq!(sender_vault.keys().unwrap().address(), settings.recipient);
+    let mut sender = sender_vault.wallet().unwrap();
     sender
-        .reconcile(config.clone(), &canonical_blocks(&store), &verifier)
+        .reconcile(config.clone(), &canonical_blocks(node.store()), &verifier)
         .unwrap();
     let commitment = first_reward.expect("first reward inspected before maturity");
     // Only the wallet's local privacy-delay clock is advanced to its derived
@@ -222,7 +261,7 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
         .unwrap();
     let prepared = sender
         .prepare_transfer(
-            store.state(),
+            node.state(),
             [Some(commitment), None],
             &recipient,
             SIP_ASSET_ID,
@@ -245,52 +284,52 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
     drop(sender_vault);
     // Reopening retains the exact packet and independently validates the
     // recovered typed opening before any relay callback is invoked.
-    let mut sender_vault = WalletVault::open(&directory.join("sender"), network, PASSWORD).unwrap();
+    let mut sender_vault = WalletVault::open(&sender_path, network, PASSWORD).unwrap();
     sender_vault.verified_payment_opening(id).unwrap();
     assert_eq!(
         sender_vault.payment_packet(id).unwrap().envelope(),
         expected_envelope
     );
-    let mut pool = Mempool::new(network);
     sender_vault
         .submit_payment(id, |packet| {
-            pool.submit_encoded(
-                store.state(),
-                PeerId([23; 32]),
-                packet.envelope(),
-                Some(&packet.sidecar()?.encode()?),
-                &verifier,
-            )
-            .map(|_| ())
-            .map_err(|_| "native wallet roundtrip admission failed".into())
+            node.submit_local(packet.envelope(), Some(&packet.sidecar()?.encode()?))
+                .map(|_| ())
+                .map_err(|_| "native wallet roundtrip admission failed".into())
         })
         .unwrap();
-    let selected = pool.select(store.state(), SLOTS).unwrap();
+    let selected = node.select_pending(SLOTS).unwrap();
     assert_eq!(selected.len(), 1);
-    let positions = fill_positions(store.state(), &prover, selected, start);
+    let positions = fill_positions(node.state(), &prover, selected, start);
     mine_and_accept(
-        &mut store,
+        &mut node,
+        &directory.join("chain"),
         &prover,
-        &verifier,
         positions,
         &settings,
         &mut identities,
         start,
     );
-    assert_eq!(store.state().height, 26);
+    assert_eq!(node.state().height, 26);
     assert_eq!(identities.len(), 26 * SLOTS);
-    assert!(pool.prune(store.state()).is_ok());
-    assert!(!pool.contains(&id));
-    progress(&directory, &store, "native-payment-accepted", start);
-    let expected = store.state().fingerprint();
-    let expected_tip = store.state().tip;
-    drop(store);
+    assert!(!node.mempool().contains(&id));
+    progress(&directory, node.store(), "native-payment-accepted", start);
+    let expected = node.state().fingerprint();
+    let expected_tip = node.state().tip;
+    drop(node);
     let restored_config = crate::local::load(&directory.join("chain")).unwrap();
     assert_eq!(restored_config, config);
-    let store = Store::open_existing(&database, restored_config, &verifier).unwrap();
-    assert_eq!(store.state().fingerprint(), expected);
-    assert_eq!(store.state().tip, expected_tip);
-    let blocks = canonical_blocks(&store);
+    let node = Node::new(
+        Store::open_existing(&database, restored_config, &verifier).unwrap(),
+        NativeVerifier::new().unwrap(),
+    );
+    assert_eq!(node.state().fingerprint(), expected);
+    assert_eq!(node.state().tip, expected_tip);
+    let blocks = canonical_blocks(node.store());
+    for block in &blocks {
+        let receipt =
+            crate::local::read_reward(&directory.join("chain"), &block.id().unwrap()).unwrap();
+        validate_reward_secret(block, &receipt).unwrap();
+    }
     sender_vault
         .reconcile_payments(config.clone(), &blocks, &verifier)
         .unwrap();
@@ -309,7 +348,7 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
     let report = receiver.reconcile(config, &blocks, &verifier).unwrap();
     report.check_head(26, expected_tip, expected).unwrap();
     assert_eq!(
-        receiver.balance_details(store.state()).unwrap().available[&SIP_ASSET_ID],
+        receiver.balance_details(node.state()).unwrap().available[&SIP_ASSET_ID],
         100_000
     );
     assert_eq!(
@@ -321,5 +360,5 @@ fn genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs() {
         1
     );
     check_deadline(start);
-    progress(&directory, &store, "complete", start);
+    progress(&directory, node.store(), "complete", start);
 }
