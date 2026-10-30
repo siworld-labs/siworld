@@ -3,8 +3,9 @@
 Status: implemented library interface for engineering integration. This is a
 local custody format; it does not change the frozen transaction AIR, note format
 or existing wallet derivation domains. A bounded encrypted payment journal is
-included. The local web interface and complete valid-chain wallet acceptance
-gate remain separate work.
+included. The local web interface and complete two-fee-tier/asset wallet
+acceptance remain separate work. The genuine genesis-funded standard-fee
+roundtrip below must be executed against the exact release source.
 
 ## Recovery identity
 
@@ -228,9 +229,10 @@ Run it explicitly on an isolated build host, with an existing owner-only
 evidence directory outside the source checkout:
 
 ```sh
+RAYON_NUM_THREADS=4 SIWORLD_COMPOSITION_HIDING_WORKERS=2 \
 SIWORLD_RUN_NATIVE_WALLET_ROUNDTRIP=1 \
 SIWORLD_NATIVE_WALLET_RUN_ROOT="$SIWORLD_TEST_ROOT" \
-cargo test --release --manifest-path crates/native-node/Cargo.toml \
+cargo test --release --locked --manifest-path crates/native-node/Cargo.toml \
   wallet_vault::native_roundtrip::genuine_genesis_rewards_persist_pay_and_restore_with_native_proofs \
   -- --ignored --exact --test-threads=1
 ```
@@ -240,11 +242,16 @@ economic timing profile, 24 public synthetic fund identities, actual frozen
 native transaction and settlement proofs and `NativeVerifier` throughout. There
 is no synthetic verifier or funded-history prefix. It produces 25 blocks with
 64 fresh unique slots each, rejects the first reward at snapshot height 24 and
-spends it at height 25. It backs up both wallet mnemonics, synchronizes the
-sender's reservation and typed packet, restarts the sender, admits the retained
-packet to the real mempool and includes it in block 26 with 63 fresh positions.
-It then reopens and fully replays the chain database, restores the receiving
-wallet into a new directory and checks the payment and sender journal status.
+spends it at height 25. Every block uses the same Node owner commit path as
+the standalone service and CLI: authenticate and synchronize its private reward
+receipt, then atomically commit local ownership, canonical block and head.
+At height 25 the test reopens and fully verifies the node store, checks every
+indexed local reward and restores the sender into a new vault using its
+mnemonic. It then synchronizes the sender's reservation/typed packet, reopens
+the vault, admits the retained packet through Node's actual mempool and
+includes it in block 26 with 63 fresh positions. A final node restart verifies
+all indexed receipts and canonical proofs. Receiver mnemonic restoration into
+a new directory checks the payment and sender journal status.
 The full run generates 1664 transaction proofs and 26 settlement proofs.
 
 This gate advances block timestamps by the 300-second target interval without
@@ -262,7 +269,8 @@ limit because an in-progress prover call cannot be preempted by that check.
 Every run retains its isolated directory, public chain database, encrypted
 wallet vaults/journals and a bounded `roundtrip-progress.json` on success or
 failure. The progress file contains stage, accepted height, required height,
-slot capacity and elapsed milliseconds; no private wallet identifiers, openings,
+slot capacity, elapsed milliseconds, the owner commit-path identifier and
+validated receipt count; no private wallet identifiers, openings,
 balances or individual fees are emitted. Preserve a failed run for diagnosis;
 do not automatically repair, reset or resume it as successful evidence. A
 passing compile or the presence of this test does not establish a completed

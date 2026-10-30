@@ -27,7 +27,7 @@ DOCUMENTS = {
     "native-proof-profiles.md", "v1-native-runtime.md", "v1-economics.md", "v1-wallet-protection.md",
     "v1-protocol-byte-compatibility.md",
     "v1-native-identity.md", "v1-hybrid-handshake.md", "v1-wallet-storage.md",
-    "v1-offline-fund-keys.md",
+    "v1-offline-fund-keys.md", "linux-native-engineering-node.md",
 }
 PUBLIC_ARTIFACTS = {
     "crates/core/artifacts/v1-economics-simulation.json",

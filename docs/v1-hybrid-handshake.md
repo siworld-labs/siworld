@@ -1,29 +1,24 @@
-# Proposed Native V1 Hybrid Handshake Profile
+# Native V1 Hybrid TLS Handshake Profile
 
-Status: proposed composition for cryptographic and dependency review. This is
-not an adopted standard, an enabled transport, or network acceptance evidence.
-The identity module supplies private key custody and dual-signed descriptors;
-it does not supply this handshake. Do not create an authenticated application
-channel until the complete reviewed provider and acceptance tests exist.
+Status: TLS 1.3 with X25519MLKEM768 and exporter-bound Ed25519 plus ML-DSA-65
+authentication is the selected native V1 transport construction. The concrete
+provider, certificate policy and authentication encoding are implemented in an
+optional engineering adapter. `native-p2p` adds explicit pinned TCP listening,
+reconnect and native session admission; default builds do not enable them.
+Canonical vectors, dependency/resource qualification, independent composition
+review and independent-host acceptance remain gates. The implementation and
+test definitions are not evidence that those gates have passed. The identity
+module supplies private custody and dual-signed descriptors; it does not
+establish a TLS connection by itself.
 
-## Unresolved Noise construction
+## Selected transport construction
 
-The native libp2p transport requirement includes X25519 plus ML-KEM-768 in the
-authenticated key-exchange transcript and requires both Ed25519 and ML-DSA-65
-identity signatures. The TLS construction below is a composition proposal,
-not an implementation of a hybrid Noise handshake. The transport construction,
-key schedule, transcript encoding and wire profile remain unreviewed and must
-be resolved before native networking is enabled.
-
-The retained workspace locks `libp2p-noise` 0.47.0 and `snow` 0.10.0. The
-libp2p Noise configuration fixes `Noise_XX_25519_ChaChaPoly_SHA256`; its prologue
-interface only commits public context to that handshake. Adding an ML-KEM
-public key or ciphertext to a prologue does not mix the KEM shared secret into
-the chaining key or traffic keys. Hybrid Noise integration therefore requires
-a reviewed KEM-capable construction and provider, including dependency changes
-if necessary. Do not implement an ad hoc combiner, relabel the TLS proposal as
-Noise, or accept classical Noise as a native fallback. The retained network is
-a separate protocol and is unchanged by this requirement.
+The dedicated native libp2p connection upgrade uses this TLS construction
+with both ephemeral X25519 and ML-KEM-768 contributions and both identity
+signatures required.
+Noise is not a native V1 upgrade or fallback. A failed TLS or dual-identity
+handshake closes the connection without negotiating a weaker transport.
+The retained network uses a separate protocol and is unchanged.
 
 ## Construction and review boundary
 
@@ -42,15 +37,16 @@ HKDF-SHA256 schedule, bidirectional Finished verification and maintained record
 protection. The exact security assumptions and error handling still require
 review of the selected implementation. TLS authentication with only Ed25519
 does not meet the V1 dual-identity requirement. The additional exporter-bound
-authentication described below is a SIWORLD proposal; the TLS RFCs do not
-approve its composition, its pin-distribution policy or its implementation.
+authentication described below is the selected SIWORLD composition pending
+independent review; the TLS RFCs do not approve its authentication encoding,
+pin-distribution policy or implementation.
 
 Candidate dependency selection must demonstrate the exact hybrid group, strict
 key checks, exporter API, record limits, key erasure and cancellation behavior.
 Pin the library, cryptographic provider and all transitive revisions, collect
-advisories/licenses and reproduce known-answer vectors before adoption. If no
-reviewable implementation fits the resource caps, revise the proposal and
-measure it; do not silently substitute a custom exchange or classical group.
+advisories/licenses and reproduce known-answer vectors before adoption.
+A resource or dependency conflict blocks activation until a reviewed profile
+revision; it does not permit a custom exchange or classical group.
 
 ## TLS restrictions
 
@@ -74,10 +70,11 @@ it verifies TLS CertificateVerify and the required certificate constraints.
 It is not an accept-all certificate verifier. Network identity does not depend
 on public web PKI names or fetching OCSP/AIA material. The certificate template,
 DER bound, validity policy and strict SPKI parsing must be specified and tested
-with the selected TLS implementation before enabling this proposal.
+with the selected TLS implementation before enabling this profile.
 The current compact pin file stores a fingerprint, not the full public keys;
-the future provider must also load and verify the corresponding public
-descriptor before dialing or accepting. A pin file alone is insufficient TLS
+the provider must also load and verify the corresponding public
+descriptor before dialing or accepting. The opt-in runtime enforces that
+requirement through independently persisted pins and complete peer descriptors. A pin file alone is insufficient TLS
 configuration, and a descriptor supplied by an unauthenticated connection must
 not fill that gap.
 
@@ -246,7 +243,9 @@ that indicates a different TLS version, group, cipher, ALPN, resumption or early
 data. Those comparisons are interface guards. Parameter values supplied by a
 provider are assertions, not cryptographic verification, and do not prove a
 completed TLS handshake, exporter binding, fresh dual signatures or key
-confirmation. No production provider is supplied or enabled by these guards.
+confirmation. These guards alone supply no cryptographic provider. The optional
+`native-p2p` adapter obtains the capability only from its completed hybrid TLS
+upgrade and dual-authentication exchange.
 
 Cancellation and deadline checks occur at I/O boundaries. The cooperative token
 cannot interrupt a blocked socket or listener by itself, and static socket
@@ -266,8 +265,10 @@ ML-DSA-65 implementations and a fixed 3,373-byte signature encoding. Descriptor
 possession signatures cannot substitute for these signatures. This API neither
 generates the nonces nor verifies their freshness, the key exchange, the
 provider's hashes or its pin-distribution policy. It cannot create an
-`Authenticated` capability. Its candidate domain and encoding do not freeze or
-implement the six-frame TLS proposal above or a hybrid Noise wire profile.
+`Authenticated` capability. Its separate candidate domain and encoding do not
+implement or freeze the six-frame TLS authentication encoding above. A TLS
+provider must implement that encoding explicitly and pass its canonical vectors;
+relabeling the candidate helper does not establish exporter-bound authentication.
 
 The provider-independent peer scheduler accepts at most 64 configured pinned
 fingerprints and retains at most 16 pending attempts and 16 established
@@ -295,16 +296,18 @@ listener, reconnect, shutdown and resource-exhaustion tests before activation.
 
 ## Dependency compatibility assessment
 
-The following versions were inspected as source candidates. They are not a
-provider selection or evidence of an enabled connection. The native-node crate
-has its own workspace and does not currently depend on these TLS libraries;
-versions in the separate repository workspace lockfile do not activate a
-native provider.
+The following versions were inspected as source candidates. They do not
+qualify a provider or establish an enabled connection. The native-node crate
+has its own workspace; any candidate integration must pin the TLS library,
+cryptographic provider, enabled features and transitive revisions in its exact
+native lockfile. Versions in the separate repository workspace lockfile do not
+establish the native dependency graph. Keep those integration receipts separate
+from the immutable proof-source and proof-parameter profiles.
 
 | Component | Inspected version | Available interface | Required integration or review |
 | --- | --- | --- | --- |
 | `rustls` | 0.23.46 | Explicit `CryptoProvider` cipher/group lists, TLS 1.3-only builder, X25519MLKEM768, negotiated-group inspection, exporter, traffic-key refresh, custom certificate verifiers and signers | Pin the exact provider, constrain every offered algorithm, implement certificate policy and dual authentication, test receive limits and cancellation |
-| `aws-lc-rs` / `aws-lc-sys` | 1.18.2 / 0.46.0 | ML-KEM-768 and X25519 used by the rustls hybrid group | Review transitive native code, supported-target build receipts, vectors, secret cleanup, advisories and licenses |
+| `aws-lc-rs` / `aws-lc-sys` | 1.19.0 / 0.47.0 | ML-KEM-768 and X25519 used by the rustls hybrid group; bundled AWS-LC 5.12.0 | Review transitive native code, supported-target build receipts, vectors, secret cleanup, advisories and licenses |
 | `libp2p-tls` | 0.7.0 | Asynchronous libp2p connection-upgrade example using rustls and `futures-rustls` | Its stock protocol, identity policy, certificates, fallback groups and key logging do not implement this profile; use a dedicated reviewed native upgrade |
 | `futures-rustls` | 0.26.0 | TLS streams compatible with the asynchronous I/O traits used by libp2p upgrades | Prove bounded scheduling and cancellation through the selected stream adapter |
 | `tokio-rustls` | 0.26.6 | TLS streams, access to rustls state and initialization hooks for Tokio I/O | Alternative for a direct Tokio socket layer, not directly compatible with the synchronous native `Read + Write` interface or libp2p's futures I/O traits |
@@ -322,7 +325,7 @@ The stock `libp2p-tls` 0.7.0 constructors use ALPN `libp2p`, upgrade name
 `/tls/1.0.0`, ephemeral P-256 certificate keys, libp2p identity extensions and
 default key-exchange groups. They also install `rustls::KeyLogFile`, which can
 write traffic secrets when `SSLKEYLOGFILE` is configured. These are concrete
-configuration differences, not the proposed native provider. A native upgrade
+configuration differences from the selected profile. A native upgrade
 must explicitly retain `NoKeyLog` and test that setting `SSLKEYLOGFILE` cannot
 create a key-log file. It must require both native identity signatures before
 returning an authenticated capability, even after successful TLS authentication.
@@ -345,61 +348,132 @@ separate receipts. No FIPS certification claim follows from these features.
 An exact native-workspace lockfile, enabled-feature report, license inventory,
 advisory scan and supported-target build matrix remain adoption gates.
 
-## Resident runtime integration plan
+## Inactive transport candidate
 
-The current transport boundary provides bounded native sessions and one-shot
-`accept_once` / `connect` helpers. `Node` provides local admission, bounded
-synchronization and the compact-block references/missing-data/proof exchange.
-These interfaces are not a resident peer service. The continuous single-node
-producer does not supply peer lifecycle management or the proposed TLS
-provider.
+The optional native-node feature `hybrid-tls-candidate` implements a dedicated
+libp2p connection upgrade, mutual pinned Ed25519 certificates, the completed
+TLS exporter and the six-message dual-authentication exchange. It uses
+`rustls` 0.23.46, `aws-lc-rs` 1.19.0, `aws-lc-sys` 0.47.0,
+`futures-rustls` 0.26.0, `libp2p-core` 0.44.0, `rcgen` 0.13.2 and
+`x509-parser` 0.18.1. The separate `libp2p-tls` crate is a source reference,
+not a native dependency. Its constructors are not used.
 
-The first resident orchestration slice remains disabled without a reviewed
-provider. Its responsibilities are:
+Each candidate upgrade reserves its shared handshake allowance before
+certificate construction. The resulting opaque connection retains that
+allowance until destruction. Both client and server require the exclusive
+group, cipher, version and ALPN, disable key logging and resumption, and reject
+early data. The raw I/O adapter limits reads to TLS record boundaries and
+yields between reads so the TLS driver can finish before prefetched application
+data consumes its smaller handshake budget. One absolute admission deadline
+and an independently polled cancellation timer bound stalled asynchronous I/O;
+timeout drops the owned operation and transport.
 
-1. Load the persistent local identity, independently authenticated full peer
-   descriptors and expected pins before accepting traffic. Reject missing,
-   changed, duplicate or cross-network entries without generating replacement
-   identities. Use the typed expected-peer and admission contexts for each
-   provider instance; a mining/validation role is different from a handshake
-   role.
-2. Keep one owner of `Node`, its database and block-production state. Connection
-   tasks exchange bounded owned messages with that owner. They do not acquire a
-   global node mutex while waiting for network I/O, share database writers or
-   start a second producer against the same store. Proof workers return results
-   with the state preconditions needed by the owner, which rechecks those
-   preconditions before applying the common consensus transition.
-3. Bound accepted sockets, unfinished handshakes, established sessions,
-   multiplexed streams, command queues and proof work through the same global
-   reservation budget. Reservations follow queued data through decoding,
-   verification and commit, and are returned on disconnect, timeout or shutdown.
-   Limit the listener backlog and reject excess admission before public-key
-   work. Kernel socket buffers and TLS/library allocations require separate
-   measured accounting; logical reservations do not by themselves cap RSS.
-4. Preserve the admission context's absolute deadline through socket
-   authentication and native Hello. The helpers no longer reset the budget
-   between those phases. A per-read socket timeout and before/after time checks
-   cannot cancel a blocked operation. Dial attempts, accepted sockets and all
-   cancellation paths need actual interruption and explicit bounded policies.
-5. Separate asynchronous transport I/O from consensus mutation. Adapt the
-   native framing and sync state machines to asynchronous streams or use an
-   explicitly bounded bridge; do not call synchronous `Read + Write` operations
-   on a libp2p runtime thread. A slow 180-second block transfer must not prevent
-   status reads, shutdown, unrelated peer admission or local template updates.
-6. Track peer connection states, deduplicate simultaneous dials, bound retries
-   and apply backoff. Retry unavailable connections with fresh authentication;
-   do not retry malformed frames or authentication failures under a weaker
-   transport. Maintain only aggregate public status, such as connection counts,
-   sync state and categorized failures.
-7. On shutdown, stop admission, cancel connections and outstanding work, finish
-   or abort the current atomic transition, flush the store and release its
-   ownership lease. Restart recovers the same chain and identity, never a
-   replacement genesis, wallet or identity generated as an error recovery step.
+The candidate certificate template is a single self-signed Ed25519 v3 leaf,
+at most 2,048 DER bytes, with the exact pinned SPKI and a fixed subject/issuer
+common name `SIWORLD native peer`. It has no extensions or unique identifiers.
+Validity starts 300 seconds before creation and ends 24 hours after creation;
+verification uses the TLS provider's current time and rejects longer spans,
+malformed or noncanonical DER, additional certificates and OCSP data. A narrow
+signer accesses the persisted identity without exporting private seeds or
+PKCS#8. Configurations are created per attempt; a future reusable credential
+cache must refresh before expiry without rotating the persisted identity.
 
-The orchestration tests may use a test-only provider to exercise scheduling,
-ownership and cleanup. Such a provider must not be linked as a production
-authentication alternative. Real networking activation additionally requires
-the complete provider and the acceptance gates above.
+The TLS authentication signer has its own typed domain and context matching
+the six-message format. The earlier generic channel-signature candidate is
+unchanged. Completed exporter material is kept locally in a zeroizing buffer;
+neither the peer nor an application caller supplies the provider binding.
+
+The candidate output exposes no stream accessor, application I/O, PeerId-only
+authentication result or public conversion into an `Authenticated` capability.
+The `hybrid-tls-candidate` feature alone remains inactive. The additional
+`native-p2p` feature supplies a crate-internal socket adapter that transfers the
+verified stream into native session admission; it retains the handshake charge
+through native Hello and then accounts established stream buffers separately.
+The standalone single-node command does not open peer sockets. Unit
+tests exercise actual rustls/AWS-LC hybrid negotiation over fragmented I/O,
+both identity signatures, classical-only rejection, malformed records and
+authentication frames, pin/context/replay rejection, cancellation and retained
+reservation lifetime. Remote execution and exact dependency review are
+required; the test definitions alone are not acceptance evidence.
+
+To reproduce candidate checks on an isolated supported host:
+
+```sh
+AWS_LC_SYS_USE_SYSTEM=0 cargo test --release --locked \
+  --manifest-path crates/native-node/Cargo.toml \
+  --features hybrid-tls-candidate --lib p2p::hybrid_tls::
+AWS_LC_SYS_USE_SYSTEM=0 cargo test --release --locked \
+  --manifest-path crates/native-node/Cargo.toml \
+  --features hybrid-tls-candidate --lib identity::tls_
+```
+
+Builds must use the locked bundled AWS-LC source and reject environment or
+configuration overrides that link an unrecorded system library. Preserve the
+dependency license notices in any binary distribution. Existing upstream
+rustls audit reports do not cover this integration, the current AWS-LC version
+or the SIWORLD authentication composition. The opt-in socket bridge and
+resident lifecycle below have actual-listener test definitions; their observed
+exact-source execution, adversarial CPU/RSS measurements and independent-host
+acceptance remain separate evidence. Established connections use bounded full
+reauthentication limits rather than an application traffic-key-update API.
+
+## Opt-in resident runtime integration
+
+`native-p2p` adds `run-network DIRECTORY PEER_CONFIG` and `peer-pin` to the
+engineering CLI. The default feature set does not expose these commands.
+The [runtime procedure](v1-native-runtime.md#pinned-resident-engineering-service)
+specifies exact configuration fields and independently verified pin import.
+The service applies libp2p connection-upgrade traits directly to raw TCP;
+there is no Swarm, discovery, multiplexing, automatic trust-on-first-use or
+public-network activation.
+
+The listener loads an existing independently created identity and full trusted
+peer descriptors before traffic. The initiator sends a bounded 36-byte `SWPR`
+plus fingerprint routing hint in plaintext so the responder can select a local
+pin. That hint is visible service metadata, never authentication. Unknown hints
+are dropped and cannot install a pin or penalize an identity as authenticated
+misconduct. Full hybrid TLS, both exporter-bound signatures and native Hello
+still bind the actual peer and context before commands reach the owner.
+
+Nonblocking TCP plus timer-driven polling interrupts stalled TLS/native I/O.
+One original five-second budget covers dial/accept, routing, TLS, dual auth and
+Hello. The adapter preserves the handshake reservation through Hello; incomplete
+admission and cancellation release it only when the connection is dropped.
+Established streams reserve buffers and enforce per-direction encrypted-byte
+and record caps plus a 50-minute maximum age. New paired sync cycles require
+sufficient remaining wire/record/time allowance; otherwise the connection
+closes and fresh full authentication occurs after scheduler backoff. These
+limits do not claim measured RSS or application-level TLS key updates.
+
+A single owner controls Node, its redb store, fork choice and production commits.
+At most 16 socket workers exchange charged owned commands through a 32-entry
+queue. Workers do not acquire the database across I/O. Retained block/proof
+reservations follow batch messages through verification and atomic adoption.
+The resident driver permits only the smaller pinned fingerprint to initiate
+connections, including reconnects, and retains superseded attempt charges
+until cleanup. Both endpoints require symmetric trusted peer configurations
+and reachable listeners; there is no reverse-dial, NAT traversal or discovery
+fallback. A connection still synchronizes both directions. Failed sessions
+retry under bounded policy with the same pin and fresh authentication. Missing identity, failed replay or missing
+local reward evidence never creates replacement genesis, keys or wallet data.
+
+The resident protocol currently alternates periodic full-proof pull/serve
+turns. Compact recovery and transaction/sidecar APIs exist in the library but
+are not dispatched by this resident loop. It supplies neither wallet/issuance
+RPC ingress nor Dandelion++. Exactly one owned background prover job performs
+prover construction, padding preparation or block assembly; a separate worker
+performs PoW. Captured state, permits and settings bind results to the original
+template, and stale work is discarded. Snapshot/result reservations remain
+charged until worker exit. The owner continues polling I/O and control work
+during proving, but verifies imported full-proof batches and returned work
+serially. Synchronous validation can therefore delay status, admission or
+shutdown; measure those latencies and process RSS before deployment.
+
+Shutdown stops admission, cancels connection tasks and stale work, joins owned
+workers, then independently replays accepted history and verifies indexed local
+reward receipts before reporting a stopped state. Restart retains the existing
+identity and canonical state. Current-source execution of these paths remains
+required release evidence; source availability alone closes no acceptance gate.
 
 Required resident-service regression tests include:
 

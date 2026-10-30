@@ -16,6 +16,159 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  native-hybrid-tls:
+    name: Native V1 hybrid TLS candidate (inactive)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      AWS_LC_SYS_USE_SYSTEM: "0"
+      CARGO_BUILD_JOBS: 4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/native-node
+      - name: Format and lint the inactive candidate
+        run: |
+          cargo fmt --manifest-path crates/native-node/Cargo.toml --check
+          cargo clippy --locked --manifest-path crates/native-node/Cargo.toml --features hybrid-tls-candidate --all-targets -- -D warnings
+      - name: Genuine hybrid negotiation and bounded dual authentication
+        run: |
+          python3 - <<'PY_TLS'
+          import importlib.util
+          from pathlib import Path
+          log_dir = Path('.local/tls-candidate')
+          log_dir.mkdir(parents=True, exist_ok=True)
+          spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
+          build = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(build)
+          command = ['cargo', 'test', '--release', '--locked', '--manifest-path',
+              'crates/native-node/Cargo.toml', '--features', 'hybrid-tls-candidate', '--lib']
+          for selected, minimum, name in [('p2p::hybrid_tls::', 22, 'transport'),
+              ('identity::tls_', 4, 'identity')]:
+              build.run_logged([*command, selected], log_dir / (name + '.log'),
+                  nonempty_tests=True, minimum_tests=minimum)
+          PY_TLS
+  native-resident-network:
+    name: Native V1 resident peer runtime (engineering)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      AWS_LC_SYS_USE_SYSTEM: "0"
+      CARGO_BUILD_JOBS: 4
+      RAYON_NUM_THREADS: 4
+      SIWORLD_COMPOSITION_HIDING_WORKERS: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: crates/native-node
+      - name: Check engineering transport and owner integration
+        run: |
+          cargo fmt --manifest-path crates/native-node/Cargo.toml --check
+          cargo clippy --locked --manifest-path crates/native-node/Cargo.toml --features native-p2p --all-targets -- -D warnings
+      - name: Native listener, reconnect, synchronization and reward regressions
+        run: |
+          python3 - <<'PY_RESIDENT'
+          import importlib.util
+          from pathlib import Path
+          directory = Path('.local/native-resident')
+          directory.mkdir(parents=True, exist_ok=True)
+          spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
+          build = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(build)
+          build.run_logged(['cargo', 'test', '--release', '--locked', '--manifest-path',
+              'crates/native-node/Cargo.toml', '--features', 'native-p2p', '--lib'],
+              directory / 'regressions.log', nonempty_tests=True, minimum_tests=300)
+          build.run_logged(['cargo', 'test', '--release', '--locked', '--manifest-path',
+              'crates/native-node/Cargo.toml', '--features', 'native-p2p', '--bin', 'siworld-native-node'],
+              directory / 'cli.log', nonempty_tests=True, minimum_tests=2)
+          PY_RESIDENT
+      - name: Genuine resident production, peer sync and reward recovery
+        timeout-minutes: 10
+        env:
+          SIWORLD_RUN_RESIDENT_GENUINE: "1"
+        run: |
+          python3 - <<'PY_COMPOSITION'
+          import importlib.util
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('build_d8', 'scripts/build-d8-checkpoint.py')
+          build = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(build)
+          build.run_logged(['cargo', 'test', '--release', '--locked', '--manifest-path',
+              'crates/native-node/Cargo.toml', '--features', 'native-p2p', '--lib',
+              'service::network::genuine::genuine_resident_miner_syncs_and_persists_rewards',
+              '--', '--ignored', '--exact', '--nocapture'],
+              Path('.local/native-resident/composition.log'),
+              nonempty_tests=True, minimum_tests=1)
+          PY_COMPOSITION
+      - name: Build and inspect the guarded pinned-peer Linux package
+        run: |
+          python3 scripts/build-native-runtime.py --native-p2p --output .local/native-peer-release
+          .local/native-peer-release/bin/siworld-native-node --check-cpu
+          python3 - <<'PY_PACKAGE'
+          import hashlib
+          import json
+          from pathlib import Path
+          import re
+          import shutil
+          import subprocess
+          import tarfile
+          root = Path('.local/native-peer-release')
+          (root / 'scripts').mkdir()
+          for name in ('native-network-status.py', 'native-network-stop.py'):
+              shutil.copy2(Path('scripts') / name, root / 'scripts' / name)
+          shutil.copytree('docs', root / 'docs')
+          for name in ('LICENSE', 'NOTICE'):
+              shutil.copy2(name, root / name)
+          (root / 'metadata').mkdir()
+          for source, name in (
+              ('crates/native-node/Cargo.lock', 'native-runtime-Cargo.lock'),
+              ('crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json', 'native-proof-profiles.json'),
+              ('rust-toolchain.toml', 'rust-toolchain.toml')):
+              shutil.copy2(source, root / 'metadata' / name)
+          worker = root / 'libexec/siworld-native-node'
+          dynamic = subprocess.check_output(['readelf', '--dynamic', str(worker)], text=True)
+          versions = subprocess.check_output(['readelf', '--version-info', str(worker)], text=True)
+          commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert re.fullmatch('[0-9a-f]{40}', commit)
+          files = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                   for path in sorted(root.rglob('*')) if path.is_file()}
+          manifest = {
+              'schema_version': 1, 'status': 'engineering-candidate', 'source_commit': commit,
+              'corresponding_source': 'https://github.com/siworld-labs/siworld/tree/' + commit,
+              'cargo_default_features': True, 'cargo_features': ['native-p2p'],
+              'independent_host_acceptance': 'pending', 'systemd_qualification': 'pending',
+              'compiler': subprocess.check_output(['rustc', '-vV'], text=True),
+              'build_glibc': subprocess.check_output(['getconf', 'GNU_LIBC_VERSION'], text=True).strip(),
+              'needed_libraries': sorted(set(re.findall(r'Shared library: \[([^\]]+)\]', dynamic))),
+              'glibc_versions': sorted(set(re.findall(r'\bGLIBC_[0-9.]+', versions))),
+              'files_sha256': files,
+          }
+          (root / 'release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          files['release-manifest.json'] = hashlib.sha256((root / 'release-manifest.json').read_bytes()).hexdigest()
+          (root / 'SHA256SUMS').write_text(''.join(digest + '  ' + name + '\n' for name, digest in sorted(files.items())))
+          subprocess.run(['sha256sum', '--check', 'SHA256SUMS'], cwd=root, check=True)
+          with tarfile.open('.local/native-engineering-linux-x86_64.tar.gz', 'w:gz') as archive:
+              archive.add(root, arcname='native-engineering-linux-x86_64')
+          PY_PACKAGE
+      - name: Preserve the engineering candidate without runtime data
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-engineering-linux-x86_64-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .local/native-engineering-linux-x86_64.tar.gz
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
   native-economic-accounting:
     name: Native economic order and per-wallet conservation
     runs-on: ubuntu-24.04

@@ -138,11 +138,16 @@ def progress(private, commit):
         return None, 'no-progress'
     value, record_info = bounded_json(record)
     require(started <= record_info.st_mtime_ns <= now)
-    require(set(value) == {'schema', 'stage', 'accepted_height', 'required_height', 'slots_per_block', 'elapsed_ms'})
+    require(set(value) == {'schema', 'stage', 'accepted_height', 'required_height',
+                           'slots_per_block', 'elapsed_ms', 'commit_path',
+                           'validated_reward_receipts'})
     require(type(value['schema']) is int and value['schema'] == 1)
     stage = value['stage']
     require(type(stage) is str and stage in STAGES)
     height = integer(value['accepted_height'], 1, REQUIRED_HEIGHT)
+    require(type(value['commit_path']) is str
+            and value['commit_path'] == 'native-node-owned-durable-receipt')
+    require(integer(value['validated_reward_receipts'], 1, REQUIRED_HEIGHT) == height)
     require(type(value['required_height']) is int and value['required_height'] == REQUIRED_HEIGHT)
     require(type(value['slots_per_block']) is int and value['slots_per_block'] == SLOTS_PER_BLOCK)
     elapsed = integer(value['elapsed_ms'], 1, MAX_ELAPSED_MS - 1)

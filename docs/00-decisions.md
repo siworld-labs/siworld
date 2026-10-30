@@ -214,7 +214,8 @@ proof/bandwidth limits.
 Use confidential fee commitments with native fixed-capacity settlement.
 Nodes validate fee-opening sidecars against the transaction and commitment
 before admission; no additional sidecar signature or encryption layer is
-selected. Planned hybrid X25519 + ML-KEM transport handles connection secrecy.
+selected. The selected TLS 1.3 X25519MLKEM768 transport provides connection
+secrecy once its reviewed provider and activation gates are complete.
 Transaction, settlement and native issuance proofs and private sidecars remain online until
 three elapsed days after final confirmation, then are deleted. Public data is
 permanent on every node; no V1 archive-node role retains proof bodies beyond
@@ -337,15 +338,25 @@ These are test targets, not completed measurements.
 
 ## Transport identity and checkpoint trust
 
-The [V1 network design](v1-network-design.md) selects ephemeral X25519 plus
-ML-KEM-768, with Ed25519 and ML-DSA-65 identity signatures both required over
-the bound identity/transcript. Use a reviewed hybrid combiner, key confirmation
-and fixed protocol profile, with no classical fallback. These choices still
-require implementation and independent security review. A classical PeerId
-alone does not bind the post-quantum identity.
+The [V1 network design](v1-network-design.md) selects TLS 1.3 with exactly
+X25519MLKEM768 and `TLS_CHACHA20_POLY1305_SHA256` for native connections.
+Use the standard TLS key schedule and authenticated records; no additional
+application combiner, Noise upgrade, classical-only group or weaker retry is
+permitted. Disable resumption and 0-RTT. Require mutual pinned Ed25519 TLS
+certificates, bidirectional Finished verification and fresh Ed25519 plus
+ML-DSA-65 signatures bound to the completed handshake's TLS exporter and
+ordered authentication transcript. A classical PeerId or descriptor possession
+signature alone cannot authenticate a native connection.
+
+The [hybrid TLS profile](v1-hybrid-handshake.md) defines the exclusive upgrade
+and ALPN, exporter context, candidate authentication encoding and resource
+requirements. Transport selection does not qualify or enable a provider.
+The concrete implementation, certificate policy, canonical vectors and exact
+native-workspace dependencies require independent review and acceptance tests
+before activation. Preserve the existing identity and descriptor encodings.
 
 Dandelion++ is the selected source-relay path. Its routing/timer parameters
-and library/combiner profile must be frozen after adversarial evaluation.
+and implementation dependencies must be frozen after adversarial evaluation.
 Hybrid transport protects content, not network endpoints; Dandelion++ does
 not guarantee anonymity against global observation or malicious first hops.
 Fee-sidecar recipients learn openings and can identify a zero fee; the
@@ -479,13 +490,32 @@ insertion. The verified-pool policy is 512 MiB/2,048 entries, 16 MiB/64 entries
 per opaque peer and at most 4,096 peer identities. These logical limits do not
 supply isolated workers, ingress queues or a process-memory guarantee.
 
-The authenticated-stream interface binds network, genesis and frozen verifier
-manifest, with bounded framing and declared peer roles, full-proof batches and exact-proof
-compact recovery. Sync attempts pin peer/base/ancestor/continuation and retain
-budget reservations until adoption or discard. There is no production hybrid
-authenticator or enabled listening service. A reviewed X25519 + ML-KEM,
-Ed25519 + ML-DSA provider, authenticated record protection, actual-listener
-failure tests and Dandelion++ remain required before network activation.
+The authenticated-stream interface binds network, genesis and the frozen
+verifier manifest. The explicit `native-p2p` engineering feature provides a
+pinned raw TCP listener, dedicated libp2p TLS connection upgrade, bounded
+socket-worker/owner queue, periodic full-proof sync and fresh authenticated
+reconnect. For each symmetrically pinned pair, only the smaller identity
+fingerprint dials; both listeners must be reachable, without reverse-dial or
+NAT fallback. It does not instantiate a libp2p Swarm, discovery, multiplexing
+or resident transaction/compact relay. Default builds do not expose its service
+command. The provider enforces TLS 1.3 X25519MLKEM768, pinned mutual Ed25519
+certificates and exporter-bound Ed25519/ML-DSA-65 authentication before native
+Hello. There is no classical or plaintext fallback. Independent composition
+and dependency review, adversarial resource measurements, exact-source
+executed integration evidence and independent-host acceptance remain gates.
+The [runtime instructions](v1-native-runtime.md#pinned-resident-engineering-service)
+define pin provisioning, configuration and the explicit `run-network` command.
+Dandelion++ remains required before the public testnet.
+
+All native local producers use the common Node commit path. Store-bound private
+receipts are synchronized before atomic canonical append, head and local
+ownership-index commit. Imports create no local ownership; reorgs retain local
+rows for detached blocks. Reopen checks the counted index, block binding and
+receipt digest/authentication. Missing local evidence fails closed; imported
+blocks need no local secret. Exact complete receipt retries preserve interrupted
+pre-append work without overwriting evidence. Legacy unindexed stores retain
+strict isolated receipt checks and require explicit qualification before
+networking; automatic migration is unavailable.
 
 Block encoding v4 and compact encoding v3 include bounded signed issuance
 records and the fixed three-note native proof. The trusted transport identity
@@ -494,7 +524,8 @@ statement/proof pairs in batches of at most sixteen, checks their exact
 identities and imports only the reconstructed complete block. Each exchange
 has a shared 180-second monotonic deadline; at most three attempts use fresh
 authenticated sessions. Invalid protocol data is not a retry condition.
-These library interfaces do not enable a production listener.
+These compact-relay library interfaces are not dispatched by the current
+periodic-sync resident service; full resident relay remains integration work.
 
 The existing 43-Mbps capacity model includes one issuance per block. If the
 explicit engineering configuration permits four maximum issuance records,
@@ -520,11 +551,15 @@ Seed-wallet APIs derive independent spend, deterministic ML-KEM view and
 complete canonical replay, reconcile orphan receipts/spends and prepare fixed
 SIP or asset transfers with SIP-only standard/priority fees. Native proving
 returns the transaction, matching sidecar and private payment opening.
-Mnemonic backup, protected persistence, valid-chain seed-wallet funding,
-pruned-public-history rescan and full M2 workflow acceptance remain incomplete.
-Seed-backed mining destinations and ordered per-note encryption receipts are
-required for recovery. Current proof artifacts qualify the revised relation;
-they do not complete these wallet integration requirements.
+The protected encrypted vault, mandatory mnemonic acknowledgement and local
+payment journal are implemented. The separate genuine 26-block gate exercises
+native genesis-funded reward credit, node restart, sender seed restoration,
+standard-fee payment and receiver seed restoration through the common owner
+commit path. Its current-revision execution result remains required evidence;
+synthetic funding or a prior revision cannot substitute. The complete two-fee-tier,
+issued-asset and network wallet cycle and pruned-public-history rescan remain
+incomplete. Seed-backed destinations and protected per-note receipts are
+required; proof qualification alone does not qualify custody or recovery.
 
 The dedicated native runtime CI job compiles the integration and runs
 synthetic-verifier state/transport tests and native-proof tests. Tests with
@@ -532,7 +567,8 @@ synthetic funding do not establish end-to-end valid-chain wallet acceptance or
 production cryptographic transport. Unsupported issuance operations remain
 absent until the dedicated testnet fund account, atomic fee collection and
 resource bounds are configured and implemented. Three-day proof/sidecar
-retention, checkpoint bootstrap, configured fund operation, protected wallet durability,
-transport privacy and sustained network acceptance remain separate gates.
+retention, checkpoint bootstrap, configured fund operation, complete wallet-cycle
+qualification, transport privacy and sustained network acceptance remain
+separate gates.
 No library test changes the frozen single-node observation or the retained
 seven-node network.

@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -36,6 +37,8 @@ def receipt_for(worker):
         'effective_rustflags': ' '.join(RELEASE.V3_FLAGS),
         'cargo_working_directory': 'repository-root',
         'repository_config_sha256': RELEASE.digest(ROOT / '.cargo/config.toml'),
+        'cargo_default_features': True,
+        'cargo_features': [],
     }
 
 
@@ -147,6 +150,7 @@ class NativeRuntimeReleaseTests(unittest.TestCase):
             self.assertEqual(saved['bootstrap_isa'], 'x86-64')
             self.assertEqual(saved['bootstrap_sha256'], RELEASE.digest(guard))
             self.assertEqual(saved['worker_build_receipt'], receipt)
+            self.assertIsNone(saved['packaged_help_smoke'])
             self.assertEqual(saved['isa_inspection'], inspection)
             self.assertEqual(saved['worker_build_receipt']['binary_sha256'], RELEASE.digest(installed))
             self.assertEqual(saved['isa_inspection']['binary_sha256'], RELEASE.digest(installed))
@@ -174,6 +178,153 @@ class NativeRuntimeReleaseTests(unittest.TestCase):
                     NATIVE.package(worker, output, receipt, RELEASE)
                 self.assertFalse(output.exists())
                 self.assertFalse(list(Path(directory).glob('.native-package-*')))
+
+
+    def test_network_selection_must_match_the_build_receipt(self):
+        for native_p2p, features in [(True, []), (False, ['native-p2p']),
+                                     (True, ['hybrid-tls-candidate'])]:
+            with self.subTest(native_p2p=native_p2p, features=features), \
+                 tempfile.TemporaryDirectory() as directory:
+                worker = worker_at(directory)
+                receipt = receipt_for(worker)
+                receipt['cargo_features'] = features
+                output = Path(directory) / 'release'
+                with patch.object(RELEASE, 'inspect_proof') as inspect, \
+                     patch.object(NATIVE.subprocess, 'run') as run, \
+                     self.assertRaisesRegex(ValueError, 'receipt mismatch'):
+                    NATIVE.package(worker, output, receipt, RELEASE, native_p2p=native_p2p)
+                inspect.assert_not_called()
+                run.assert_not_called()
+                self.assertFalse(output.exists())
+
+    def test_network_package_smokes_the_guarded_help_and_records_commands(self):
+        help_text = '\n'.join(command + ' DIRECTORY  Description' for command in
+                              ['genesis-id', 'init-peer', 'peer-pin', 'run-network'])
+        with tempfile.TemporaryDirectory() as directory:
+            worker = worker_at(directory)
+            receipt = receipt_for(worker)
+            receipt['cargo_features'] = ['native-p2p']
+            output = Path(directory) / 'release'
+            invocations = []
+
+            def run(command, **kwargs):
+                invocations.append((command, kwargs))
+                if command[0] == 'rustc':
+                    return compile_guard(command, **kwargs)
+                self.assertEqual(command[1:], ['--help'])
+                self.assertEqual(Path(command[0]).parent.name, 'bin')
+                self.assertEqual(Path(command[0]).parent.parent, kwargs['cwd'])
+                self.assertEqual(kwargs, {'cwd': Path(command[0]).parent.parent,
+                                         'check': True, 'capture_output': True,
+                                         'text': True, 'timeout': 30})
+                return SimpleNamespace(stdout=help_text)
+
+            with patch.object(RELEASE, 'inspect_proof', return_value=inspection_for(worker)), \
+                 patch.object(NATIVE.subprocess, 'run', side_effect=run):
+                NATIVE.package(worker, output, receipt, RELEASE, native_p2p=True)
+            self.assertEqual(len(invocations), 2)
+            saved = json.loads((output / 'build-receipt.json').read_text())
+            self.assertEqual(saved['worker_build_receipt']['cargo_features'], ['native-p2p'])
+            smoke = saved['packaged_help_smoke']
+            self.assertEqual(smoke['required_commands'],
+                             ['genesis-id', 'init-peer', 'peer-pin', 'run-network'])
+            self.assertEqual(smoke['worker_sha256'], RELEASE.digest(output / 'libexec/siworld-native-node'))
+            self.assertEqual(smoke['bootstrap_sha256'], RELEASE.digest(output / 'bin/siworld-native-node'))
+            self.assertEqual(len(smoke['help_sha256']), 64)
+
+    def test_network_package_rejects_missing_help_command_or_help_failure(self):
+        commands = ['genesis-id', 'init-peer', 'peer-pin', 'run-network']
+        for missing in commands + ['process-failure', 'timeout']:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                worker = worker_at(directory)
+                receipt = receipt_for(worker)
+                receipt['cargo_features'] = ['native-p2p']
+                output = Path(directory) / 'release'
+
+                def run(command, **kwargs):
+                    if command[0] == 'rustc':
+                        return compile_guard(command, **kwargs)
+                    if missing == 'process-failure':
+                        raise NATIVE.subprocess.CalledProcessError(78, command)
+                    if missing == 'timeout':
+                        raise NATIVE.subprocess.TimeoutExpired(command, 30)
+                    # A prose mention alone must not count as command support.
+                    return SimpleNamespace(stdout='Advertised: ' + missing + '\n' + '\n'.join(
+                        item + ' DIRECTORY' for item in commands if item != missing))
+
+                with patch.object(RELEASE, 'inspect_proof', return_value=inspection_for(worker)), \
+                     patch.object(NATIVE.subprocess, 'run', side_effect=run), \
+                     self.assertRaises((ValueError, NATIVE.subprocess.CalledProcessError,
+                                        NATIVE.subprocess.TimeoutExpired)):
+                    NATIVE.package(worker, output, receipt, RELEASE, native_p2p=True)
+                self.assertFalse(output.exists())
+                self.assertFalse(list(Path(directory).glob('.native-package-*')))
+
+    def test_network_help_cannot_swap_the_guard_or_worker_after_validation(self):
+        for changed in ['bin/siworld-native-node', 'libexec/siworld-native-node']:
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as directory:
+                worker = worker_at(directory)
+                receipt = receipt_for(worker)
+                receipt['cargo_features'] = ['native-p2p']
+                output = Path(directory) / 'release'
+
+                def run(command, **kwargs):
+                    if command[0] == 'rustc':
+                        return compile_guard(command, **kwargs)
+                    (kwargs['cwd'] / changed).write_bytes(b'replacement')
+                    return SimpleNamespace(stdout='\n'.join(item + ' DIRECTORY' for item in
+                        ['genesis-id', 'init-peer', 'peer-pin', 'run-network']))
+
+                with patch.object(RELEASE, 'inspect_proof', return_value=inspection_for(worker)), \
+                     patch.object(NATIVE.subprocess, 'run', side_effect=run), \
+                     self.assertRaisesRegex(ValueError, 'changed during packaging'):
+                    NATIVE.package(worker, output, receipt, RELEASE, native_p2p=True)
+                self.assertFalse(output.exists())
+
+    def test_main_selects_only_the_requested_feature_and_binds_receipt(self):
+        for native_p2p in [False, True]:
+            with self.subTest(native_p2p=native_p2p), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / 'target'
+                (target / 'release').mkdir(parents=True)
+                worker = worker_at(target / 'release')
+                output = Path(directory) / 'release'
+                argv = ['build-native-runtime.py', '--output', str(output)]
+                if native_p2p:
+                    argv.append('--native-p2p')
+                spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda value: None))
+                with patch('sys.argv', argv), \
+                     patch.dict(NATIVE.os.environ, {'CARGO_TARGET_DIR': str(target)}, clear=True), \
+                     patch.object(NATIVE.importlib.util, 'spec_from_file_location', return_value=spec), \
+                     patch.object(NATIVE.importlib.util, 'module_from_spec', return_value=RELEASE), \
+                     patch.object(RELEASE, 'validate_platform'), \
+                     patch('builtins.print'), \
+                     patch.object(NATIVE.subprocess, 'run') as run, \
+                     patch.object(NATIVE, 'package') as package:
+                    NATIVE.main()
+                command = run.call_args.args[0]
+                expected = ['cargo', 'build', '--release', '--locked', '--manifest-path',
+                            str(ROOT / 'crates/native-node/Cargo.toml'), '--bin', 'siworld-native-node']
+                if native_p2p:
+                    expected += ['--features', 'native-p2p']
+                self.assertEqual(command, expected)
+                self.assertEqual(run.call_args.kwargs, {'cwd': ROOT, 'check': True})
+                self.assertEqual(package.call_args.args[:2], (worker, output.resolve()))
+                self.assertEqual(package.call_args.args[2]['cargo_features'],
+                                 ['native-p2p'] if native_p2p else [])
+                self.assertIs(package.call_args.args[2]['cargo_default_features'], True)
+                self.assertEqual(package.call_args.kwargs, {'native_p2p': native_p2p})
+
+    def test_existing_output_is_rejected_before_inspection_or_compilation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worker = worker_at(directory)
+            output = Path(directory) / 'release'
+            output.mkdir()
+            with patch.object(RELEASE, 'inspect_proof') as inspect, \
+                 patch.object(NATIVE.subprocess, 'run') as run, \
+                 self.assertRaisesRegex(ValueError, 'Refusing to overwrite'):
+                NATIVE.package(worker, output, receipt_for(worker), RELEASE)
+            inspect.assert_not_called()
+            run.assert_not_called()
 
 
 if __name__ == '__main__':
