@@ -679,7 +679,24 @@ impl<S: Read + Write> Session<S> {
     pub(crate) fn receive_before(&mut self, deadline: &Deadline) -> Result<Packet, Error> {
         self.receive_deadline(deadline.clone())
     }
-    fn receive_deadline(&mut self, mut deadline: Deadline) -> Result<Packet, Error> {
+    /// A paired sync request may follow synchronous proof verification by the
+    /// remote owner. Only its header uses the caller's absolute wait bound;
+    /// its bounded control body still has the ordinary ten-second deadline.
+    #[cfg(any(feature = "native-p2p", test))]
+    pub(crate) fn receive_sync_request_before(
+        &mut self,
+        deadline: &Deadline,
+    ) -> Result<Packet, Error> {
+        self.receive_frame(deadline.clone(), true)
+    }
+    fn receive_deadline(&mut self, deadline: Deadline) -> Result<Packet, Error> {
+        self.receive_frame(deadline, false)
+    }
+    fn receive_frame(
+        &mut self,
+        mut deadline: Deadline,
+        sync_request: bool,
+    ) -> Result<Packet, Error> {
         let mut header = [0; HEADER_BYTES];
         Timed {
             channel: &mut self.channel,
@@ -696,7 +713,15 @@ impl<S: Read + Write> Session<S> {
         let kind = header[6];
         let request = u64::from_le_bytes(header[7..15].try_into().expect("fixed request"));
         let length = u32::from_le_bytes(header[47..51].try_into().expect("fixed length")) as usize;
+        if sync_request && kind != GET_BLOCKS {
+            return Err(Error::InvalidProtocol);
+        }
         frame_header(kind, request, &self.binding.network, length)?;
+        if sync_request {
+            let mut body_deadline = Deadline::new(CONTROL_TIMEOUT);
+            body_deadline.cancellation = deadline.cancellation.clone();
+            deadline = body_deadline;
+        }
         let extra = if kind == BLOCK {
             MAX_ENVELOPE_BYTES + 65536
         } else {

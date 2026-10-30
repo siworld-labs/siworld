@@ -531,6 +531,14 @@ independently verified and adopted by that owner. Both peers alternate pull
 and serve turns, with one-second pacing between cycles. A completed pull
 cycle is not a claim that the node has found the globally strongest chain.
 
+The expected paired `GET_BLOCKS` header has an absolute 180-second arrival
+deadline because the remote owner may still be validating its preceding
+proof batch. Partial input does not renew that deadline. Other frame kinds
+are rejected before body allocation; a valid request body has a separate
+10-second control deadline. Ordinary control receives retain their
+10-second deadline. Cancellation and shared admission and memory limits
+remain effective during the longer header wait.
+
 For each configured pair, only the endpoint with the smaller pinned identity
 fingerprint initiates connections, including every reconnect. Both endpoints
 must load each other's independently verified pin and reachable listening

@@ -827,12 +827,18 @@ fn serve_turn<S: Read + Write>(
     tx: &SyncSender<ChargedCommand>,
     cancel: &Cancellation,
 ) -> Result<(), runtime::Error> {
+    // The remote consensus owner can still be verifying the preceding proof
+    // batch before it can create this paired request. Bound that header wait
+    // by one exchange, without renewing it on partial input or extending the
+    // normal control-body deadline. Admission, framing and queue caps remain
+    // shared with all other workers.
+    let deadline = p2p::Deadline::new(EXCHANGE);
     let Packet::Control {
         kind: p2p::GET_BLOCKS,
         request,
         body,
         reservation,
-    } = session.receive()?
+    } = session.receive_sync_request_before(&deadline)?
     else {
         return Err(invalid());
     };

@@ -197,6 +197,62 @@ fn resident_disconnect_reconnects_with_fresh_authentication_and_continues_sync()
 }
 
 #[test]
+fn proof_owner_delay_beyond_ten_seconds_preserves_the_paired_request_turn() {
+    let mut initiator = Endpoint::new();
+    let mut responder = Endpoint::new();
+    if initiator.driver.local > responder.driver.local {
+        std::mem::swap(&mut initiator, &mut responder);
+    }
+    initiator.append(350_000);
+    initiator.follow(&responder);
+    responder.follow(&initiator);
+    let setup_deadline = Instant::now() + Duration::from_secs(5);
+    let queued_pull = loop {
+        assert!(
+            Instant::now() < setup_deadline,
+            "request turn was not reached"
+        );
+        initiator.driver.poll().unwrap();
+        responder.tick();
+        match initiator.driver.rx.recv_timeout(POLL) {
+            Ok(charged) if matches!(&charged.command, Command::Pull { .. }) => break charged,
+            Ok(charged) => initiator
+                .driver
+                .handle(initiator.node.as_mut().unwrap(), charged)
+                .unwrap(),
+            Err(mpsc::RecvTimeoutError::Timeout) => (),
+            Err(error) => panic!("owner command channel closed: {error}"),
+        }
+    };
+    // A synchronous proof batch occupies the sole consensus owner. Withhold
+    // its queued next-request reply to reproduce the resulting socket state:
+    // the other authenticated worker waits for GET_BLOCKS while no request can
+    // yet be written. No synthetic proof is accepted as a cryptographic gate.
+    let release_at = Instant::now() + Duration::from_millis(11_100);
+    let (_keep_open, timer) = mpsc::channel::<()>();
+    while Instant::now() < release_at {
+        responder.tick();
+        let _ = timer.recv_timeout(POLL);
+    }
+    assert_eq!(
+        responder.driver.failures, 0,
+        "the paired request expired while the remote proof owner was occupied"
+    );
+    assert_eq!(responder.driver.scheduler.status().established, 1);
+    initiator
+        .driver
+        .handle(initiator.node.as_mut().unwrap(), queued_pull)
+        .unwrap();
+    until(&mut initiator, &mut responder, |a, b| {
+        b.state().height == 1 && a.state().fingerprint() == b.state().fingerprint()
+    });
+    assert_eq!(initiator.driver.connections, 1);
+    assert_eq!(responder.driver.connections, 1);
+    assert_eq!(initiator.driver.failures, 0);
+    assert_eq!(responder.driver.failures, 0);
+}
+
+#[test]
 fn unauthenticated_slow_socket_never_holds_the_consensus_owner_or_peer_identity() {
     let mut node = Endpoint::new();
     let mut socket = TcpStream::connect(node.address()).unwrap();
