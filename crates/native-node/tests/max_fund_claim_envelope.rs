@@ -314,14 +314,12 @@ fn maximum_opaque_proof_envelope_with_eight_signed_claims_preserves_native_budge
     encoded[BLOCK_HEADER_BYTES - 2] = 9;
     assert!(
         Block::decode(&encoded, &network)
-            .err()
-            .expect("ninth claim must fail")
+            .expect_err("ninth claim must fail")
             .contains("fund expenditure count limit")
     );
     assert!(
         Block::read_from(&mut Cursor::new(&encoded), encoded.len(), &network)
-            .err()
-            .expect("ninth streamed claim must fail")
+            .expect_err("ninth streamed claim must fail")
             .to_string()
             .contains("fund expenditure count limit")
     );
