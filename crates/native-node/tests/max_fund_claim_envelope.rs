@@ -235,7 +235,7 @@ fn maximum_opaque_proof_envelope_with_eight_signed_claims_preserves_native_budge
         target: [0xff; 32],
         nonce: 0,
         transactions,
-        reward_mode: RewardMode::Holder,
+        reward_mode: siworld_native_node::state::RewardMode::Holder,
         rewards: witness
             .reward_commitments()
             .iter()
