@@ -150,7 +150,7 @@ impl Scheduler {
             .reserve(peers.len() * PEER_BYTES)
             .map_err(|_| Error::Capacity)?;
         let instance = NEXT_INSTANCE
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
             })
             .map_err(|_| Error::Exhausted)?;
