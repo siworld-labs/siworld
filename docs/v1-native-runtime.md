@@ -410,12 +410,31 @@ identifier:
 
 ```sh
 siworld-native-node init-service genesis-node
+siworld-native-node genesis-id genesis-node
+```
+
+`genesis-id` prints only the validated public full-rules identifier as 64
+lowercase hexadecimal characters. It reads the immutable configuration without
+acquiring the engineering lease, opening or replaying the chain database,
+reading private identity or reward material, or creating files. It may be used
+while the service runs. Invalid or missing configuration is rejected rather
+than initialized. This identifier does not authenticate the source by itself.
+
+Record the output on the trusted genesis host and convey it through an
+independently authenticated channel. On the receiving host, run `genesis-id`
+against the staged public configuration and compare it with that recorded
+identifier before initialization. Do not treat an identifier delivered only
+alongside an untrusted configuration file as an independent check. For a local
+peer using the original configuration, the commands are:
+
+```sh
+siworld-native-node genesis-id genesis-node
 siworld-native-node init-peer validator-node genesis-node VERIFIED_GENESIS_ID
 ```
 
 `init-peer` requires an absent destination and an exact 64-character lowercase
-`EXPECTED_GENESIS_ID`. Obtain and verify this identifier independently of the
-transferred file. It is `Config::genesis_id()`, which binds the full encoded
+`EXPECTED_GENESIS_ID`. Use the independently verified `genesis-id` output,
+which is `Config::genesis_id()` and binds the full encoded
 consensus configuration, ASERT rules, suite and verifier profile, rather than
 only the public network ID. Changing a rule such as `pow_iterations` is rejected
 even when the network ID is unchanged. The command reads only the source's

@@ -10,7 +10,7 @@ use siworld_native_node::{
 use std::path::Path;
 fn help() {
     println!(
-        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\nidentity-init DIRECTORY    Explicitly create persistent dual peer identities\nidentity-public DIRECTORY  Export the verified public dual-signed descriptor\nconfigure-miner DIRECTORY MODE ADDRESS_FILE  Select voyager/holder and a backed-up wallet address\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, issuance RPC listener, or public-network activation is provided. Peer listening requires the explicit native-p2p engineering feature."
+        "siworld-native-node: isolated native V1 engineering network\n\ninit DIRECTORY [WORK_BITS]  Create a cheap development fixture\ninit-service DIRECTORY     Create a new ASERT network with initialization-only calibration\ngenesis-id DIRECTORY       Read the validated public full-rules genesis identifier\nidentity-init DIRECTORY    Explicitly create persistent dual peer identities\nidentity-public DIRECTORY  Export the verified public dual-signed descriptor\nconfigure-miner DIRECTORY MODE ADDRESS_FILE  Select voyager/holder and a backed-up wallet address\nrun DIRECTORY              Run continuous native production; requires four proving workers\nstop DIRECTORY             Request run-bound graceful stop and final verification\nservice-status DIRECTORY   Read the private atomic service export\nstatus DIRECTORY           Show exported service status or independently replay an idle store\ncheck DIRECTORY            Replay every proof and check every local reward receipt\naudit DIRECTORY            Independently replay public subsidy and fund-credit counters\nmine DIRECTORY [SLOTS]     Produce and atomically accept one native block (64..576, groups of 16)\n\nRAYON_NUM_THREADS=4 and SIWORLD_COMPOSITION_HIDING_WORKERS=2 are required for run.\nA completed 24-hour observation does not automatically stop the service.\nNo reset, migration, issuance RPC listener, or public-network activation is provided. Peer listening requires the explicit native-p2p engineering feature."
     );
     #[cfg(feature = "native-p2p")]
     println!(
@@ -27,6 +27,10 @@ fn cpu_admission() -> Result<(), String> {
 }
 fn config(path: &Path) -> Result<Config, String> {
     local::load(path)
+}
+fn genesis_identifier(path: &Path) -> Result<String, String> {
+    // The public rules are sufficient; do not lease or open the live store.
+    Ok(local::hex(&config(path)?.genesis_id()))
 }
 fn exact(args: &[String]) -> Result<(), String> {
     if args.len() != 2 {
@@ -69,6 +73,10 @@ fn run() -> Result<(), String> {
     }
     let path = Path::new(&args[1]);
     match args[0].as_str() {
+        "genesis-id" => {
+            exact(&args)?;
+            println!("{}", genesis_identifier(path)?);
+        }
         "wallet-create" | "wallet-restore" | "wallet-address" | "wallet-configure-miner" => {
             siworld_native_node::wallet_cli::run(&args[0], &args[1..])?;
         }
@@ -390,7 +398,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, feature = "native-p2p"))]
+#[cfg(test)]
 mod peer_initialization_tests {
     use super::*;
     use std::path::PathBuf;
@@ -425,6 +433,54 @@ mod peer_initialization_tests {
             .unwrap()
     }
 
+    #[test]
+    fn genesis_identifier_reads_only_validated_rules_and_binds_rule_changes() {
+        let parent = Directory::new();
+        let source = parent.0.join("source");
+        let original = asert();
+        local::initialize_config(&source, original.clone()).unwrap();
+        // Runtime sentinels are deliberately unusable as files. Reading the
+        // public rules must not acquire a lease, open history or read secrets.
+        for name in [
+            "chain.redb",
+            "native-peer-identity.secret",
+            "reward-fixture.secret",
+            "service-status.json",
+        ] {
+            std::fs::create_dir(source.join(name)).unwrap();
+        }
+        let before = std::fs::read(source.join("engineering-network.bin")).unwrap();
+        let identifier = genesis_identifier(&source).unwrap();
+        assert_eq!(identifier, local::hex(&original.genesis_id()));
+        assert_eq!(identifier.len(), 64);
+        assert!(
+            identifier
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        );
+        assert_eq!(
+            std::fs::read(source.join("engineering-network.bin")).unwrap(),
+            before
+        );
+        assert_eq!(std::fs::read_dir(&source).unwrap().count(), 5);
+
+        let modified = parent.0.join("modified");
+        let mut altered = original.clone();
+        altered.pow_iterations += 1;
+        local::initialize_config(&modified, altered).unwrap();
+        assert_eq!(local::load(&modified).unwrap().network, original.network);
+        assert_ne!(genesis_identifier(&modified).unwrap(), identifier);
+
+        let mut malformed = before;
+        malformed[0] ^= 1;
+        std::fs::write(source.join("engineering-network.bin"), malformed).unwrap();
+        assert!(genesis_identifier(&source).is_err());
+        let absent = parent.0.join("absent");
+        assert!(genesis_identifier(&absent).is_err());
+        assert!(!absent.exists());
+    }
+
+    #[cfg(feature = "native-p2p")]
     #[test]
     fn peer_genesis_requires_the_exact_explicit_genesis_and_an_asert_fund_registry() {
         let parent = Directory::new();
@@ -462,6 +518,7 @@ mod peer_initialization_tests {
         assert!(peer_genesis(&modified, &genesis).is_err());
     }
 
+    #[cfg(feature = "native-p2p")]
     #[test]
     fn same_genesis_provisioning_copies_only_public_rules_and_refuses_existing_destinations() {
         let parent = Directory::new();
