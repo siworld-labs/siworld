@@ -12,12 +12,15 @@ production, padding preparation and native settlement proving. There is no
 privileged main node. Discovery services and the control panel are operational
 services outside consensus.
 
-The Linux qualification baseline is Ubuntu 24.04, EPYC 7763 class, four vCPUs
-and fixed `x86-64-v3` release builds with AVX2 and CPU/OS-state admission checks.
-The initial validator RAM profile is 16 GiB; miner qualification starts at a
-separate 32-GiB profile. These are qualification floors to test, not proven
-minimum hardware requirements. The isolated 5-GiB proof cgroup does not set
-node/miner RAM requirements. macOS/Apple Silicon and Windows require separate
+The minimum CPU configuration is at least four available vCPUs and fixed
+`x86-64-v3` release builds with AVX2 and CPU/OS-state admission checks. The
+Linux collector requires Ubuntu 24.04 and cgroup v2. Advertised minimum RAM
+is 16 GB for validators and 32 GB for miners; memory admission requires at
+least 15 GiB / 30 GiB of system-visible memory respectively, including visible
+deployment cgroup limits. The actual CPU model and resource allocation
+must be recorded without a model requirement. These admission floors do not
+establish sustained workload acceptance. The isolated 5-GiB proof cgroup does
+not replace node/miner RAM requirements. macOS/Apple Silicon and Windows require separate
 native packaging, crypto vectors, isolation, storage/recovery and load tests.
 
 Both node roles use a 500-GB usable SSD installation floor and 1-TB
