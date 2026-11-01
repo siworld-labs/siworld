@@ -34,6 +34,7 @@ PUBLIC_ARTIFACTS = {
     "crates/bench-d8/artifacts/v1-native-freeze.json",
     "crates/bench-multi-asset/artifacts/v1-transaction-profile.json",
     "crates/bench-multi-asset/artifacts/v1-native-proof-profiles.json",
+    "crates/bench-multi-asset/artifacts/v1-native-fixed576-settlement.json",
     *(f"crates/prover/keys/root-n{n}.bin" for n in (2, 4, 8, 16, 32, 64, 128)),
     "crates/prover/tests/data/root-proof-n16.bin",
     "crates/prover/tests/data/root-statement-n16.bin",

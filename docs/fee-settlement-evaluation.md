@@ -19,8 +19,8 @@ AMD EPYC 7763, two exposed physical cores and four vCPUs. The release baseline
 is `x86-64-v3`. Settlement uses blowup 8, 36 queries, 20-bit query/opening-batch
 grinding, zero commitment grinding, binary folding and final-polynomial log
 length zero. The native node admission cap is now 655,360 bytes; this
-document's earlier synthetic samples remain historical evidence until the
-full-load measurement below is complete.
+document distinguishes the earlier synthetic samples, the fixed-576 priority-fee
+measurement and the separate maximum-claim envelope diagnostic below.
 
 | Extracted AIR dimension | Value |
 | --- | ---: |
@@ -54,6 +54,46 @@ native fund registry supports 32 immutable keys and eight signed claims per
 block; launch recipients and basis-point shares remain unconfigured. This measurement supplies no production allocation
 or proof of complete-block processing. The old two-output tables below remain
 explicitly diagnostic evidence only.
+
+## Fixed-576 priority-fee measurements
+
+[Run 41000973551](https://github.com/siworld-labs/siworld/actions/runs/41000973551)
+measured source `7e0ccdf3ed722cbaa3fffd53bba1380c0554a72a` on AMD EPYC
+7763 with four workers and three fresh process-tree scopes. Every one of the
+576 settlement fee positions used the priority tier. The witness had five
+Holder reward notes with synthetic allocations; consensus reward accounting
+remains a separate node responsibility. Parameters remained log blowup 8,
+36 queries and 20-bit query/opening-batch grinding. Setup was timed separately
+from proof generation. All three generated proofs were verified.
+
+| Trial | Proof body (bytes) | Generation (seconds) | Charged cgroup peak (bytes) |
+| --- | ---: | ---: | ---: |
+| 1 | 514,539 | 5.472528286 | 3,159,597,056 |
+| 2 | 513,675 | 5.475584285 | 3,159,633,920 |
+| 3 | 507,387 | 5.490914676 | 3,159,834,624 |
+
+The maximum observed body is 514,539 bytes, below the 589,824-byte measurement
+ceiling by 75,285 bytes. It leaves 140,821 bytes, or 21.49%, unused under the
+655,360-byte wire cap. Charged peaks are cgroup v2 `memory.peak` for setup,
+proving, verification, descendants and recorder; they are not process RSS or
+verifier-only memory. All memory-event deltas were zero. These samples do not
+prove a maximum over randomized proof outputs.
+
+A separate successful job in that run verified eight actual ML-DSA-65 fund
+claim signatures, totaling 54,264 encoded bytes, and rejected a ninth claim.
+Its synthetic 576-position maximum-size envelope encoded to 381,600,975 bytes;
+the compact envelope encoded to 2,890,196 bytes. The logical receive reservation
+was 382,324,055 bytes. Claims are independent envelope records and do not add
+inputs to the settlement AIR or change its statement. This diagnostic used
+opaque proof fills: transaction, settlement and issuance proofs were not
+verified, full block state was not applied, and RSS was not measured. It must
+not be described as accepted full-block execution with 576 real proofs.
+
+The [machine-readable measurement record](../crates/bench-multi-asset/artifacts/v1-native-fixed576-settlement.json)
+preserves source, parameters, timing, memory scope and these limits. A newer
+head run on EPYC 9V74 also passed the proof-body limit, but its timing is not
+an EPYC 7763 baseline. Combined real-proof full-block state acceptance with
+eight valid claims remains a separate integration gate.
 
 ## Fixed requirements
 
