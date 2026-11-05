@@ -53,6 +53,7 @@ PUBLIC_TEXT_ASSETS = {
     "crates/native-wallet-web/web/assets/wallet-history.js",
     "crates/native-wallet-web/tests/wallet-accounts.test.mjs",
     "crates/native-wallet-web/tests/light-history.test.mjs",
+    "crates/native-wallet-web/tests/online-storage.test.mjs",
     "crates/native-wallet-web/web/sdk/proof-progress.js",
     "crates/native-wallet-web/tests/proof-progress.test.mjs",
     "crates/native-wallet-web/web/vault.html",
