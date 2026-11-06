@@ -61,7 +61,7 @@ zeroize = "1.9.1"
 argon2 = { version = "=0.5.3", default-features = false, features = ["alloc", "zeroize"] }
 bip39 = { version = "=2.2.2", default-features = false, features = ["std", "zeroize"] }
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
-rpassword = "=7.4.0"
+rpassword = "=7.5.0"
 redb = "4.4"
 rayon = "1.11"
 rustls = { version = "=0.23.46", default-features = false, features = ["std", "aws_lc_rs", "prefer-post-quantum"], optional = true }
