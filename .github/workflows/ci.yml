@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Current monetary rejection tests and production-schedule simulation
         run: |
           cargo test --release --locked -p siworld-core v1_economics::tests::
@@ -55,7 +55,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: crates/fund-keytool
       - name: Format and lint isolated custody tool
@@ -125,7 +125,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Format
         run: cargo fmt --all --check
       - name: Default feature isolation
@@ -151,7 +151,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: crates/bench-stark
       - name: Format
@@ -191,7 +191,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Compile baseline admission tests
         run: |
           rustfmt --check scripts/prover-launcher.rs
@@ -255,7 +255,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Prepare isolated pinned native implementation
         run: python3 scripts/build-d8-checkpoint.py --prepare-only --output .local/native-transaction
       - name: Check CPU before executing optimized tests
@@ -322,7 +322,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: crates/bench-multi-asset -> ../../.local/multi-asset-ci-target
       - name: Check CPU admission before optimized code
@@ -380,7 +380,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchain
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: crates/native-node
       - name: Native runtime format and lints
